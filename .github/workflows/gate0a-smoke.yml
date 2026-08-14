@@ -1,0 +1,36 @@
+name: Gate 0A Douyin Smoke
+
+on:
+  push:
+    paths:
+      - "experiments/gate0a/**"
+      - "reports/GATE-0A-DOUYIN.md"
+      - ".github/workflows/gate0a-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Syntax check
+        run: python -m py_compile experiments/gate0a/douyin_probe.py
+
+      - name: Gate 0A smoke probe
+        run: |
+          python experiments/gate0a/douyin_probe.py \
+            --targets experiments/gate0a/targets.json \
+            --output /tmp/gate0a-smoke.jsonl
+          echo "--- JSONL evidence ---"
+          cat /tmp/gate0a-smoke.jsonl
