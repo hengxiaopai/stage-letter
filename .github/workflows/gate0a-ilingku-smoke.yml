@@ -1,0 +1,36 @@
+name: Gate 0A iLingku Smoke
+
+on:
+  push:
+    paths:
+      - 'experiments/gate0a/provider_probe.py'
+      - 'experiments/gate0a/provider_probe_ilingku.py'
+      - 'experiments/gate0a/provider_targets.json'
+      - '.github/workflows/gate0a-ilingku-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Syntax check
+        run: |
+          python -m py_compile experiments/gate0a/provider_probe.py
+          python -m py_compile experiments/gate0a/provider_probe_ilingku.py
+      - name: iLingku provider smoke probe
+        run: |
+          python experiments/gate0a/provider_probe_ilingku.py \
+            --targets experiments/gate0a/provider_targets.json \
+            --output /tmp/gate0a-ilingku-smoke.jsonl
+          echo '--- JSONL evidence ---'
+          cat /tmp/gate0a-ilingku-smoke.jsonl
