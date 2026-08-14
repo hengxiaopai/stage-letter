@@ -17,21 +17,21 @@ Gate 0A does not approve a production data source merely because a technical pro
 
 | Source class | Purpose | Production status |
 |---|---|---|
-| `OFFICIAL` | Douyin-authorized capabilities / SDK | Candidate |
-| `LICENSED` | Contracted commercial provider | Candidate |
-| `PUBLIC_WEB_PROBE` | Experimental public-web observation | **Not production approved** |
-
-Current runnable probe: `PUBLIC_WEB_PROBE / DOUYIN_WEB`.
+| `OFFICIAL` | Douyin-authorized capabilities / Live SDK | Preferred candidate; broadcaster scope may require authorization/whitelist |
+| `COMMERCIAL_API_CANDIDATE` | Paid provider with stable API contract | Technical candidate; Douyin rights must be reviewed separately |
+| `THIRD_PARTY_PUBLIC_API` | Free/public aggregation API | Experimental only |
+| `PUBLIC_WEB_PROBE` | Direct public-web observation | Experimental only; **not production approved** |
 
 ## 3. Core invariants
 
 1. Probe failure is never equal to `OFFLINE`.
-2. HTTP `403`, `429`, timeout, risk-control, unavailable content, and parse ambiguity produce `UNKNOWN`.
+2. HTTP `403`, `429`, timeout, risk-control, unavailable content, DNS/network failures, and parse ambiguity produce `UNKNOWN`.
 3. `OFFLINE` requires explicit offline evidence.
-4. `LIVE` requires multiple stream-specific signals in the returned public page.
+4. `LIVE` requires decisive live evidence such as trustworthy provider live status or live stream URLs.
 5. Gate 0A does not create `LiveSession` and does not send notifications.
 6. No third-party reverse-engineering/signing source code is copied into Stage Letter.
-7. Metadata from an ambiguous page must not be emitted as trusted creator/live metadata.
+7. Metadata from an ambiguous page/provider response must not be emitted as trusted creator/live metadata.
+8. A provider being technically usable does not establish authorization to use Douyin data in Stage Letter.
 
 ## 4. Persistent test targets
 
@@ -39,50 +39,25 @@ Current runnable probe: `PUBLIC_WEB_PROBE / DOUYIN_WEB`.
 
 - `DY-TARGET-001`
 - Label: `X.四五六`
-- `web_rid`: `975645387460`
+- `web_rid` / webcast candidate: `975645387460`
 - URL: `https://live.douyin.com/975645387460`
+
+### Positive-control pool
+
+`experiments/gate0a/provider_targets.json` contains the product target plus multiple real rooms discovered as live controls during Gate 0A research. Their live status must always be independently re-confirmed at execution time; they are not permanently asserted to remain live.
 
 ### Negative control
 
-- `DY-CONTROL-INVALID`
-- Invalid non-numeric `web_rid`
-- Expected result: `UNKNOWN / INVALID_TARGET`
-
-Current known-live rooms should be appended to a smoke run as ad-hoc controls rather than permanently asserting that they remain live:
-
-```bash
-python experiments/gate0a/douyin_probe.py \
-  --room "control-a=<current_web_rid>" \
-  --room "control-b=<current_web_rid>"
-```
+- invalid non-numeric ID
+- expected result: `UNKNOWN / INVALID_TARGET`
 
 ## 5. Observation contract
 
-Every JSONL row must include at least:
+All probes normalize to tri-state observations and include source, confidence, latency, provider/error details, and evidence. Sensitive provider tokens are never stored in observation data or committed to Git.
 
-```json
-{
-  "platform": "douyin",
-  "web_rid": "975645387460",
-  "status": "LIVE|OFFLINE|UNKNOWN",
-  "creator_name": null,
-  "title": null,
-  "room_id": null,
-  "room_url": "https://live.douyin.com/975645387460",
-  "source_started_at": null,
-  "observed_at": "...+08:00",
-  "source_type": "PUBLIC_WEB_PROBE",
-  "source_provider": "DOUYIN_WEB",
-  "confidence": 0.0,
-  "http_status": 200,
-  "latency_ms": 0,
-  "error_type": null,
-  "evidence": [],
-  "response_sha256": null
-}
-```
+## 6. Gate 0A.1 — Plain public-room HTML
 
-## 6. Gate 0A.1 Smoke acceptance
+### Acceptance already satisfied
 
 - [x] Repository bootstrap exists.
 - [x] Tri-state probe contract exists.
@@ -92,31 +67,20 @@ Every JSONL row must include at least:
 - [x] `X.四五六` is a persistent product target.
 - [x] Evidence directory is ignored by Git.
 - [x] Python syntax + smoke execution run successfully in GitHub Actions.
-- [x] Ambiguous HTTP 200 page remains `UNKNOWN` and no longer leaks unrelated bundle metadata.
-- [ ] Run the probe against at least five rooms independently known to be LIVE at execution time.
-- [ ] All positive controls return `LIVE` or produce an explained `UNKNOWN`; no false `OFFLINE` is accepted.
-- [ ] Record returned creator name/title/room metadata coverage for decisive LIVE observations.
-- [ ] Confirm a real OFFLINE sample with explicit offline evidence.
+- [x] Ambiguous HTTP 200 page remains `UNKNOWN` and does not leak unrelated bundle metadata.
 
-### 6.1 Smoke evidence — 2026-08-14
-
-Final hardening run:
+### Evidence — 2026-08-14
 
 ```text
 GitHub Actions run: 31779812353
 Commit: b3d165a9104f9e4100424307306741f2e9996ea2
-Runner: ubuntu-24.04
-Python: CPython 3.13.14
 Workflow conclusion: success
-Syntax check: success
-Smoke probe step: success
 ```
 
-`DY-TARGET-001 / X.四五六`:
+`X.四五六` result:
 
 ```text
 HTTP status: 200
-Final URL: https://live.douyin.com/975645387460
 Latency: 1803 ms
 Response bytes: 999963
 Status: UNKNOWN
@@ -129,23 +93,137 @@ room_id: null
 source_started_at: null
 ```
 
-`DY-CONTROL-INVALID`:
+Conclusion:
 
 ```text
-Status: UNKNOWN
-Error type: INVALID_TARGET
-Expectation: UNKNOWN
-Expectation met: true
+PLAIN_PUBLIC_ROOM_HTML = INSUFFICIENT
+```
+
+A plain anonymous room-page request is not a reliable Stage Letter live-state source.
+
+## 7. Gate 0A.2 — Decisive LIVE source search
+
+### 7.1 FFAPI public API — rejected
+
+Probe files:
+
+- `experiments/gate0a/provider_probe.py`
+- `.github/workflows/gate0a-provider-smoke.yml`
+
+Evidence:
+
+```text
+GitHub Actions run: 31780103280
+Targets: 8 real IDs + 1 invalid control
+LIVE: 0
+OFFLINE: 0
+UNKNOWN: 9
+Decisive LIVE found: false
+```
+
+All real targets failed with:
+
+```text
+NETWORK:[Errno 111] Connection refused
+```
+
+Decision:
+
+```text
+FFAPI_CN = REJECTED / UNREACHABLE_FROM_TEST_RUNNER
+```
+
+Do not retry as an active Gate 0A candidate unless the provider materially changes.
+
+### 7.2 iLingku public API — rejected
+
+Probe files:
+
+- `experiments/gate0a/provider_probe_ilingku.py`
+- `.github/workflows/gate0a-ilingku-smoke.yml`
+
+Evidence:
+
+```text
+GitHub Actions run: 31780201967
+Targets: 8 real IDs + 1 invalid control
+LIVE: 0
+OFFLINE: 0
+UNKNOWN: 9
+Decisive LIVE found: false
+```
+
+All real targets failed DNS resolution with:
+
+```text
+NETWORK:[Errno -2] Name or service not known
+```
+
+Decision:
+
+```text
+ILINGKU_PUBLIC_API = REJECTED / DNS_UNREACHABLE_FROM_TEST_RUNNER
+```
+
+### 7.3 Free/public aggregator branch — stopped
+
+After independent failures of FFAPI and iLingku, Stage Letter stops spending Gate 0A time on anonymous free aggregation APIs. Any future free provider requires a materially stronger reliability signal before testing.
+
+### 7.4 TikHub — active commercial technical candidate
+
+Files:
+
+- `experiments/gate0a/tikhub_probe.py`
+- `.github/workflows/gate0a-tikhub-smoke.yml`
+
+Chosen endpoint:
+
+```text
+GET https://api.tikhub.io/api/v1/douyin/web/fetch_user_live_videos?webcast_id=<id>
+```
+
+Reason: TikHub documents `webcast_id` as the numeric identifier at the end of a Douyin live link and distinguishes it from the per-session `room_id`, matching Stage Letter's existing `web_rid`-style target input.
+
+Preflight evidence:
+
+```text
+GitHub Actions run: 31780357301
+API host preflight: PASS
+Unauthenticated endpoint response: HTTP 401
+TIKHUB_API_KEY configured: false
+Decisive-live probe: SKIPPED
+Blocker: BLOCKED_MISSING_SECRET
 ```
 
 Interpretation:
 
-- A plain anonymous public room-page request can return HTTP 200 without providing enough trusted state evidence for Stage Letter.
-- The probe correctly fails closed to `UNKNOWN`; it does not fabricate `OFFLINE`.
-- Global page/application bundle fields are not trustworthy room metadata. An earlier smoke iteration demonstrated false candidates such as unrelated title/time values; the probe was hardened so ambiguous observations now emit those fields as `null`.
-- Therefore the current plain-HTML route is not sufficient to satisfy the positive-control requirement of Gate 0A.
+- TikHub's API host and selected endpoint are reachable from GitHub Actions.
+- The current blocker is authentication, not DNS/network reachability.
+- `tikhub_probe.py` reads only the `TIKHUB_API_KEY` environment variable and never prints or commits the token.
+- TikHub is an unofficial third-party API; successful technical testing will **not** automatically mark it production-authorized for Stage Letter.
 
-## 7. Gate 0A.2 Transition acceptance
+Current TikHub status:
+
+```text
+TECHNICAL_PREFLIGHT = PASS
+DECISIVE_LIVE_TEST = BLOCKED_MISSING_SECRET
+PRODUCTION_AUTHORIZATION = UNRESOLVED
+```
+
+### 7.5 Douyin official Live SDK / status capability — preferred production candidate
+
+Keep the official route open in parallel. It is the preferred authorization path, especially for broadcasters that actively authorize Stage Letter or can be included in a cooperation whitelist. The unresolved product question is whether the cooperation model can cover the product's intended ordinary-public-creator use case at sufficient scale.
+
+## 8. Remaining Gate 0A.2 acceptance
+
+- [ ] At least five rooms independently known to be LIVE at execution time return decisive `LIVE` from one candidate source.
+- [ ] No known-live control is falsely classified as `OFFLINE`.
+- [ ] Creator/title/room metadata coverage is recorded for decisive LIVE observations.
+- [ ] At least one real OFFLINE observation is confirmed with explicit evidence.
+
+Only after these pass may Stage Letter begin transition capture.
+
+## 9. Gate 0A.3 — Transition acceptance
 
 Required real lifecycle evidence:
 
@@ -154,13 +232,13 @@ OFFLINE -> LIVE -> OFFLINE
 ```
 
 - [ ] At least one real creator lifecycle captured.
-- [ ] Probe continues through transient `UNKNOWN` without fabricating state transitions.
+- [ ] Probe continues through transient `UNKNOWN` without fabricating transitions.
 - [ ] Start/end observation timestamps retained.
 - [ ] No duplicate lifecycle is inferred from probe retries.
 
-State/session confirmation itself belongs to Gate 0B; Gate 0A only proves the source observations exist.
+State/session confirmation belongs to Gate 0B; Gate 0A only proves source observations exist.
 
-## 8. Gate 0A.3 Stability evidence
+## 10. Gate 0A.4 — Stability evidence
 
 - [ ] Sufficient repeated observations collected.
 - [ ] HTTP success rate measured.
@@ -168,36 +246,45 @@ State/session confirmation itself belongs to Gate 0B; Gate 0A only proves the so
 - [ ] P50/P95 latency measured.
 - [ ] 403 count measured.
 - [ ] 429 count measured.
-- [ ] timeout count measured.
+- [ ] timeout/network failure count measured.
 - [ ] ambiguous/parse-failure count measured.
-- [ ] Response structure changes documented via hashes/evidence without committing raw local data.
+- [ ] Response-structure changes documented without committing sensitive/raw data unnecessarily.
 
-## 9. Production authorization blocker
+## 11. Production authorization blocker
 
-Even if the experimental probe is technically successful, Gate 0A cannot be declared production-ready until at least one source path has a clear authorization basis for Stage Letter's intended use.
+Gate 0A cannot be declared production-ready until at least one data-source path has an authorization basis appropriate for Stage Letter's intended use.
 
-Candidates:
+Current candidates:
 
-- Douyin official live capability / Live SDK cooperation.
-- A licensed commercial data provider whose contract explicitly permits the required real-time live-status use.
+1. Douyin official Live SDK / official cooperation.
+2. A contracted commercial provider, subject to explicit rights/usage review.
 
-Current result:
+TikHub remains `COMMERCIAL_API_CANDIDATE`, not `LICENSED`, until contractual/data-rights review is complete.
+
+## 12. Current result
 
 ```text
 Technical feasibility: PROMISING
 Plain public room HTML: INSUFFICIENT
-Public-web probe: EXPERIMENTAL
+FFAPI: REJECTED
+ILINGKU: REJECTED
+Free aggregator branch: STOPPED
+TikHub network/endpoint preflight: PASS
+TikHub decisive LIVE: BLOCKED_MISSING_SECRET
+Official Douyin route: ACTIVE CANDIDATE
 Production source authorization: UNRESOLVED
 Gate 0A: IN PROGRESS
 Gate 0B: NOT STARTED
 ```
 
-## 10. Next action
+## 13. Next action
 
-Do not start Transition Run yet. First obtain a source that can produce decisive LIVE observations for known-live rooms. The next Gate 0A slice is to evaluate, in order:
+Immediate next execution step:
 
-1. officially authorized Douyin live-status capability / Live SDK cooperation;
-2. licensed commercial provider with explicit real-time live-status rights;
-3. experimental public-web source only as technical evidence, without treating anti-bot/signature bypass logic as a production solution.
+1. Create/obtain a TikHub API key using TikHub's normal account process.
+2. Store it only as GitHub repository secret `TIKHUB_API_KEY` for `hengxiaopai/stage-letter`; do not commit or paste the token into issues, logs, source files, or chat.
+3. Re-run `Gate 0A TikHub Smoke` against the existing control set.
+4. If at least five independently known-live controls return decisive `LIVE`, capture an OFFLINE sample and then start Transition Run.
+5. In parallel, continue official Douyin Live SDK/cooperation qualification for the production authorization path.
 
-Only after at least five independently known-live controls can be observed without false `OFFLINE` should Gate 0A proceed to transition capture.
+Until step 3 produces decisive LIVE evidence, Gate 0B remains forbidden.
