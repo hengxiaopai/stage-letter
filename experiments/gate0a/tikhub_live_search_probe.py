@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Stage Letter V0.1 — TikHub live-search positive-control probe.
 
-Uses TikHub's Douyin live search endpoint, which the provider documents as
-returning live-stream content only. This is Gate 0A evidence, not production
-approval.
+Uses TikHub's latest documented Douyin live-search V3 endpoint, which the
+provider documents as returning live-stream content only. This is Gate 0A
+evidence, not production approval.
 
 Security:
 - reads token only from TIKHUB_API_KEY
@@ -23,7 +23,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
-API_URL = "https://api.tikhub.io/api/v1/douyin/search/fetch_live_search_v1"
+API_URL = "https://api.tikhub.io/api/v1/douyin/search/fetch_live_search_v3"
 TZ_UTC8 = timezone(timedelta(hours=8))
 USER_AGENT = "StageLetter-Gate0A/0.1 (+https://github.com/hengxiaopai/stage-letter)"
 
@@ -109,7 +109,7 @@ def find_live_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "viewer_count": user_count,
             "stream_url_count": stream_url_count,
             "confidence": 0.95 if stream_url_count > 0 else 0.90,
-            "evidence": ["tikhub_live_search_result", f"stream_urls:{stream_url_count}"],
+            "evidence": ["tikhub_live_search_v3_result", f"stream_urls:{stream_url_count}"],
         })
 
     data = payload.get("data")
@@ -131,13 +131,8 @@ def find_live_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def fetch_live_search(keyword: str, token: str, timeout: float = 20.0) -> dict[str, Any]:
     body = json.dumps({
         "keyword": keyword,
-        "cursor": 0,
-        "sort_type": "0",
-        "publish_time": "0",
-        "filter_duration": "0",
-        "content_type": "1",
+        "offset": 0,
         "search_id": "",
-        "backtrace": "",
     }, ensure_ascii=False).encode("utf-8")
 
     req = urllib.request.Request(
@@ -176,19 +171,81 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 20.0) -> dict[s
     except json.JSONDecodeError:
         return {
             "ok": False,
+            "keyword": keyword,
             "status": "UNKNOWN",
+            "live_count": 0,
+            "rooms": [],
             "http_status": status,
+            "provider_code": None,
+            "provider_message": None,
             "error_type": "INVALID_JSON",
             "latency_ms": latency_ms,
             "observed_at": now_iso(),
+            "source_type": "COMMERCIAL_API_CANDIDATE",
+            "source_provider": "TIKHUB",
+            "production_approved": False,
         }
 
     provider_code = payload.get("code") if isinstance(payload, dict) else None
     provider_message = None
     if isinstance(payload, dict):
         provider_message = payload.get("message_zh") or payload.get("message") or payload.get("msg")
-    rooms = find_live_items(payload if isinstance(payload, dict) else {})
 
+    if status == 402:
+        return {
+            "ok": False,
+            "keyword": keyword,
+            "status": "UNKNOWN",
+            "live_count": 0,
+            "rooms": [],
+            "http_status": status,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+            "latency_ms": latency_ms,
+            "observed_at": now_iso(),
+            "source_type": "COMMERCIAL_API_CANDIDATE",
+            "source_provider": "TIKHUB",
+            "production_approved": False,
+            "error_type": "PAYMENT_REQUIRED",
+        }
+
+    if status in (401, 403):
+        return {
+            "ok": False,
+            "keyword": keyword,
+            "status": "UNKNOWN",
+            "live_count": 0,
+            "rooms": [],
+            "http_status": status,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+            "latency_ms": latency_ms,
+            "observed_at": now_iso(),
+            "source_type": "COMMERCIAL_API_CANDIDATE",
+            "source_provider": "TIKHUB",
+            "production_approved": False,
+            "error_type": "AUTH_OR_PERMISSION_ERROR",
+        }
+
+    if status == 429:
+        return {
+            "ok": False,
+            "keyword": keyword,
+            "status": "UNKNOWN",
+            "live_count": 0,
+            "rooms": [],
+            "http_status": status,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+            "latency_ms": latency_ms,
+            "observed_at": now_iso(),
+            "source_type": "COMMERCIAL_API_CANDIDATE",
+            "source_provider": "TIKHUB",
+            "production_approved": False,
+            "error_type": "RATE_LIMIT",
+        }
+
+    rooms = find_live_items(payload if isinstance(payload, dict) else {})
     return {
         "ok": status == 200 and str(provider_code) == "200",
         "keyword": keyword,
