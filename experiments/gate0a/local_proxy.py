@@ -19,21 +19,30 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from tikhub_live_search_probe import fetch_live_search
 from tikhub_probe import probe_target
 
 HOST = os.environ.get("STAGE_LETTER_GATE0A_HOST", "127.0.0.1")
 PORT = int(os.environ.get("STAGE_LETTER_GATE0A_PORT", "8765"))
 
 
+def get_token() -> str:
+    return os.environ.get("TIKHUB_API_KEY", "").strip()
+
+
+def missing_secret() -> dict:
+    return {
+        "ok": False,
+        "status": "UNKNOWN",
+        "error_type": "BLOCKED_MISSING_SECRET",
+        "message": "TIKHUB_API_KEY is not configured in the local server environment",
+    }
+
+
 def safe_observation(webcast_id: str, label: str = "") -> dict:
-    token = os.environ.get("TIKHUB_API_KEY", "").strip()
+    token = get_token()
     if not token:
-        return {
-            "ok": False,
-            "status": "UNKNOWN",
-            "error_type": "BLOCKED_MISSING_SECRET",
-            "message": "TIKHUB_API_KEY is not configured in the local server environment",
-        }
+        return missing_secret()
 
     target = {
         "id": "LOCAL-GATE0A",
@@ -67,11 +76,21 @@ def safe_observation(webcast_id: str, label: str = "") -> dict:
     }
 
 
+def safe_live_search(keyword: str) -> dict:
+    token = get_token()
+    if not token:
+        return missing_secret()
+
+    result = fetch_live_search(keyword, token, timeout=20.0)
+    # fetch_live_search already strips stream URLs and returns only normalized evidence.
+    return result
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "StageLetterGate0A/0.1"
+    server_version = "StageLetterGate0A/0.2"
 
     def log_message(self, fmt: str, *args) -> None:
-        # Safe request log. Query contains webcast_id only; never token.
+        # Safe request log. Query contains only public creator/search identifiers.
         sys.stdout.write("[gate0a] " + (fmt % args) + "\n")
 
     def _send_json(self, payload: dict, status: int = HTTPStatus.OK) -> None:
@@ -97,16 +116,38 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "service": "stage-letter-gate0a-local-proxy",
-                "secret_configured": bool(os.environ.get("TIKHUB_API_KEY", "").strip()),
+                "secret_configured": bool(get_token()),
                 "production": False,
+                "version": "0.2",
             })
+            return
+
+        query = parse_qs(parsed.query)
+
+        if parsed.path == "/api/gate0a/douyin/live-search":
+            keyword = (query.get("keyword") or ["游戏"])[0].strip() or "游戏"
+            if len(keyword) > 40:
+                self._send_json({
+                    "ok": False,
+                    "status": "UNKNOWN",
+                    "error_type": "INVALID_KEYWORD",
+                }, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(safe_live_search(keyword))
+            except Exception as exc:
+                self._send_json({
+                    "ok": False,
+                    "status": "UNKNOWN",
+                    "error_type": "LOCAL_PROXY_ERROR",
+                    "message": type(exc).__name__,
+                }, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         if parsed.path != "/api/gate0a/douyin/live":
             self._send_json({"ok": False, "error_type": "NOT_FOUND"}, HTTPStatus.NOT_FOUND)
             return
 
-        query = parse_qs(parsed.query)
         webcast_id = (query.get("webcast_id") or query.get("web_rid") or [""])[0].strip()
         label = (query.get("label") or [""])[0].strip()
         if not re.fullmatch(r"\d{5,20}", webcast_id):
@@ -130,7 +171,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    configured = bool(os.environ.get("TIKHUB_API_KEY", "").strip())
+    configured = bool(get_token())
     print(f"Stage Letter Gate 0A local proxy: http://{HOST}:{PORT}")
     print(f"TIKHUB_API_KEY configured: {'yes' if configured else 'no'}")
     print("Production approved: no")
