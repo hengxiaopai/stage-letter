@@ -52,7 +52,6 @@ def safe_observation(webcast_id: str, label: str = "") -> dict:
     obs = probe_target(target, token, timeout=20.0)
     raw = asdict(obs)
 
-    # Explicit allow-list. Never proxy raw provider payloads or stream URLs.
     return {
         "ok": True,
         "platform": "douyin",
@@ -80,17 +79,13 @@ def safe_live_search(keyword: str) -> dict:
     token = get_token()
     if not token:
         return missing_secret()
-
-    result = fetch_live_search(keyword, token, timeout=20.0)
-    # fetch_live_search already strips stream URLs and returns only normalized evidence.
-    return result
+    return fetch_live_search(keyword, token, timeout=20.0)
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "StageLetterGate0A/0.2"
+    server_version = "StageLetterGate0A/0.3"
 
     def log_message(self, fmt: str, *args) -> None:
-        # Safe request log. Query contains only public creator/search identifiers.
         sys.stdout.write("[gate0a] " + (fmt % args) + "\n")
 
     def _send_json(self, payload: dict, status: int = HTTPStatus.OK) -> None:
@@ -118,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                 "service": "stage-letter-gate0a-local-proxy",
                 "secret_configured": bool(get_token()),
                 "production": False,
-                "version": "0.2",
+                "version": "0.3",
             })
             return
 
