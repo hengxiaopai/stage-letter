@@ -1,0 +1,4 @@
+{
+  "desc": "Gate 0A local preview only",
+  "rules": [{"action":"allow","page":"*"}]
+}
