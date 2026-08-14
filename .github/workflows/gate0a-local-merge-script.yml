@@ -1,0 +1,35 @@
+name: Gate 0A Local Merge Script
+
+on:
+  push:
+    paths:
+      - 'scripts/merge-local-stage-letter-v2.sh'
+      - '.github/workflows/gate0a-local-merge-script.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: bash -n scripts/merge-local-stage-letter-v2.sh
+      - name: Simulate existing mini-program merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/stage-letter/pages/index
+          printf '{"pages":["pages/index/index"]}\n' > /tmp/stage-letter/app.json
+          printf 'Page({data:{title:"existing-local-app"}})\n' > /tmp/stage-letter/pages/index/index.js
+          cp scripts/merge-local-stage-letter-v2.sh /tmp/merge-local-stage-letter-v2.sh
+          cd /tmp/stage-letter
+          bash /tmp/merge-local-stage-letter-v2.sh
+          test -f app.json
+          grep -q 'existing-local-app' pages/index/index.js
+          test -f experiments/gate0a/local_proxy.py
+          test -f experiments/gate0a/tikhub_probe.py
+          test -f reports/GATE-0A-DOUYIN.md
+          git status --porcelain
+          echo 'SIMULATION PASS'
