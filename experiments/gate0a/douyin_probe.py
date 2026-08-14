@@ -32,28 +32,14 @@ USER_AGENT = (
     "Chrome/151.0.0.0 Safari/537.36"
 )
 
-RISK_MARKERS = (
-    "captcha",
-    "verifycenter",
-    "verify_center",
-    "security-check",
-    "risk control",
-    "访问过于频繁",
-    "安全验证",
-    "请完成验证",
-    "该内容暂时无法查看",
+VISIBLE_RISK_RE = re.compile(
+    r">[^<>]{0,80}(访问过于频繁|安全验证|请完成验证|该内容暂时无法查看)[^<>]{0,80}<",
+    re.IGNORECASE,
 )
-
-# Only explicit human-visible offline phrases are accepted as OFFLINE evidence.
-# Generic JSON numbers/status fields are deliberately NOT interpreted here,
-# because their semantics can change and have conflicted across implementations.
 OFFLINE_VISIBLE_RE = re.compile(
     r">[^<>]{0,40}(直播已结束|主播暂未开播|暂未开播|当前未开播)[^<>]{0,40}<",
     re.IGNORECASE,
 )
-
-# A LIVE verdict requires multiple stream-specific payload signals. This is
-# intentionally conservative: ambiguous HTTP 200 pages remain UNKNOWN.
 LIVE_SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("stream_url", re.compile(r'"stream_url"\s*:\s*\{', re.IGNORECASE)),
     ("hls_pull_url_map", re.compile(r'"hls_pull_url_map"\s*:\s*\{', re.IGNORECASE)),
@@ -66,6 +52,7 @@ LIVE_SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 @dataclass(frozen=True)
 class FetchResult:
     http_status: int | None
+    final_url: str | None
     body: bytes
     latency_ms: int
     error_type: str | None
@@ -85,6 +72,7 @@ class Observation:
     title: str | None
     room_id: str | None
     room_url: str
+    final_url: str | None
     source_started_at: str | None
     observed_at: str
     source_type: str
@@ -109,6 +97,10 @@ def valid_web_rid(value: str) -> bool:
     return bool(re.fullmatch(r"\d{5,20}", value or ""))
 
 
+def normalize_page_text(text: str) -> str:
+    return text.replace('\\"', '"').replace("\\u0026", "&").replace("\\/", "/")
+
+
 def fetch_room(url: str, timeout: float) -> FetchResult:
     request = urllib.request.Request(
         url,
@@ -127,6 +119,7 @@ def fetch_room(url: str, timeout: float) -> FetchResult:
             body = response.read()
             return FetchResult(
                 http_status=int(response.status),
+                final_url=response.geturl(),
                 body=body,
                 latency_ms=round((time.perf_counter() - started) * 1000),
                 error_type=None,
@@ -150,6 +143,7 @@ def fetch_room(url: str, timeout: float) -> FetchResult:
             error_type = "HTTP_ERROR"
         return FetchResult(
             http_status=status,
+            final_url=exc.geturl(),
             body=body,
             latency_ms=round((time.perf_counter() - started) * 1000),
             error_type=error_type,
@@ -161,6 +155,7 @@ def fetch_room(url: str, timeout: float) -> FetchResult:
         error_type = "TIMEOUT" if "TIMEOUT" in name else "NETWORK_ERROR"
         return FetchResult(
             http_status=None,
+            final_url=None,
             body=b"",
             latency_ms=round((time.perf_counter() - started) * 1000),
             error_type=error_type,
@@ -169,14 +164,16 @@ def fetch_room(url: str, timeout: float) -> FetchResult:
     except TimeoutError as exc:
         return FetchResult(
             http_status=None,
+            final_url=None,
             body=b"",
             latency_ms=round((time.perf_counter() - started) * 1000),
             error_type="TIMEOUT",
             error_detail=str(exc)[:300],
         )
-    except Exception as exc:  # evidence collector: isolate one target failure
+    except Exception as exc:
         return FetchResult(
             http_status=None,
+            final_url=None,
             body=b"",
             latency_ms=round((time.perf_counter() - started) * 1000),
             error_type="UNEXPECTED_FETCH_ERROR",
@@ -185,26 +182,28 @@ def fetch_room(url: str, timeout: float) -> FetchResult:
 
 
 def jsonish_string(text: str, keys: Iterable[str]) -> str | None:
+    normalized = normalize_page_text(text)
     for key in keys:
         pattern = re.compile(rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', re.IGNORECASE)
-        match = pattern.search(text)
+        match = pattern.search(normalized)
         if not match:
             continue
         raw = match.group(1)
         try:
             return json.loads(f'"{raw}"')
         except json.JSONDecodeError:
-            return raw.replace("\\u0026", "&").replace("\\/", "/")
+            return raw
     return None
 
 
 def extract_unix_time(text: str) -> str | None:
+    normalized = normalize_page_text(text)
     patterns = (
         re.compile(r'"start_time"\s*:\s*"?(\d{10,13})"?', re.IGNORECASE),
         re.compile(r'"startTime"\s*:\s*"?(\d{10,13})"?', re.IGNORECASE),
     )
     for pattern in patterns:
-        match = pattern.search(text)
+        match = pattern.search(normalized)
         if not match:
             continue
         value = int(match.group(1))
@@ -217,17 +216,22 @@ def extract_unix_time(text: str) -> str | None:
     return None
 
 
-def classify_html(text: str) -> tuple[str, float, list[str], str | None]:
-    lowered = text.lower()
-    for marker in RISK_MARKERS:
-        if marker.lower() in lowered:
-            return "UNKNOWN", 0.0, [f"risk_marker:{marker}"], "RISK_CONTROL_OR_UNAVAILABLE"
+def classify_html(text: str, final_url: str | None) -> tuple[str, float, list[str], str | None]:
+    normalized = normalize_page_text(text)
+    final_lower = (final_url or "").lower()
 
-    offline = OFFLINE_VISIBLE_RE.search(text)
+    if any(token in final_lower for token in ("verify", "captcha", "security-check")):
+        return "UNKNOWN", 0.0, [f"verification_redirect:{final_url}"], "RISK_CONTROL_OR_UNAVAILABLE"
+
+    visible_risk = VISIBLE_RISK_RE.search(normalized)
+    if visible_risk:
+        return "UNKNOWN", 0.0, [f"visible_risk:{visible_risk.group(1)}"], "RISK_CONTROL_OR_UNAVAILABLE"
+
+    offline = OFFLINE_VISIBLE_RE.search(normalized)
     if offline:
         return "OFFLINE", 0.90, [f"explicit_offline:{offline.group(1)}"], None
 
-    live_signals = [name for name, pattern in LIVE_SIGNAL_PATTERNS if pattern.search(text)]
+    live_signals = [name for name, pattern in LIVE_SIGNAL_PATTERNS if pattern.search(normalized)]
     if len(live_signals) >= 2:
         return "LIVE", 0.80, [f"live_signal:{name}" for name in live_signals], None
 
@@ -258,6 +262,7 @@ def observation_for_invalid_target(target: dict[str, Any]) -> Observation:
         title=None,
         room_id=None,
         room_url=room_url,
+        final_url=None,
         source_started_at=None,
         observed_at=now_iso(),
         source_type=SOURCE_TYPE,
@@ -293,7 +298,7 @@ def probe_target(target: dict[str, Any], timeout: float) -> Observation:
         text = fetched.body.decode("utf-8", errors="ignore") if fetched.body else ""
     else:
         text = fetched.body.decode("utf-8", errors="ignore")
-        status, confidence, evidence, parse_error = classify_html(text)
+        status, confidence, evidence, parse_error = classify_html(text, fetched.final_url)
 
     creator_name = jsonish_string(text, ("nickname", "anchor_name")) if text else None
     title = jsonish_string(text, ("title", "room_title")) if text else None
@@ -317,6 +322,7 @@ def probe_target(target: dict[str, Any], timeout: float) -> Observation:
         title=title,
         room_id=room_id,
         room_url=room_url,
+        final_url=fetched.final_url,
         source_started_at=source_started_at,
         observed_at=now_iso(),
         source_type=SOURCE_TYPE,
