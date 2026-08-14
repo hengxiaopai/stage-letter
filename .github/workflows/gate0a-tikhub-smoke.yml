@@ -1,0 +1,58 @@
+name: Gate 0A TikHub Smoke
+
+on:
+  push:
+    paths:
+      - 'experiments/gate0a/tikhub_probe.py'
+      - 'experiments/gate0a/provider_targets.json'
+      - '.github/workflows/gate0a-tikhub-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tikhub-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TIKHUB_API_KEY: ${{ secrets.TIKHUB_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Syntax check
+        run: python -m py_compile experiments/gate0a/tikhub_probe.py
+      - name: API host preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/tikhub-preflight.json -w '%{http_code}' \
+            'https://api.tikhub.io/api/v1/douyin/web/fetch_user_live_videos?webcast_id=975645387460' || true)
+          echo "TikHub preflight HTTP status: ${status}"
+          if [ "${status}" = "000" ]; then
+            echo 'TikHub API host is unreachable from this runner.'
+            exit 1
+          fi
+      - name: Check API secret
+        id: secret
+        shell: bash
+        run: |
+          if [ -n "${TIKHUB_API_KEY:-}" ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+            echo 'TIKHUB_API_KEY is configured.'
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'BLOCKED_MISSING_SECRET: add repository secret TIKHUB_API_KEY to run decisive-live checks.'
+          fi
+      - name: TikHub decisive-live probe
+        if: steps.secret.outputs.available == 'true'
+        run: |
+          python experiments/gate0a/tikhub_probe.py \
+            --targets experiments/gate0a/provider_targets.json \
+            --output /tmp/gate0a-tikhub-smoke.jsonl
+          echo '--- JSONL evidence ---'
+          cat /tmp/gate0a-tikhub-smoke.jsonl
