@@ -190,9 +190,15 @@ def jsonish_string(text: str, keys: Iterable[str]) -> str | None:
             continue
         raw = match.group(1)
         try:
-            return json.loads(f'"{raw}"')
+            value = json.loads(f'"{raw}"')
         except json.JSONDecodeError:
-            return raw
+            value = raw
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        if value.lower() in {"", "undefined", "$undefined", "null", "none"}:
+            return None
+        return value
     return None
 
 
@@ -300,10 +306,19 @@ def probe_target(target: dict[str, Any], timeout: float) -> Observation:
         text = fetched.body.decode("utf-8", errors="ignore")
         status, confidence, evidence, parse_error = classify_html(text, fetched.final_url)
 
-    creator_name = jsonish_string(text, ("nickname", "anchor_name")) if text else None
-    title = jsonish_string(text, ("title", "room_title")) if text else None
-    room_id = jsonish_string(text, ("roomId", "room_id")) if text else None
-    source_started_at = extract_unix_time(text) if text else None
+    # Metadata is emitted only when the page itself produced decisive LIVE
+    # evidence. Global application bundles contain unrelated nickname/title/
+    # start_time fields and must not contaminate Stage Letter observations.
+    if status == "LIVE":
+        creator_name = jsonish_string(text, ("nickname", "anchor_name"))
+        title = jsonish_string(text, ("title", "room_title"))
+        room_id = jsonish_string(text, ("roomId", "room_id"))
+        source_started_at = extract_unix_time(text)
+    else:
+        creator_name = None
+        title = None
+        room_id = None
+        source_started_at = None
 
     error_type = fetched.error_type or parse_error
     error_detail = fetched.error_detail
