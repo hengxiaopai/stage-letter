@@ -1,0 +1,13 @@
+{
+  "targets": [
+    {"id":"DY-PROVIDER-001","label":"X.四五六","web_rid":"975645387460"},
+    {"id":"DY-PROVIDER-002","label":"林树（三角洲行动）","web_rid":"504448096643"},
+    {"id":"DY-PROVIDER-003","label":"TryTryz（无畏契约）","web_rid":"23406469421"},
+    {"id":"DY-PROVIDER-004","label":"无畏契约电竞","web_rid":"836227141104"},
+    {"id":"DY-PROVIDER-005","label":"小鱼uau（无畏契约）","web_rid":"14812693758"},
+    {"id":"DY-PROVIDER-006","label":"苍山负雪i（云顶之弈）","web_rid":"564028334698"},
+    {"id":"DY-PROVIDER-007","label":"领克LYNK&CO |文","web_rid":"226473653415"},
+    {"id":"DY-PROVIDER-008","label":"无畏契约🍒","web_rid":"11397332861"},
+    {"id":"DY-PROVIDER-009","label":"invalid-control","web_rid":"invalid"}
+  ]
+}
