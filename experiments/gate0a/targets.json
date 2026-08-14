@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "id": "DY-TARGET-001",
+      "label": "X.四五六",
+      "web_rid": "975645387460",
+      "room_url": "https://live.douyin.com/975645387460",
+      "kind": "PRODUCT_TARGET",
+      "expected": "ANY"
+    },
+    {
+      "id": "DY-CONTROL-INVALID",
+      "label": "invalid-control",
+      "web_rid": "invalid",
+      "room_url": "https://live.douyin.com/invalid",
+      "kind": "NEGATIVE_CONTROL",
+      "expected": "UNKNOWN"
+    }
+  ]
+}
