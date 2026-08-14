@@ -1,0 +1,21 @@
+# Stage Letter local secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Gate 0 evidence
+experiments/gate0a/data/*.jsonl
+experiments/gate0a/data/*.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
