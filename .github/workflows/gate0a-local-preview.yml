@@ -1,0 +1,47 @@
+name: Gate 0A Local Preview Safety
+
+on:
+  push:
+    paths:
+      - 'experiments/gate0a/local_proxy.py'
+      - 'experiments/gate0a/tikhub_probe.py'
+      - 'experiments/gate0a/start-local.ps1'
+      - 'experiments/gate0a/wechat-demo/**'
+      - '.github/workflows/gate0a-local-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Python syntax
+        run: |
+          python -m py_compile experiments/gate0a/tikhub_probe.py
+          python -m py_compile experiments/gate0a/local_proxy.py
+      - name: Missing-secret fails closed
+        run: |
+          python - <<'PY'
+          import os, sys
+          os.environ.pop('TIKHUB_API_KEY', None)
+          sys.path.insert(0, 'experiments/gate0a')
+          import local_proxy
+          result = local_proxy.safe_observation('975645387460', 'X.四五六')
+          assert result['status'] == 'UNKNOWN', result
+          assert result['error_type'] == 'BLOCKED_MISSING_SECRET', result
+          print('missing-secret fail-closed: PASS')
+          PY
+      - name: Mini-program contains no TikHub credential access
+        shell: bash
+        run: |
+          if grep -R -n -E 'TIKHUB_API_KEY|Authorization:|Bearer ' experiments/gate0a/wechat-demo; then
+            echo 'Secret/provider credential reference found in mini-program source.'
+            exit 1
+          fi
+          echo 'mini-program secret boundary: PASS'
