@@ -1,0 +1,41 @@
+<view class="page">
+  <view class="hero">
+    <text class="eyebrow">STAGE LETTER · GATE 0A</text>
+    <text class="title">抖音实时状态验证</text>
+    <text class="subtitle">本页只调用本地 Stage Letter Proxy，不接触 TikHub API Key。</text>
+  </view>
+
+  <view class="card">
+    <text class="label">webcast_id</text>
+    <input class="input" value="{{webcastId}}" bindinput="onInput" type="number" maxlength="20" />
+    <button class="button" loading="{{loading}}" bindtap="refresh">{{loading ? '查询中…' : '刷新状态'}}</button>
+  </view>
+
+  <view wx:if="{{error}}" class="card error-card">
+    <text class="label">ERROR</text>
+    <text class="error-text">{{error}}</text>
+  </view>
+
+  <view wx:if="{{result}}" class="card result-card">
+    <view class="status-row">
+      <text class="status status-{{result.status}}">{{result.status || 'UNKNOWN'}}</text>
+      <text class="provider">{{result.source_provider || '-'}}</text>
+    </view>
+
+    <view class="row"><text class="key">主播</text><text class="value">{{result.creator_name || '—'}}</text></view>
+    <view class="row"><text class="key">标题</text><text class="value">{{result.title || '—'}}</text></view>
+    <view class="row"><text class="key">room_id</text><text class="value mono">{{result.room_id || '—'}}</text></view>
+    <view class="row"><text class="key">拉流证据数</text><text class="value">{{result.stream_url_count || 0}}</text></view>
+    <view class="row"><text class="key">可信度</text><text class="value">{{result.confidence}}</text></view>
+    <view class="row"><text class="key">上游 HTTP</text><text class="value">{{result.http_status || '—'}}</text></view>
+    <view class="row"><text class="key">延迟</text><text class="value">{{result.latency_ms || 0}} ms</text></view>
+    <view class="row"><text class="key">观测时间</text><text class="value mono">{{result.observed_at || '—'}}</text></view>
+    <view class="row"><text class="key">error</text><text class="value mono">{{result.error_type || '—'}}</text></view>
+    <view class="evidence">
+      <text class="key">evidence</text>
+      <text class="value mono">{{result.evidence}}</text>
+    </view>
+
+    <text class="footnote">Gate 0A 实验数据 · production_approved = false</text>
+  </view>
+</view>
