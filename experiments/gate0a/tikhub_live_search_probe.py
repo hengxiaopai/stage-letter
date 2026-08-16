@@ -11,6 +11,11 @@ Why V1 is primary:
 - V3 returned HTTP 400 after credit was added, so V3 remains a diagnostic
   fallback candidate rather than the primary Gate 0A route.
 
+Important docs inconsistency:
+- TikHub's prose says content_type is the live-content selector.
+- Its generated V1 cURL request currently sends content_type="0".
+For Gate 0A we follow the provider's generated executable example exactly.
+
 Security:
 - reads token only from TIKHUB_API_KEY
 - never prints token
@@ -29,7 +34,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
-API_URL = "https://api.tikhub.io/api/v1/douyin/search/fetch_live_search_v1"
+API_BASE = os.environ.get("TIKHUB_API_BASE", "https://api.tikhub.io").rstrip("/")
+API_PATH = "/api/v1/douyin/search/fetch_live_search_v1"
+API_URL = f"{API_BASE}{API_PATH}"
 TZ_UTC8 = timezone(timedelta(hours=8))
 USER_AGENT = "StageLetter-Gate0A/0.1 (+https://github.com/hengxiaopai/stage-letter)"
 
@@ -149,8 +156,20 @@ def base_result(keyword: str, status: int, latency_ms: int, provider_code: Any, 
         "source_type": "COMMERCIAL_API_CANDIDATE",
         "source_provider": "TIKHUB",
         "source_endpoint": "fetch_live_search_v1",
+        "source_api_base": API_BASE,
         "production_approved": False,
     }
+
+
+def error_detail(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return None
+    for key in ("detail", "error", "errors", "data"):
+        value = payload.get(key)
+        if value not in (None, "", [], {}):
+            text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+            return text[:1000]
+    return None
 
 
 def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[str, Any]:
@@ -160,7 +179,7 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[s
         "sort_type": "0",
         "publish_time": "0",
         "filter_duration": "0",
-        "content_type": "1",
+        "content_type": "0",
         "search_id": "",
         "backtrace": "",
     }, ensure_ascii=False).encode("utf-8")
@@ -202,6 +221,7 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[s
             "source_type": "COMMERCIAL_API_CANDIDATE",
             "source_provider": "TIKHUB",
             "source_endpoint": "fetch_live_search_v1",
+            "source_api_base": API_BASE,
             "production_approved": False,
         }
 
@@ -211,6 +231,7 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[s
     except json.JSONDecodeError:
         result = base_result(keyword, status, latency_ms, None, None)
         result["error_type"] = "INVALID_JSON"
+        result["provider_detail"] = raw.decode("utf-8", errors="replace")[:1000]
         return result
 
     provider_code = payload.get("code") if isinstance(payload, dict) else None
@@ -221,22 +242,27 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[s
     if status == 400:
         result = base_result(keyword, status, latency_ms, provider_code, provider_message)
         result["error_type"] = "BAD_REQUEST_OR_UPSTREAM"
+        result["provider_detail"] = error_detail(payload)
         return result
     if status == 402:
         result = base_result(keyword, status, latency_ms, provider_code, provider_message)
         result["error_type"] = "PAYMENT_REQUIRED"
+        result["provider_detail"] = error_detail(payload)
         return result
     if status in (401, 403):
         result = base_result(keyword, status, latency_ms, provider_code, provider_message)
         result["error_type"] = "AUTH_OR_PERMISSION_ERROR"
+        result["provider_detail"] = error_detail(payload)
         return result
     if status == 429:
         result = base_result(keyword, status, latency_ms, provider_code, provider_message)
         result["error_type"] = "RATE_LIMIT"
+        result["provider_detail"] = error_detail(payload)
         return result
     if status >= 500:
         result = base_result(keyword, status, latency_ms, provider_code, provider_message)
         result["error_type"] = "PROVIDER_SERVER_ERROR"
+        result["provider_detail"] = error_detail(payload)
         return result
 
     rooms = find_live_items(payload if isinstance(payload, dict) else {})
@@ -254,8 +280,10 @@ def fetch_live_search(keyword: str, token: str, timeout: float = 30.0) -> dict[s
         "source_type": "COMMERCIAL_API_CANDIDATE",
         "source_provider": "TIKHUB",
         "source_endpoint": "fetch_live_search_v1",
+        "source_api_base": API_BASE,
         "production_approved": False,
         "error_type": None if rooms else "NO_LIVE_RESULTS_PARSED",
+        "provider_detail": None if rooms else error_detail(payload),
     }
 
 
