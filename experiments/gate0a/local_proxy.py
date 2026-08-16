@@ -20,7 +20,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from tikhub_creator_status_probe import probe_uid_live, resolve_and_probe, search_users
+from tikhub_creator_status_probe import probe_uid_live, search_users
+from tikhub_creator_status_v2 import resolve_and_probe_v2
 from tikhub_live_search_probe import fetch_live_search
 from tikhub_probe import probe_target
 
@@ -112,7 +113,7 @@ def safe_creator_status(keyword: str) -> dict:
     token = get_token()
     if not token:
         return missing_secret()
-    return resolve_and_probe(keyword, token, timeout=30.0)
+    return resolve_and_probe_v2(keyword, token, timeout=30.0)
 
 
 def safe_uid_live(uid: str) -> dict:
@@ -131,7 +132,7 @@ def safe_uid_live(uid: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "StageLetterGate0A/0.5"
+    server_version = "StageLetterGate0A/0.6"
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stdout.write("[gate0a] " + (fmt % args) + "\n")
@@ -167,8 +168,8 @@ class Handler(BaseHTTPRequestHandler):
                 "service": "stage-letter-gate0a-local-proxy",
                 "secret_configured": bool(get_token()),
                 "production": False,
-                "version": "0.5",
-                "primary_douyin_path": "creator-search -> uid -> live_status",
+                "version": "0.6",
+                "primary_douyin_path": "creator-search -> uid-live -> explicit app-status corroboration",
             })
             return
 
@@ -237,7 +238,7 @@ def main() -> int:
     configured = bool(get_token())
     print(f"Stage Letter Gate 0A local proxy: http://{HOST}:{PORT}")
     print(f"TIKHUB_API_KEY configured: {'yes' if configured else 'no'}")
-    print("Primary Douyin path: creator-search -> uid -> live_status")
+    print("Primary Douyin path: creator-search -> uid-live -> explicit app-status corroboration")
     print("Production approved: no")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     try:
