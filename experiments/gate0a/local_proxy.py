@@ -4,7 +4,7 @@
 Security boundary:
 - Reads TikHub token only from TIKHUB_API_KEY.
 - Never returns or logs the token.
-- Exposes only normalized Gate 0A observations.
+- Exposes normalized Gate 0A observations only.
 - Not a production backend and does not create LiveSession/notifications.
 """
 
@@ -19,6 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from tikhub_creator_status_probe import probe_uid_live, resolve_and_probe, search_users
 from tikhub_live_search_probe import fetch_live_search
 from tikhub_probe import probe_target
 
@@ -79,11 +80,58 @@ def safe_live_search(keyword: str) -> dict:
     token = get_token()
     if not token:
         return missing_secret()
-    return fetch_live_search(keyword, token, timeout=20.0)
+    return fetch_live_search(keyword, token, timeout=30.0)
+
+
+def safe_creator_search(keyword: str) -> dict:
+    token = get_token()
+    if not token:
+        return missing_secret()
+    result = search_users(keyword, token, timeout=30.0)
+    return {
+        "ok": result.get("ok", False),
+        "platform": "douyin",
+        "keyword": keyword,
+        "candidate_count": result.get("candidate_count", 0),
+        "candidates": result.get("candidates", []),
+        "selected": result.get("selected"),
+        "match_reason": result.get("match_reason"),
+        "http_status": result.get("http_status"),
+        "latency_ms": result.get("latency_ms"),
+        "provider_code": result.get("provider_code"),
+        "provider_message": result.get("provider_message"),
+        "source_type": "COMMERCIAL_API_CANDIDATE",
+        "source_provider": "TIKHUB",
+        "source_endpoint": result.get("source_endpoint"),
+        "production_approved": False,
+        "error_type": result.get("error_type"),
+    }
+
+
+def safe_creator_status(keyword: str) -> dict:
+    token = get_token()
+    if not token:
+        return missing_secret()
+    return resolve_and_probe(keyword, token, timeout=30.0)
+
+
+def safe_uid_live(uid: str) -> dict:
+    token = get_token()
+    if not token:
+        return missing_secret()
+    result = probe_uid_live(uid, token, timeout=30.0)
+    return {
+        **result,
+        "platform": "douyin",
+        "observed_at": __import__("datetime").datetime.now(__import__("datetime").timezone(__import__("datetime").timedelta(hours=8))).isoformat(timespec="seconds"),
+        "source_type": "COMMERCIAL_API_CANDIDATE",
+        "source_provider": "TIKHUB",
+        "production_approved": False,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "StageLetterGate0A/0.3"
+    server_version = "StageLetterGate0A/0.4"
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stdout.write("[gate0a] " + (fmt % args) + "\n")
@@ -105,6 +153,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
+    def _query_value(self, query: dict, key: str, default: str = "") -> str:
+        return (query.get(key) or [default])[0].strip()
+
+    def _validate_keyword(self, keyword: str) -> bool:
+        return bool(keyword) and len(keyword) <= 80
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/health":
@@ -113,62 +167,79 @@ class Handler(BaseHTTPRequestHandler):
                 "service": "stage-letter-gate0a-local-proxy",
                 "secret_configured": bool(get_token()),
                 "production": False,
-                "version": "0.3",
+                "version": "0.4",
+                "primary_douyin_path": "creator -> uid -> live_status",
             })
             return
 
         query = parse_qs(parsed.query)
 
+        if parsed.path == "/api/gate0a/douyin/creator-search":
+            keyword = self._query_value(query, "keyword", "X.四五六")
+            if not self._validate_keyword(keyword):
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "INVALID_KEYWORD"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(safe_creator_search(keyword))
+            except Exception as exc:
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        if parsed.path == "/api/gate0a/douyin/creator-status":
+            keyword = self._query_value(query, "keyword", "X.四五六")
+            if not self._validate_keyword(keyword):
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "INVALID_KEYWORD"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(safe_creator_status(keyword))
+            except Exception as exc:
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        if parsed.path == "/api/gate0a/douyin/uid-live":
+            uid = self._query_value(query, "uid")
+            if not re.fullmatch(r"\d{5,30}", uid):
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "INVALID_UID"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(safe_uid_live(uid))
+            except Exception as exc:
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        # Diagnostic-only path retained for Gate evidence. Not the primary product path.
         if parsed.path == "/api/gate0a/douyin/live-search":
-            keyword = (query.get("keyword") or ["游戏"])[0].strip() or "游戏"
-            if len(keyword) > 40:
-                self._send_json({
-                    "ok": False,
-                    "status": "UNKNOWN",
-                    "error_type": "INVALID_KEYWORD",
-                }, HTTPStatus.BAD_REQUEST)
+            keyword = self._query_value(query, "keyword", "游戏") or "游戏"
+            if not self._validate_keyword(keyword):
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "INVALID_KEYWORD"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
                 self._send_json(safe_live_search(keyword))
             except Exception as exc:
-                self._send_json({
-                    "ok": False,
-                    "status": "UNKNOWN",
-                    "error_type": "LOCAL_PROXY_ERROR",
-                    "message": type(exc).__name__,
-                }, HTTPStatus.INTERNAL_SERVER_ERROR)
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
-        if parsed.path != "/api/gate0a/douyin/live":
-            self._send_json({"ok": False, "error_type": "NOT_FOUND"}, HTTPStatus.NOT_FOUND)
+        # Legacy webcast-id path retained only as secondary metadata evidence.
+        if parsed.path == "/api/gate0a/douyin/live":
+            webcast_id = self._query_value(query, "webcast_id") or self._query_value(query, "web_rid")
+            label = self._query_value(query, "label")
+            if not re.fullmatch(r"\d{5,20}", webcast_id):
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "INVALID_TARGET", "message": "webcast_id must be 5-20 decimal digits"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(safe_observation(webcast_id, label))
+            except Exception as exc:
+                self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
-        webcast_id = (query.get("webcast_id") or query.get("web_rid") or [""])[0].strip()
-        label = (query.get("label") or [""])[0].strip()
-        if not re.fullmatch(r"\d{5,20}", webcast_id):
-            self._send_json({
-                "ok": False,
-                "status": "UNKNOWN",
-                "error_type": "INVALID_TARGET",
-                "message": "webcast_id must be 5-20 decimal digits",
-            }, HTTPStatus.BAD_REQUEST)
-            return
-
-        try:
-            self._send_json(safe_observation(webcast_id, label))
-        except Exception as exc:
-            self._send_json({
-                "ok": False,
-                "status": "UNKNOWN",
-                "error_type": "LOCAL_PROXY_ERROR",
-                "message": type(exc).__name__,
-            }, HTTPStatus.INTERNAL_SERVER_ERROR)
+        self._send_json({"ok": False, "error_type": "NOT_FOUND"}, HTTPStatus.NOT_FOUND)
 
 
 def main() -> int:
     configured = bool(get_token())
     print(f"Stage Letter Gate 0A local proxy: http://{HOST}:{PORT}")
     print(f"TIKHUB_API_KEY configured: {'yes' if configured else 'no'}")
+    print("Primary Douyin path: creator -> uid -> live_status")
     print("Production approved: no")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     try:
