@@ -4,19 +4,21 @@
 Primary Gate 0A.2 path:
 
     nickname / Douyin ID
-        -> fetch_user_search_v2
-        -> uid + sec_uid + search live_status
+        -> creator/fetch_user_search (primary)
+        -> search/fetch_user_search_v2 (fallback only)
+        -> uid + sec_uid
         -> fetch_user_live_info_by_uid
         -> normalized LIVE / OFFLINE / UNKNOWN
 
-This is technical evidence only. TikHub is a commercial technical candidate and
-is not marked production-approved for Stage Letter.
+Technical evidence only. TikHub remains a commercial technical candidate and
+is not production-approved for Stage Letter.
 
 Security:
 - reads token only from TIKHUB_API_KEY
 - never prints or returns the token
-- does not return raw provider payloads
-- does not return live stream URLs
+- never returns raw provider payloads
+- never returns live stream URLs
+- diagnostics expose only response shape/status metadata
 """
 
 from __future__ import annotations
@@ -33,9 +35,10 @@ from typing import Any, Iterable
 
 TZ_UTC8 = timezone(timedelta(hours=8))
 API_BASE = os.environ.get("TIKHUB_API_BASE", "https://api.tikhub.io").rstrip("/")
-USER_SEARCH_ENDPOINT = "/api/v1/douyin/search/fetch_user_search_v2"
+CREATOR_SEARCH_ENDPOINT = "/api/v1/douyin/creator/fetch_user_search"
+APP_USER_SEARCH_ENDPOINT = "/api/v1/douyin/search/fetch_user_search_v2"
 UID_LIVE_ENDPOINT = "/api/v1/douyin/web/fetch_user_live_info_by_uid"
-USER_AGENT = "StageLetter-Gate0A/0.4 (+https://github.com/hengxiaopai/stage-letter)"
+USER_AGENT = "StageLetter-Gate0A/0.5 (+https://github.com/hengxiaopai/stage-letter)"
 SOURCE_TYPE = "COMMERCIAL_API_CANDIDATE"
 SOURCE_PROVIDER = "TIKHUB"
 
@@ -161,14 +164,28 @@ def request_json(
 
 
 def avatar_url(user_info: dict[str, Any]) -> str | None:
-    for key in ("avatar_thumb", "avatar_medium", "avatar_larger"):
+    for key in ("avatar_thumb", "avatar_medium", "avatar_larger", "avatar"):
         avatar = user_info.get(key)
+        if isinstance(avatar, str) and avatar.startswith(("http://", "https://")):
+            return avatar
         if not isinstance(avatar, dict):
             continue
         urls = avatar.get("url_list")
         if isinstance(urls, list) and urls and isinstance(urls[0], str):
             return urls[0]
+        for url_key in ("url", "uri"):
+            value = avatar.get(url_key)
+            if isinstance(value, str) and value.startswith(("http://", "https://")):
+                return value
     return None
+
+
+def unwrap_user_info(node: dict[str, Any]) -> dict[str, Any]:
+    for key in ("user_info", "user", "author", "creator"):
+        value = node.get(key)
+        if isinstance(value, dict):
+            return value
+    return node
 
 
 def extract_user_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -178,14 +195,36 @@ def extract_user_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for _, node in iter_nodes(payload.get("data")):
         if not isinstance(node, dict):
             continue
-        user_info = node.get("user_info") if isinstance(node.get("user_info"), dict) else node
+        user_info = unwrap_user_info(node)
         if not isinstance(user_info, dict):
             continue
 
-        uid = str(user_info.get("uid") or "").strip()
-        sec_uid = str(user_info.get("sec_uid") or user_info.get("sec_user_id") or "").strip()
-        nickname = str(user_info.get("nickname") or "").strip()
-        unique_id = str(user_info.get("unique_id") or user_info.get("short_id") or "").strip()
+        uid = str(
+            user_info.get("uid")
+            or user_info.get("user_id")
+            or user_info.get("id")
+            or ""
+        ).strip()
+        sec_uid = str(
+            user_info.get("sec_uid")
+            or user_info.get("sec_user_id")
+            or user_info.get("sec_user_id_v2")
+            or ""
+        ).strip()
+        nickname = str(
+            user_info.get("nickname")
+            or user_info.get("nick_name")
+            or user_info.get("name")
+            or ""
+        ).strip()
+        unique_id = str(
+            user_info.get("unique_id")
+            or user_info.get("short_id")
+            or user_info.get("aweme_id")
+            or user_info.get("douyin_id")
+            or ""
+        ).strip()
+
         if not uid or not nickname:
             continue
 
@@ -200,8 +239,8 @@ def extract_user_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "sec_uid": sec_uid or None,
             "nickname": nickname,
             "unique_id": unique_id or None,
-            "signature": user_info.get("signature"),
-            "follower_count": user_info.get("follower_count"),
+            "signature": user_info.get("signature") or user_info.get("bio"),
+            "follower_count": user_info.get("follower_count") or user_info.get("fans_count"),
             "avatar_url": avatar_url(user_info),
             "raw_live_status": raw_live_status,
             "search_status": classify_live_status(raw_live_status) or "UNKNOWN",
@@ -228,6 +267,99 @@ def choose_candidate(keyword: str, candidates: list[dict[str, Any]]) -> tuple[di
         if wanted and wanted in nickname:
             return candidate, "NICKNAME_CONTAINS"
     return candidates[0], "FIRST_SEARCH_RESULT"
+
+
+def payload_shape(payload: dict[str, Any]) -> dict[str, Any]:
+    data = payload.get("data")
+    data_keys = list(data.keys())[:30] if isinstance(data, dict) else []
+    status_code = None
+    status_msg = None
+    for path, value in iter_nodes(data, depth=0):
+        key = path.rsplit(".", 1)[-1]
+        if status_code is None and key == "status_code" and isinstance(value, (str, int)):
+            status_code = value
+        if status_msg is None and key in {"status_msg", "status_message"} and isinstance(value, str):
+            status_msg = value[:160]
+        if status_code is not None and status_msg is not None:
+            break
+    return {
+        "data_type": type(data).__name__,
+        "data_keys": data_keys,
+        "inner_status_code": status_code,
+        "inner_status_message": status_msg,
+    }
+
+
+def search_attempt_summary(call: dict[str, Any], endpoint: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "endpoint": endpoint,
+        "ok": call.get("ok"),
+        "http_status": call.get("http_status"),
+        "provider_code": call.get("provider_code"),
+        "provider_message": call.get("provider_message"),
+        "latency_ms": call.get("latency_ms"),
+        "error_type": call.get("error_type"),
+        "candidate_count": len(candidates),
+        "response_shape": payload_shape(call.get("payload") or {}),
+    }
+
+
+def search_users(keyword: str, token: str, timeout: float = 30.0) -> dict[str, Any]:
+    attempts: list[dict[str, Any]] = []
+
+    primary = request_json(
+        method="GET",
+        path=CREATOR_SEARCH_ENDPOINT,
+        token=token,
+        query={"user_name": keyword},
+        timeout=timeout,
+    )
+    primary_candidates = extract_user_candidates(primary["payload"]) if primary["ok"] else []
+    attempts.append(search_attempt_summary(primary, "creator/fetch_user_search", primary_candidates))
+
+    if primary_candidates:
+        selected, match_reason = choose_candidate(keyword, primary_candidates)
+        return {
+            "ok": primary["ok"],
+            "http_status": primary["http_status"],
+            "latency_ms": primary["latency_ms"],
+            "provider_code": primary["provider_code"],
+            "provider_message": primary["provider_message"],
+            "error_type": primary["error_type"],
+            "candidate_count": len(primary_candidates),
+            "candidates": primary_candidates,
+            "selected": selected,
+            "match_reason": match_reason,
+            "source_endpoint": "creator/fetch_user_search",
+            "attempts": attempts,
+        }
+
+    fallback = request_json(
+        method="POST",
+        path=APP_USER_SEARCH_ENDPOINT,
+        token=token,
+        body={"keyword": keyword, "cursor": 0},
+        timeout=timeout,
+    )
+    fallback_candidates = extract_user_candidates(fallback["payload"]) if fallback["ok"] else []
+    attempts.append(search_attempt_summary(fallback, "search/fetch_user_search_v2", fallback_candidates))
+    selected, match_reason = choose_candidate(keyword, fallback_candidates)
+
+    effective = fallback if fallback_candidates or fallback["ok"] else primary
+    return {
+        "ok": bool(primary["ok"] or fallback["ok"]),
+        "http_status": effective["http_status"],
+        "latency_ms": primary["latency_ms"] + fallback["latency_ms"],
+        "provider_code": effective["provider_code"],
+        "provider_message": effective["provider_message"],
+        "error_type": None if (primary["ok"] or fallback["ok"]) else (fallback["error_type"] or primary["error_type"]),
+        "candidate_count": len(fallback_candidates),
+        "candidates": fallback_candidates,
+        "selected": selected,
+        "match_reason": match_reason,
+        "source_endpoint": "search/fetch_user_search_v2:fallback",
+        "attempts": attempts,
+    }
 
 
 def find_key_values(payload: dict[str, Any], key_name: str) -> list[Any]:
@@ -259,31 +391,6 @@ def extract_uid_live_fact(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def search_users(keyword: str, token: str, timeout: float = 30.0) -> dict[str, Any]:
-    call = request_json(
-        method="POST",
-        path=USER_SEARCH_ENDPOINT,
-        token=token,
-        body={"keyword": keyword, "cursor": 0},
-        timeout=timeout,
-    )
-    candidates = extract_user_candidates(call["payload"]) if call["ok"] else []
-    selected, match_reason = choose_candidate(keyword, candidates)
-    return {
-        "ok": call["ok"],
-        "http_status": call["http_status"],
-        "latency_ms": call["latency_ms"],
-        "provider_code": call["provider_code"],
-        "provider_message": call["provider_message"],
-        "error_type": call["error_type"],
-        "candidate_count": len(candidates),
-        "candidates": candidates,
-        "selected": selected,
-        "match_reason": match_reason,
-        "source_endpoint": "fetch_user_search_v2",
-    }
-
-
 def probe_uid_live(uid: str, token: str, timeout: float = 30.0) -> dict[str, Any]:
     call = request_json(
         method="GET",
@@ -307,6 +414,7 @@ def probe_uid_live(uid: str, token: str, timeout: float = 30.0) -> dict[str, Any
         "provider_message": call["provider_message"],
         "error_type": call["error_type"] if fact["status"] == "UNKNOWN" else None,
         "source_endpoint": "fetch_user_live_info_by_uid",
+        "response_shape": payload_shape(call.get("payload") or {}),
     }
 
 
@@ -393,6 +501,7 @@ def resolve_and_probe(keyword: str, token: str, timeout: float = 30.0) -> dict[s
             "latency_ms": search.get("latency_ms"),
             "candidate_count": search.get("candidate_count"),
             "source_endpoint": search.get("source_endpoint"),
+            "attempts": search.get("attempts"),
         },
         "uid_live": uid_live,
         "source_type": SOURCE_TYPE,
