@@ -15,6 +15,7 @@ import os
 import re
 import sys
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -31,6 +32,10 @@ def get_token() -> str:
     return os.environ.get("TIKHUB_API_KEY", "").strip()
 
 
+def now_iso() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+
+
 def missing_secret() -> dict:
     return {
         "ok": False,
@@ -44,15 +49,9 @@ def safe_observation(webcast_id: str, label: str = "") -> dict:
     token = get_token()
     if not token:
         return missing_secret()
-
-    target = {
-        "id": "LOCAL-GATE0A",
-        "label": label or webcast_id,
-        "web_rid": webcast_id,
-    }
+    target = {"id": "LOCAL-GATE0A", "label": label or webcast_id, "web_rid": webcast_id}
     obs = probe_target(target, token, timeout=20.0)
     raw = asdict(obs)
-
     return {
         "ok": True,
         "platform": "douyin",
@@ -103,6 +102,7 @@ def safe_creator_search(keyword: str) -> dict:
         "source_type": "COMMERCIAL_API_CANDIDATE",
         "source_provider": "TIKHUB",
         "source_endpoint": result.get("source_endpoint"),
+        "attempts": result.get("attempts", []),
         "production_approved": False,
         "error_type": result.get("error_type"),
     }
@@ -123,7 +123,7 @@ def safe_uid_live(uid: str) -> dict:
     return {
         **result,
         "platform": "douyin",
-        "observed_at": __import__("datetime").datetime.now(__import__("datetime").timezone(__import__("datetime").timedelta(hours=8))).isoformat(timespec="seconds"),
+        "observed_at": now_iso(),
         "source_type": "COMMERCIAL_API_CANDIDATE",
         "source_provider": "TIKHUB",
         "production_approved": False,
@@ -131,7 +131,7 @@ def safe_uid_live(uid: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "StageLetterGate0A/0.4"
+    server_version = "StageLetterGate0A/0.5"
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stdout.write("[gate0a] " + (fmt % args) + "\n")
@@ -167,8 +167,8 @@ class Handler(BaseHTTPRequestHandler):
                 "service": "stage-letter-gate0a-local-proxy",
                 "secret_configured": bool(get_token()),
                 "production": False,
-                "version": "0.4",
-                "primary_douyin_path": "creator -> uid -> live_status",
+                "version": "0.5",
+                "primary_douyin_path": "creator-search -> uid -> live_status",
             })
             return
 
@@ -207,7 +207,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
-        # Diagnostic-only path retained for Gate evidence. Not the primary product path.
         if parsed.path == "/api/gate0a/douyin/live-search":
             keyword = self._query_value(query, "keyword", "游戏") or "游戏"
             if not self._validate_keyword(keyword):
@@ -219,7 +218,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "status": "UNKNOWN", "error_type": "LOCAL_PROXY_ERROR", "message": type(exc).__name__}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
-        # Legacy webcast-id path retained only as secondary metadata evidence.
         if parsed.path == "/api/gate0a/douyin/live":
             webcast_id = self._query_value(query, "webcast_id") or self._query_value(query, "web_rid")
             label = self._query_value(query, "label")
@@ -239,7 +237,7 @@ def main() -> int:
     configured = bool(get_token())
     print(f"Stage Letter Gate 0A local proxy: http://{HOST}:{PORT}")
     print(f"TIKHUB_API_KEY configured: {'yes' if configured else 'no'}")
-    print("Primary Douyin path: creator -> uid -> live_status")
+    print("Primary Douyin path: creator-search -> uid -> live_status")
     print("Production approved: no")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     try:
