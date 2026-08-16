@@ -17,83 +17,47 @@ Gate 0A does not approve a production data source merely because a technical pro
 
 | Source class | Purpose | Production status |
 |---|---|---|
-| `OFFICIAL` | Douyin-authorized capabilities / Live SDK | Preferred candidate; broadcaster scope may require authorization/whitelist |
-| `COMMERCIAL_API_CANDIDATE` | Paid provider with stable API contract | Technical candidate; Douyin rights must be reviewed separately |
+| `OFFICIAL` | Douyin-authorized capabilities / Live SDK | Preferred production candidate |
+| `COMMERCIAL_API_CANDIDATE` | Paid provider with stable API contract | Technical candidate; rights review required |
 | `THIRD_PARTY_PUBLIC_API` | Free/public aggregation API | Experimental only |
-| `PUBLIC_WEB_PROBE` | Direct public-web observation | Experimental only; **not production approved** |
+| `PUBLIC_WEB_PROBE` | Direct public-web observation | Experimental only; not production approved |
 
 ## 3. Core invariants
 
 1. Probe failure is never equal to `OFFLINE`.
-2. HTTP `403`, `429`, timeout, risk-control, unavailable content, DNS/network failures, and parse ambiguity produce `UNKNOWN`.
+2. HTTP 4xx/5xx, timeout, risk-control, DNS/network failure and parse ambiguity produce `UNKNOWN` unless the provider returns explicit trustworthy live-state evidence.
 3. `OFFLINE` requires explicit offline evidence.
-4. `LIVE` requires decisive live evidence such as trustworthy provider live status or live stream URLs.
+4. `LIVE` requires explicit live evidence such as `live_status=1`, a trustworthy live room result, or equivalent provider evidence.
 5. Gate 0A does not create `LiveSession` and does not send notifications.
 6. No third-party reverse-engineering/signing source code is copied into Stage Letter.
-7. Metadata from an ambiguous page/provider response must not be emitted as trusted creator/live metadata.
-8. A provider being technically usable does not establish authorization to use Douyin data in Stage Letter.
+7. Metadata from an ambiguous provider response must not be emitted as trusted creator/live metadata.
+8. Technical usability does not establish production authorization.
+9. TikHub credentials remain server-side/local-process only and never enter the WeChat mini-program bundle.
 
-## 4. Persistent test targets
+## 4. Persistent product target
 
-### Product target
+```text
+DY-TARGET-001
+Label: X.四五六
+Known webcast candidate: 975645387460
+Known room URL: https://live.douyin.com/975645387460
+```
 
-- `DY-TARGET-001`
-- Label: `X.四五六`
-- `web_rid` / webcast candidate: `975645387460`
-- URL: `https://live.douyin.com/975645387460`
+The new primary Stage Letter identity key is no longer `webcast_id`. Gate 0A now resolves and retains Douyin `uid` / `sec_uid` as `PlatformAccount` identifiers.
 
-### Positive-control pool
+## 5. Gate 0A.1 — Plain public-room HTML
 
-`experiments/gate0a/provider_targets.json` contains the product target plus multiple real rooms discovered as live controls during Gate 0A research. Their live status must always be independently re-confirmed at execution time; they are not permanently asserted to remain live.
-
-### Negative control
-
-- invalid non-numeric ID
-- expected result: `UNKNOWN / INVALID_TARGET`
-
-## 5. Observation contract
-
-All probes normalize to tri-state observations and include source, confidence, latency, provider/error details, and evidence. Sensitive provider tokens are never stored in observation data or committed to Git.
-
-## 6. Gate 0A.1 — Plain public-room HTML
-
-### Acceptance already satisfied
-
-- [x] Repository bootstrap exists.
-- [x] Tri-state probe contract exists.
-- [x] Invalid target maps to `UNKNOWN` locally.
-- [x] Failure classes are modeled separately from `OFFLINE`.
-- [x] JSONL evidence output exists.
-- [x] `X.四五六` is a persistent product target.
-- [x] Evidence directory is ignored by Git.
-- [x] Python syntax + smoke execution run successfully in GitHub Actions.
-- [x] Ambiguous HTTP 200 page remains `UNKNOWN` and does not leak unrelated bundle metadata.
-
-### Evidence — 2026-08-14
+Evidence:
 
 ```text
 GitHub Actions run: 31779812353
-Commit: b3d165a9104f9e4100424307306741f2e9996ea2
-Workflow conclusion: success
-```
-
-`X.四五六` result:
-
-```text
 HTTP status: 200
-Latency: 1803 ms
 Response bytes: 999963
 Status: UNKNOWN
-Confidence: 0.1
-Error type: AMBIGUOUS_PAGE
-Evidence: http_200_but_no_decisive_state_signal
-creator_name: null
-title: null
-room_id: null
-source_started_at: null
+Error: AMBIGUOUS_PAGE
 ```
 
-Conclusion:
+Decision:
 
 ```text
 PLAIN_PUBLIC_ROOM_HTML = INSUFFICIENT
@@ -101,190 +65,258 @@ PLAIN_PUBLIC_ROOM_HTML = INSUFFICIENT
 
 A plain anonymous room-page request is not a reliable Stage Letter live-state source.
 
-## 7. Gate 0A.2 — Decisive LIVE source search
+## 6. Rejected public aggregators
 
-### 7.1 FFAPI public API — rejected
-
-Probe files:
-
-- `experiments/gate0a/provider_probe.py`
-- `.github/workflows/gate0a-provider-smoke.yml`
-
-Evidence:
+### FFAPI
 
 ```text
 GitHub Actions run: 31780103280
 Targets: 8 real IDs + 1 invalid control
 LIVE: 0
-OFFLINE: 0
 UNKNOWN: 9
-Decisive LIVE found: false
+Failure: Connection refused
+Decision: REJECTED
 ```
 
-All real targets failed with:
-
-```text
-NETWORK:[Errno 111] Connection refused
-```
-
-Decision:
-
-```text
-FFAPI_CN = REJECTED / UNREACHABLE_FROM_TEST_RUNNER
-```
-
-Do not retry as an active Gate 0A candidate unless the provider materially changes.
-
-### 7.2 iLingku public API — rejected
-
-Probe files:
-
-- `experiments/gate0a/provider_probe_ilingku.py`
-- `.github/workflows/gate0a-ilingku-smoke.yml`
-
-Evidence:
+### iLingku
 
 ```text
 GitHub Actions run: 31780201967
 Targets: 8 real IDs + 1 invalid control
 LIVE: 0
-OFFLINE: 0
 UNKNOWN: 9
-Decisive LIVE found: false
+Failure: DNS resolution failed
+Decision: REJECTED
 ```
 
-All real targets failed DNS resolution with:
+The anonymous/free aggregator branch is stopped.
+
+## 7. TikHub commercial technical candidate
+
+### 7.1 Authentication / billing path
+
+TikHub authentication is proven working from the local Gate 0A proxy.
+
+Observed product-target call:
 
 ```text
-NETWORK:[Errno -2] Name or service not known
+webcast_id: 975645387460
+HTTP: 200
+provider_code: 200
+provider_message: 请求成功，本次请求将被计费。
+status: UNKNOWN
+error: PROVIDER_AMBIGUOUS
+```
+
+Interpretation: authentication and billing work, but `fetch_user_live_videos?webcast_id=...` did not provide decisive live-state evidence for this target at that observation time. `data=null` is not treated as OFFLINE.
+
+The account has subsequently been funded, so `PAYMENT_REQUIRED` is no longer the current blocker.
+
+### 7.2 Live-search branch — diagnostic only
+
+Both V3 and V1 live-search calls returned HTTP 400 after account funding despite documented request shapes.
+
+Observed examples:
+
+```text
+fetch_live_search_v3 -> HTTP 400
+fetch_live_search_v1 -> HTTP 400
 ```
 
 Decision:
 
 ```text
-ILINGKU_PUBLIC_API = REJECTED / DNS_UNREACHABLE_FROM_TEST_RUNNER
+LIVE_SEARCH = DIAGNOSTIC_ONLY
 ```
 
-### 7.3 Free/public aggregator branch — stopped
+Do not use keyword live-search as Stage Letter's primary monitoring architecture.
 
-After independent failures of FFAPI and iLingku, Stage Letter stops spending Gate 0A time on anonymous free aggregation APIs. Any future free provider requires a materially stronger reliability signal before testing.
+## 8. Gate 0A.2 primary path — Creator -> UID -> live_status
 
-### 7.4 TikHub — active commercial technical candidate
+TikHub's current documented APIs provide a path that matches Stage Letter's real product model better than live-search:
+
+```text
+Creator nickname / Douyin ID
+        ↓
+POST /api/v1/douyin/search/fetch_user_search_v2
+        ↓
+uid
+sec_uid
+nickname
+unique_id
+follower_count
+live_status
+        ↓
+GET /api/v1/douyin/web/fetch_user_live_info_by_uid?uid=<uid>
+        ↓
+room_id
+live_status
+        ↓
+LIVE / OFFLINE / UNKNOWN
+```
+
+`fetch_user_search_v2` is used only for creator resolution / adding an 爱播. The long-running monitor should persist the resolved `uid` and call the UID live-info endpoint directly.
+
+### 8.1 New implementation
 
 Files:
 
-- `experiments/gate0a/tikhub_probe.py`
-- `.github/workflows/gate0a-tikhub-smoke.yml`
-
-Chosen endpoint:
-
 ```text
-GET https://api.tikhub.io/api/v1/douyin/web/fetch_user_live_videos?webcast_id=<id>
+experiments/gate0a/tikhub_creator_status_probe.py
+experiments/gate0a/local_proxy.py
 ```
 
-Reason: TikHub documents `webcast_id` as the numeric identifier at the end of a Douyin live link and distinguishes it from the per-session `room_id`, matching Stage Letter's existing `web_rid`-style target input.
-
-Preflight evidence:
+Local proxy version:
 
 ```text
-GitHub Actions run: 31780357301
-API host preflight: PASS
-Unauthenticated endpoint response: HTTP 401
-TIKHUB_API_KEY configured: false
-Decisive-live probe: SKIPPED
-Blocker: BLOCKED_MISSING_SECRET
+StageLetterGate0A/0.4
 ```
 
-Interpretation:
-
-- TikHub's API host and selected endpoint are reachable from GitHub Actions.
-- The current blocker is authentication, not DNS/network reachability.
-- `tikhub_probe.py` reads only the `TIKHUB_API_KEY` environment variable and never prints or commits the token.
-- TikHub is an unofficial third-party API; successful technical testing will **not** automatically mark it production-authorized for Stage Letter.
-
-Current TikHub status:
+New routes:
 
 ```text
-TECHNICAL_PREFLIGHT = PASS
-DECISIVE_LIVE_TEST = BLOCKED_MISSING_SECRET
-PRODUCTION_AUTHORIZATION = UNRESOLVED
+GET /api/gate0a/douyin/creator-search?keyword=X.四五六
+GET /api/gate0a/douyin/creator-status?keyword=X.四五六
+GET /api/gate0a/douyin/uid-live?uid=<uid>
 ```
 
-### 7.5 Douyin official Live SDK / status capability — preferred production candidate
+Legacy/diagnostic routes remain available:
 
-Keep the official route open in parallel. It is the preferred authorization path, especially for broadcasters that actively authorize Stage Letter or can be included in a cooperation whitelist. The unresolved product question is whether the cooperation model can cover the product's intended ordinary-public-creator use case at sufficient scale.
+```text
+GET /api/gate0a/douyin/live-search?keyword=...
+GET /api/gate0a/douyin/live?webcast_id=...
+```
 
-## 8. Remaining Gate 0A.2 acceptance
+### 8.2 Classification rules
 
-- [ ] At least five rooms independently known to be LIVE at execution time return decisive `LIVE` from one candidate source.
-- [ ] No known-live control is falsely classified as `OFFLINE`.
-- [ ] Creator/title/room metadata coverage is recorded for decisive LIVE observations.
-- [ ] At least one real OFFLINE observation is confirmed with explicit evidence.
+Primary confidence:
 
-Only after these pass may Stage Letter begin transition capture.
+```text
+fetch_user_live_info_by_uid explicit live_status
+→ LIVE/OFFLINE
+→ confidence 0.95
+```
 
-## 9. Gate 0A.3 — Transition acceptance
+Fallback confidence:
 
-Required real lifecycle evidence:
+```text
+fetch_user_search_v2 explicit live_status
++ UID endpoint inconclusive
+→ LIVE/OFFLINE
+→ confidence 0.80
+```
+
+No explicit status:
+
+```text
+→ UNKNOWN
+```
+
+No network/provider failure may be converted into OFFLINE.
+
+### 8.3 CI evidence
+
+Upgrade commit:
+
+```text
+fe4a29d9fa2e5003c77c537fcffe7d1a25b470ed
+```
+
+GitHub Actions:
+
+```text
+Gate 0A Local Preview Safety run: 31951720168
+Result: PASS
+- Python syntax: PASS
+- missing-secret fail-closed: PASS
+- mini-program contains no TikHub credential access: PASS
+
+Gate 0A Douyin Smoke run: 31951720189
+Result: PASS
+```
+
+## 9. Gate 0A.2 remaining acceptance
+
+Required next evidence:
+
+- [ ] `X.四五六` resolves to a concrete Douyin `uid` / `sec_uid` without ambiguous selection.
+- [ ] The selected UID returns explicit `live_status` from either search V2 or UID live-info.
+- [ ] At least one real OFFLINE creator is correctly returned as `OFFLINE`.
+- [ ] At least five creators independently known to be LIVE return `LIVE` without false OFFLINE.
+- [ ] For LIVE creators, `room_id` coverage is recorded.
+- [ ] The same persisted UID can be queried repeatedly without re-searching the nickname.
+
+Only after these pass may Stage Letter start the real transition run.
+
+## 10. Gate 0A.3 — Real lifecycle acceptance
+
+Required real lifecycle:
 
 ```text
 OFFLINE -> LIVE -> OFFLINE
 ```
 
 - [ ] At least one real creator lifecycle captured.
-- [ ] Probe continues through transient `UNKNOWN` without fabricating transitions.
-- [ ] Start/end observation timestamps retained.
-- [ ] No duplicate lifecycle is inferred from probe retries.
+- [ ] Transient `UNKNOWN` does not fabricate state transitions.
+- [ ] Observation timestamps retained.
+- [ ] No duplicate lifecycle inferred from retries.
 
-State/session confirmation belongs to Gate 0B; Gate 0A only proves source observations exist.
+State/session confirmation itself belongs to Gate 0B.
 
-## 10. Gate 0A.4 — Stability evidence
+## 11. Gate 0A.4 — Stability evidence
 
-- [ ] Sufficient repeated observations collected.
+- [ ] Repeated observations collected.
 - [ ] HTTP success rate measured.
-- [ ] `UNKNOWN` rate measured.
+- [ ] UNKNOWN rate measured.
 - [ ] P50/P95 latency measured.
-- [ ] 403 count measured.
-- [ ] 429 count measured.
-- [ ] timeout/network failure count measured.
-- [ ] ambiguous/parse-failure count measured.
-- [ ] Response-structure changes documented without committing sensitive/raw data unnecessarily.
+- [ ] 400/401/402/403/422/429/5xx counts measured.
+- [ ] Response-structure changes documented.
+- [ ] Mainland `.dev` vs global `.io` base domain compared if needed.
 
-## 11. Production authorization blocker
+## 12. Production authorization blocker
 
-Gate 0A cannot be declared production-ready until at least one data-source path has an authorization basis appropriate for Stage Letter's intended use.
+TikHub remains:
 
-Current candidates:
+```text
+COMMERCIAL_API_CANDIDATE
+production_approved = false
+```
+
+Even if Gate 0A technical evidence passes, Stage Letter still needs an authorization basis suitable for production use. Preferred paths remain:
 
 1. Douyin official Live SDK / official cooperation.
-2. A contracted commercial provider, subject to explicit rights/usage review.
+2. A contracted commercial provider with explicit rights suitable for Stage Letter's intended use.
 
-TikHub remains `COMMERCIAL_API_CANDIDATE`, not `LICENSED`, until contractual/data-rights review is complete.
-
-## 12. Current result
+## 13. Current result
 
 ```text
 Technical feasibility: PROMISING
-Plain public room HTML: INSUFFICIENT
+Plain public HTML: INSUFFICIENT
 FFAPI: REJECTED
-ILINGKU: REJECTED
+iLingku: REJECTED
 Free aggregator branch: STOPPED
-TikHub network/endpoint preflight: PASS
-TikHub decisive LIVE: BLOCKED_MISSING_SECRET
-Official Douyin route: ACTIVE CANDIDATE
-Production source authorization: UNRESOLVED
+TikHub authentication: PASS
+TikHub billing: PASS
+TikHub webcast direct state: INCONCLUSIVE
+TikHub live-search: DIAGNOSTIC / HTTP 400
+TikHub creator UID path: IMPLEMENTED / READY FOR REAL TEST
+Production authorization: UNRESOLVED
 Gate 0A: IN PROGRESS
 Gate 0B: NOT STARTED
 ```
 
-## 13. Next action
+## 14. Immediate next action
 
-Immediate next execution step:
+Run the new primary path locally against the product target:
 
-1. Create/obtain a TikHub API key using TikHub's normal account process.
-2. Store it only as GitHub repository secret `TIKHUB_API_KEY` for `hengxiaopai/stage-letter`; do not commit or paste the token into issues, logs, source files, or chat.
-3. Re-run `Gate 0A TikHub Smoke` against the existing control set.
-4. If at least five independently known-live controls return decisive `LIVE`, capture an OFFLINE sample and then start Transition Run.
-5. In parallel, continue official Douyin Live SDK/cooperation qualification for the production authorization path.
+```text
+/api/gate0a/douyin/creator-status?keyword=X.四五六
+```
 
-Until step 3 produces decisive LIVE evidence, Gate 0B remains forbidden.
+If creator resolution is exact and a decisive status is returned, retain the resulting `uid` and immediately re-test with:
+
+```text
+/api/gate0a/douyin/uid-live?uid=<resolved_uid>
+```
+
+This is the first Stage Letter Gate 0A path that directly matches the intended production monitoring model.
