@@ -1,9 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "targets": [
     {
       "id": "DY-TARGET-001",
       "label": "X.四五六",
+      "verified_nickname": "X.四五六🍉",
+      "douyin_id": "82553285031",
+      "identity_verification": "USER_CONFIRMED_PROFILE_SCREENSHOT_2026-08-16",
       "web_rid": "975645387460",
       "room_url": "https://live.douyin.com/975645387460",
       "kind": "PRODUCT_TARGET",
