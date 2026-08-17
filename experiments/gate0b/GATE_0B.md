@@ -4,7 +4,7 @@ Status: **IN PROGRESS**
 
 ## Scope
 
-Gate 0B validates the pure domain behavior between normalized observations and canonical live-session state:
+Gate 0B validates the domain behavior between normalized observations and canonical live-session state:
 
 ```text
 LiveObservation
@@ -12,8 +12,6 @@ LiveObservation
     -> LiveSession
     -> LiveEvent
 ```
-
-This Gate deliberately excludes provider HTTP logic, database persistence, Redis, queues, WeChat notification delivery, frontend UI, and production deployment.
 
 Gate 0A progression was allowed with a known deferred lifecycle evidence gap. Gate 0B must not convert that waiver into fabricated evidence.
 
@@ -29,7 +27,9 @@ duplicate observation -> no duplicate transition/session/event
 stale title/live_url metadata cannot override explicit state
 ```
 
-## Gate 0B-1 state model
+## Gate 0B-1 — Pure state model — PASS
+
+State chain:
 
 ```text
 UNKNOWN
@@ -64,76 +64,26 @@ offline_confirmations_required = 2
 
 Thresholds are configuration, not hard-coded product truth.
 
-### UNKNOWN behavior
+`UNKNOWN` is a pause/no-op observation: it does not advance or cancel pending transitions, never opens/closes a session, and never emits LIVE_STARTED/LIVE_ENDED.
 
-`UNKNOWN` is a pause/no-op observation:
-
-- does not advance a pending transition;
-- does not cancel a pending transition;
-- never opens a session;
-- never closes a session;
-- never emits LIVE_STARTED or LIVE_ENDED.
-
-An explicit opposite decisive observation cancels the corresponding pending transition:
+Explicit opposite evidence cancels pending transitions:
 
 ```text
 LIVE_PENDING + OFFLINE -> OFFLINE_CONFIRMED
 OFFLINE_PENDING + LIVE -> LIVE_CONFIRMED
 ```
 
-## Bootstrap rule — explicit known limitation
+### Bootstrap rule — still unresolved for production
 
-Gate 0B-1 preserves the previously frozen bootstrap chain: a new engine starts `UNKNOWN` and requires an explicit `OFFLINE` baseline before it can confirm a later LIVE transition.
-
-Therefore:
+Gate 0B-1 preserves the conservative bootstrap chain:
 
 ```text
 UNKNOWN + LIVE -> UNKNOWN
 ```
 
-This is intentionally conservative but means an account first onboarded while already LIVE will not create a canonical LiveSession until an OFFLINE baseline has been observed. This policy is **not** silently changed in Gate 0B-1. It must be revisited explicitly in a later Gate 0B step before production architecture is frozen.
+A new account therefore requires an explicit OFFLINE baseline before a later LIVE transition can become canonical. This avoids false startup events, but it also means an account first onboarded while already LIVE is not represented correctly. Gate 0B-3 must decide this explicitly rather than changing it silently.
 
-## Domain objects
-
-### LiveObservation
-
-Required Gate fields:
-
-```text
-observation_id
-status: LIVE | OFFLINE | UNKNOWN
-observed_at
-source
-```
-
-`observation_id` is the idempotency key for the Gate engine.
-
-### LiveSession
-
-Gate fields:
-
-```text
-session_id
-opened_at
-closed_at | null
-```
-
-Exactly one session may be open at a time for one engine / PlatformAccount.
-
-### LiveEvent
-
-Gate types:
-
-```text
-LIVE_STARTED
-LIVE_ENDED
-```
-
-Both events are bound to the same `session_id` for one lifecycle.
-
-## Gate 0B-1 acceptance matrix — PASS
-
-The standard-library unittest suite proves:
+### Gate 0B-1 acceptance matrix — PASS
 
 ```text
 01 UNKNOWN does not become OFFLINE                         PASS
@@ -154,15 +104,6 @@ The standard-library unittest suite proves:
 16 invalid confirmation threshold is rejected             PASS
 ```
 
-## Gate 0B-1 result — PASS
-
-```text
-syntax check                         PASS
-all unittest acceptance cases        PASS
-GitHub Actions Gate 0B State Smoke   PASS
-no external runtime dependency       PASS
-```
-
 GitHub Actions evidence:
 
 ```text
@@ -172,9 +113,104 @@ result    completed / success
 head      ac6f07e6302b6c1ebdaafc6ad64dce8314771489
 ```
 
-Gate 0B-1 PASS does not mean Gate 0B overall is complete. Later Gate 0B work must add persistence/transaction semantics and explicitly decide the initial-LIVE bootstrap policy.
+A domain `EngineSnapshot` / `StateEngine.from_snapshot()` boundary was also added so behavior-relevant engine state can be reconstructed without coupling the state machine to one database implementation. Its State Smoke run also completed successfully:
 
-## Local command
+```text
+run       32005728580
+result    completed / success
+head      e144a51ed843fd80f7ec46fb90b7e582bf1a21c1
+```
+
+## Gate 0B-2 — SQLite persistence + restart safety — PASS
+
+Gate 0B-2 deliberately uses only Python standard-library `sqlite3`. SQLite is an experimental persistence harness here, not a production database decision.
+
+Persistent model:
+
+```text
+engine_state
+observations
+sessions
+events
+```
+
+Every new observation is handled in one SQLite transaction:
+
+```text
+BEGIN IMMEDIATE
+  load durable state
+  check durable observation idempotency
+  process through canonical StateEngine
+  insert observation
+  write engine state + sessions + events
+COMMIT
+```
+
+Any exception rolls back the full unit. The next process/restart loads the last committed state.
+
+### Gate 0B-2 acceptance matrix — PASS 10/10
+
+```text
+01 OFFLINE baseline survives restart                         PASS
+02 LIVE_PENDING + streak survives restart and confirms       PASS
+03 open LiveSession survives restart                         PASS
+04 OFFLINE_PENDING survives restart and closes same session  PASS
+05 duplicate observation survives restart without new event  PASS
+06 UNKNOWN after restart never closes open session           PASS
+07 session id sequence continues across restart              PASS
+08 failure after observation insert rolls back atomically    PASS
+09 failure after session/event state write rolls back        PASS
+10 persisted EngineConfig is reused; mismatch rejected       PASS
+```
+
+The transaction fault tests deliberately inject failures at two boundaries. After rollback, retrying the same observation remains valid and produces exactly one canonical transition.
+
+### Gate 0B-2 CI evidence — PASS
+
+```text
+workflow  Gate 0B Persistence Smoke
+run       32005733826
+head      84be212b33cdd1b707cbed832013c4a6e1f53d78
+result    completed / success
+Python    3.13.15
+suite     24 tests total / OK
+```
+
+The 24-test CI run contains the 10 persistence/restart tests plus the existing Gate 0B state-engine tests. No external runtime dependency is required.
+
+## Current domain objects
+
+### LiveObservation
+
+```text
+observation_id
+status: LIVE | OFFLINE | UNKNOWN
+observed_at
+source
+```
+
+`observation_id` is the durable idempotency key.
+
+### LiveSession
+
+```text
+session_id
+opened_at
+closed_at | null
+```
+
+Exactly one session may be open at a time per engine / PlatformAccount.
+
+### LiveEvent
+
+```text
+LIVE_STARTED
+LIVE_ENDED
+```
+
+Both events are bound to the same session_id for one lifecycle.
+
+## Local verification
 
 From repository root:
 
@@ -182,21 +218,32 @@ From repository root:
 python -m unittest discover -s experiments/gate0b -p "test_*.py" -v
 ```
 
-On Windows, any installed Python 3.12+ interpreter is sufficient; Gate 0B-1 uses only the standard library.
+On Windows, any installed Python 3.12+ interpreter is sufficient. Gate 0B-1/0B-2 use only the standard library.
 
-## Next: Gate 0B-2
+## Next: Gate 0B-3 — initial-LIVE bootstrap policy
 
-Gate 0B-2 should validate persistence and restart safety without expanding into the full production stack:
+The remaining major domain decision is onboarding an account that is already LIVE.
+
+Current conservative behavior:
 
 ```text
-observation idempotency survives restart
-open LiveSession survives restart
-pending confirmation state survives restart
-replayed observations do not duplicate events
-transaction boundary prevents session/event partial writes
+new account + LIVE observations -> stays UNKNOWN until an OFFLINE baseline exists
 ```
 
-The initial-LIVE bootstrap policy remains an explicit design decision and is not changed by Gate 0B-1.
+That is safe against false notifications but incomplete for the Stage Letter product because a newly followed creator may already be live.
+
+Gate 0B-3 must define and test, explicitly:
+
+```text
+how repeated initial LIVE becomes canonical LIVE_CONFIRMED
+whether a bootstrap/adopted session emits LIVE_STARTED
+how notification delivery later distinguishes bootstrap from a real transition
+what opened_at means when source_started_at is unavailable
+how UNKNOWN during bootstrap behaves
+restart/idempotency behavior for the bootstrap path
+```
+
+No notification implementation belongs in Gate 0B-3; only the domain facts required for Gate 0D should be frozen.
 
 ## Current progression
 
@@ -204,7 +251,8 @@ The initial-LIVE bootstrap policy remains an explicit design decision and is not
 Gate 0A evidence status      DEGRADED / deferred lifecycle gap
 Gate 0A progression          ALLOWED WITH KNOWN GAP
 Gate 0B-1                    PASS
-Gate 0B-2                    NEXT
+Gate 0B-2                    PASS
+Gate 0B-3                    NEXT
 Gate 0B overall              IN PROGRESS
 Gate 0C                      NOT STARTED
 ```
