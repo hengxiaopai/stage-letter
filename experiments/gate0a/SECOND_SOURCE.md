@@ -6,37 +6,28 @@ Status: **IN PROGRESS**
 
 Find a second Douyin source that can distinguish explicit `OFFLINE` from `UNKNOWN` for ordinary public creators who have not authorized Stage Letter.
 
-Hard rule: absence of `room_id`, empty `data`, missing stream URLs, HTTP 200, parser success, or stale room metadata MUST NOT be interpreted as `OFFLINE` unless the source exposes an explicit state contract that is validated against known ground truth.
+Hard rule: absence of `room_id`, empty `data`, missing stream URLs, HTTP 200, parser success, stale room metadata, or request failure MUST NOT be interpreted as `OFFLINE` unless the source exposes an explicit state contract that is validated against independent ground truth.
 
-## Current primary source: TikHub
+## Current source roles
 
-Verified strengths:
+### TikHub — identity/profile + positive LIVE
 
-- creator search / identity resolution: PASS
-- exact Douyin ID -> UID: PASS
-- UID LIVE detection: PASS
-- LIVE room_id: PASS
-- repeated LIVE polling: PASS
+Verified:
 
-Verified weakness:
+```text
+creator search / identity resolution   PASS
+exact Douyin ID -> UID                 PASS
+UID LIVE detection                     PASS
+LIVE room_id                           PASS
+repeated LIVE polling                  PASS
+known-OFFLINE explicit status          DEGRADED / INCONCLUSIVE
+```
 
-- known OFFLINE creator (`X.四五六`, Douyin ID `82553285031`, UID `2206033664807300`) returns no decisive `live_status` via the tested UID and sec_uid live routes.
-- User Search V2 production response did not contain the documented `live_status` field.
+Known-OFFLINE `X.四五六` (`douyin_id=82553285031`, `uid=2206033664807300`) did not produce a decisive tested TikHub `live_status`. TikHub remains useful for identity/profile and LIVE metadata, but is not sufficient as the sole canonical state source.
 
-Conclusion: TikHub remains useful as a LIVE detector and identity/profile source, but is not sufficient as the sole canonical state source.
+### F2 — positive LIVE only
 
-## Candidate results
-
-### 1. F2 direct Douyin web status — REJECTED FOR OFFLINE CONFIRMATION
-
-Repository: `Johnserf-Seed/f2`
-
-Research baseline commit: `7dab3e2ffffaa2535834d28fca99dbc2e89fa9d3`
-
-Known-OFFLINE X.四五六 returned no explicit `0` and therefore normalized to `UNKNOWN`.
-Known-LIVE 央视网财经 returned explicit `1` plus room id and normalized to `LIVE`.
-
-Decision:
+Research baseline: `Johnserf-Seed/f2` commit `7dab3e2ffffaa2535834d28fca99dbc2e89fa9d3`.
 
 ```text
 F2 positive LIVE detection       PASS
@@ -46,20 +37,20 @@ F2 false-OFFLINE protection      PASS
 F2 as OFFLINE confirmer          REJECTED
 ```
 
-F2 may remain useful as an independent positive-LIVE control, but it does not solve the OFFLINE-confirmation blocker.
+F2 remains an independent positive-LIVE control but does not solve OFFLINE confirmation.
 
-### 2. StreamGet — PROFILE/SEC_UID STATUS PATH PROMOTED
+## StreamGet — PROFILE/sec_uid status path
 
 Repository: `ihmily/streamget`
 
 Runtime baseline:
 
-- StreamGet version `4.0.10`
+- StreamGet `4.0.10`
 - Python `3.12.1`
 - no Douyin login cookie
 - local Gate probe: `streamget_status_probe.py`
 
-The Gate normalizes only explicit room status values:
+Gate normalization:
 
 ```text
 2 -> LIVE
@@ -67,25 +58,21 @@ The Gate normalizes only explicit room status values:
 anything else / request failure / parse failure -> UNKNOWN
 ```
 
-#### Initial single controls
+### Initial semantics controls
 
-Known-OFFLINE X.四五六, historical live-room URL `https://live.douyin.com/975645387460`:
+Known-OFFLINE `X.四五六` at `2026-08-17T13:39:26+08:00`:
 
 ```text
-2026-08-17T13:39:26+08:00
 raw_room_status   = 4
 anchor_name       = 𝑿.四五六🍉
-title             = 重生之我在旭旭宝宝传媒当歌手
 normalized status = OFFLINE
 ```
 
-Known-LIVE 央视网财经:
+Known-LIVE `央视网财经` at `2026-08-17T14:07:02+08:00`:
 
 ```text
-2026-08-17T14:07:02+08:00
 raw_room_status   = 2
 anchor_name       = 央视网财经
-title             = 央视财经频道节目直播
 m3u8_present      = true
 flv_present       = true
 normalized status = LIVE
@@ -93,136 +80,159 @@ normalized status = LIVE
 
 These established the explicit `4 -> OFFLINE` and `2 -> LIVE` semantics against independent ground truth.
 
-Important metadata note: the OFFLINE response still carried the previous room title, proving title/room metadata presence is not live-state evidence.
+Important metadata rule: OFFLINE responses can still carry previous room titles. Title or room-metadata presence is therefore not live-state evidence.
 
-#### Historical room-URL repeat test — DEGRADED FOR OFFLINE
+### Historical live-room URL repeat test — DEGRADED
 
-Three repeated dual-control rounds were run using:
+Repeated probing of the old numeric room URL for `X.四五六` returned request/parse failures and therefore `UNKNOWN`, while the LIVE control remained `LIVE`.
 
-- OFFLINE: `https://live.douyin.com/975645387460`
-- LIVE: `https://live.douyin.com/nuanxinnengl`
+Decision: historical `live.douyin.com/<room>` URLs are not reliable long-term PlatformAccount monitoring keys. Failures correctly remained `UNKNOWN`.
 
-Results:
+### Profile/sec_uid repeat test — PASS
 
-```text
-X.四五六 historical room URL:
-round 1 -> UNKNOWN / request-or-parse error
-round 2 -> UNKNOWN / request-or-parse error
-round 3 -> UNKNOWN / request-or-parse error
-
-央视网财经 live URL:
-round 1 -> LIVE / status=2 / stream URLs present
-round 2 -> LIVE / status=2 / stream URLs present
-round 3 -> LIVE / status=2 / stream URLs present
-```
-
-Decision: a historical numeric live-room URL is not reliable enough as the preferred long-term PlatformAccount monitoring key for an OFFLINE creator. Failures correctly remained `UNKNOWN`, so false-OFFLINE protection still PASSed.
-
-#### Profile/sec_uid repeat test — PASS
-
-To compare equivalent identity-level paths, StreamGet `fetch_app_stream_data()` was run three times for both creators using profile/sec_uid URLs.
-
-OFFLINE X.四五六:
+Using identity-level profile URLs through StreamGet `fetch_app_stream_data()`:
 
 ```text
-profile sec_uid = MS4wLjABAAAADlel7zsI5JBe2Uv_FZoX_Ecv8iiK38CXB-3ah_9SJE14892-nxueFDQU71B4FRsz
-round 1 -> status=4 / OFFLINE / anchor=𝑿.四五六🍉
-round 2 -> status=4 / OFFLINE / anchor=𝑿.四五六🍉
-round 3 -> status=4 / OFFLINE / anchor=𝑿.四五六🍉
-live_url returned = https://live.douyin.com/82553285031
+X.四五六 / independently OFFLINE
+round 1 -> status=4 / OFFLINE / identity match
+round 2 -> status=4 / OFFLINE / identity match
+round 3 -> status=4 / OFFLINE / identity match
+
+央视网财经 / independently LIVE
+round 1 -> status=2 / LIVE / identity match
+round 2 -> status=2 / LIVE / identity match
+round 3 -> status=2 / LIVE / identity match
 ```
 
-LIVE 央视网财经:
+Formal `streamget_status_probe.py` replay also passed:
 
 ```text
-profile sec_uid = MS4wLjABAAAAzrRqzBM_qqg3Q9h-IxA1MQSimf8ZgoLlw7f1r2NIvvo
-round 1 -> status=2 / LIVE / anchor=央视网财经
-round 2 -> status=2 / LIVE / anchor=央视网财经
-round 3 -> status=2 / LIVE / anchor=央视网财经
-live_url returned = https://live.douyin.com/nuanxinnengl
+2026-08-17T14:41:30+08:00  X.四五六    PROFILE -> 4 / OFFLINE
+2026-08-17T14:41:46+08:00  央视网财经  PROFILE -> 2 / LIVE + m3u8/flv
 ```
 
-This is the strongest current StreamGet Gate evidence because both LIVE and OFFLINE use the same identity-level input mode and both remained stable across all three rounds.
+Preferred experimental monitoring input is now stable `PlatformAccount` identity, especially `sec_uid` / profile URL. Live-room URLs remain metadata/navigation targets, not canonical identity keys.
 
-#### Formal Gate probe replay — PASS
+## Failure-safety validation — PASS
 
-After `streamget_status_probe.py` was upgraded to support PROFILE inputs directly, the formal probe was replayed against both controls without a Douyin login cookie.
+The formal probe was deliberately exercised against invalid identity and forced network failure.
 
-OFFLINE X.四五六 at `2026-08-17T14:41:30+08:00`:
+Invalid profile at `2026-08-17T14:47:34+08:00`:
 
 ```text
 input_mode       = PROFILE
-raw_room_status  = 4
-status           = OFFLINE
-anchor_name      = 𝑿.四五六🍉
-live_url         = https://live.douyin.com/82553285031
-m3u8_present     = false
-flv_present      = false
-confidence       = 0.90
+status           = UNKNOWN
+raw_room_status  = null
+error_type       = STREAMGET_REQUEST_OR_PARSE_ERROR
+message          = RuntimeError
 ```
 
-LIVE 央视网财经 at `2026-08-17T14:41:46+08:00`:
+Forced proxy/network failure at `2026-08-17T14:48:32+08:00`:
 
 ```text
 input_mode       = PROFILE
-raw_room_status  = 2
-status           = LIVE
-anchor_name      = 央视网财经
-live_url         = https://live.douyin.com/nuanxinnengl
-m3u8_present     = true
-flv_present      = true
-confidence       = 0.95
+status           = UNKNOWN
+raw_room_status  = null
+error_type       = STREAMGET_REQUEST_OR_PARSE_ERROR
+message          = RuntimeError
 ```
 
-The formal probe therefore matches the earlier manual 3x dual-control experiment and confirms that the implemented PROFILE path preserves the expected semantics.
-
-Current decision:
+Decision:
 
 ```text
-StreamGet explicit OFFLINE semantics          PASS
-StreamGet explicit LIVE semantics             PASS
-StreamGet profile OFFLINE repeated stability  PASS (3/3)
-StreamGet profile LIVE repeated stability     PASS (3/3)
-Formal PROFILE probe OFFLINE replay            PASS
-Formal PROFILE probe LIVE replay               PASS
-StreamGet identity consistency                PASS
-StreamGet no-cookie path                      PASS
-Historical room-URL OFFLINE stability         DEGRADED
-False-OFFLINE protection                      PASS
+invalid identity -> UNKNOWN         PASS
+forced network failure -> UNKNOWN   PASS
+request/runtime failure -> UNKNOWN  PASS
+UNKNOWN != OFFLINE                  PASS
+false-OFFLINE protection            PASS
+FAILURE_SAFETY                       PASS
+```
+
+## Initial multi-creator matrix — PASS 6/6
+
+Four additional creators were manually checked in Douyin and probed through the same no-cookie PROFILE/sec_uid path at approximately `2026-08-17T14:53+08:00`.
+
+| Creator | Independent ground truth | StreamGet | Raw status | Stream evidence | Result |
+|---|---|---|---:|---|---|
+| 🍒慢热💕 | OFFLINE | OFFLINE | 4 | none | PASS |
+| 大马猴电竞 | LIVE | LIVE | 2 | m3u8 + flv | PASS |
+| 花花果果⁵²⁹⁹ | LIVE | LIVE | 2 | m3u8 + flv | PASS |
+| 陈泽- | OFFLINE | OFFLINE | 4 | none | PASS |
+
+Together with the previously verified controls:
+
+| Creator | Independent ground truth | StreamGet | Raw status | Result |
+|---|---|---|---:|---|
+| 𝑿.四五六🍉 | OFFLINE | OFFLINE | 4 | PASS |
+| 央视网财经 | LIVE | LIVE | 2 | PASS |
+
+Balanced initial matrix:
+
+```text
+LIVE creators      3 / 3 PASS
+OFFLINE creators   3 / 3 PASS
+total              6 / 6 PASS
+identity matches   6 / 6 PASS
+wrong states       0
+```
+
+This is sufficient to mark **initial multi-creator validation PASS** for Gate 0A.
+
+### Additional metadata findings
+
+The matrix reinforced two metadata constraints:
+
+1. `🍒慢热💕` was manually OFFLINE and returned explicit status `4`, yet title was `笑笑 💕正在直播`. Therefore text such as `正在直播` inside `title` is stale/untrusted for canonical state.
+2. OFFLINE samples returned `live_url` values such as `https://live.douyin.com/989851X` and `https://live.douyin.com/9896719.`. Therefore an OFFLINE `live_url` must be treated as provider metadata/navigation data, not proof of an active room and not a canonical identity key.
+
+Canonical state remains the explicit successfully parsed status bound to the verified profile identity.
+
+## Current StreamGet Gate decision
+
+```text
+explicit OFFLINE semantics                    PASS
+explicit LIVE semantics                       PASS
+PROFILE OFFLINE repeated stability            PASS (3/3)
+PROFILE LIVE repeated stability               PASS (3/3)
+formal PROFILE replay                         PASS
+no-cookie ordinary-public path                PASS
+identity consistency                          PASS
+failure -> UNKNOWN                            PASS
+false-OFFLINE protection                      PASS
+initial multi-creator validation              PASS (6/6)
+historical room-URL OFFLINE stability         DEGRADED / non-primary
 PROFILE_STATUS_CONFIRMATION_CANDIDATE         PASS / PROMOTED
 ```
 
-Preferred experimental monitoring input is now stable `PlatformAccount` identity, especially `sec_uid`/profile URL, not a historical room URL. Room/live URLs remain metadata and navigation targets, not canonical identity keys.
+This is not production approval and does not make Gate 0A complete by itself.
 
-`streamget_status_probe.py` now supports both PROFILE and LIVE_URL inputs and marks PROFILE as the preferred Gate monitoring path.
+## Lifecycle evidence — NEXT HARD GATE
 
-The Gate 0A Douyin Smoke for commit `05fb257e9a92074c81e5ada8d6dd1fb338fadf94` completed successfully (run `32002387708`).
+The remaining core behavioral proof is a real same-creator lifecycle using one stable profile identity:
 
-This is still not production approval and does not make Gate 0A complete by itself.
+```text
+OFFLINE (status=4)
+    -> LIVE (status=2)
+    -> OFFLINE (status=4)
+```
 
-### 3. DouyinLiveJava `/status` service — DEFERRED / MEDIATED
+`streamget_lifecycle_watch.py` was added to capture this transition as timestamped JSONL while reusing `streamget_status_probe.py` as the single normalization authority. `UNKNOWN` observations are logged but never advance or close the lifecycle.
 
-The documented `/status?uid=` / `/status?secUid=` contract is attractive, but the convenient hosted path is mediated by a RapidAPI gateway under the TikHub team account and therefore is not sufficiently independent from the current TikHub primary source. Keep it as a diagnostic/alternative unless an independent self-hosted status implementation is available.
+Recommended starting target is an independently confirmed currently-OFFLINE profile so the watcher can capture the complete sequence without reconstructing earlier state.
 
-### 4. Official Douyin Live SDK / webcast-open — PRODUCTION TRACK, NOT GATE SUBSTITUTE
+## Remaining Gate 0A work
 
-Official platform APIs remain the preferred compliance/production track where creator authorization or operations whitelist access is available, but that scope does not replace Gate 0A's ordinary-public unauthenticated feasibility test.
+1. Capture one real same-creator `OFFLINE -> LIVE -> OFFLINE` lifecycle with stable identity and timestamps.
+2. Confirm metadata completeness required by Gate 0A: room identifier strategy, room/live URL, title, and source start time where actually available; missing fields must remain explicitly unavailable rather than invented.
+3. Keep production authorization/compliance as a separate unresolved track. Technical feasibility does not equal platform authorization.
+4. Only after lifecycle and required metadata evidence pass should Gate 0A be considered for completion and handoff to Gate 0B.
 
-## Next execution
-
-Do not add another data-source candidate yet. Continue with StreamGet PROFILE input as the current status-confirmation candidate:
-
-1. Add several independently verified LIVE and OFFLINE creators and run the same profile/sec_uid path.
-2. Verify request/risk-control/schema failures normalize to `UNKNOWN`, never `OFFLINE`.
-3. Capture a real same-creator `OFFLINE -> LIVE -> OFFLINE` lifecycle with stable identity and timestamps.
-4. Record title, live URL, stream presence, room id and source start time as metadata separate from canonical state.
-5. Only after multi-creator validation and lifecycle evidence pass should Gate 0A be considered for completion and handoff to Gate 0B.
-
-## Decision rule
+## Decision rules
 
 - Only explicit, ground-truth-consistent state fields can advance a candidate.
 - `status=2` and `status=4` are accepted only when identity is correct and the response is successfully parsed.
 - Failures, missing state, risk control, schema drift, or unsupported values remain `UNKNOWN`.
+- `UNKNOWN` never closes a session.
 - Metadata presence does not override explicit state.
 - Historical room URLs are not canonical identity keys.
 - Never convert absence into OFFLINE.
