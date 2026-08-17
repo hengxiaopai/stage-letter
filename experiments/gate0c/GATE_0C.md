@@ -21,8 +21,8 @@ Gate 0B remains the owner of canonical LiveSession behavior.
 
 ```text
 0C-1 Platform / Provider Health Policy     PASS
-0C-2 Poll / retry / backoff policy         CURRENT
-0C-3 Fault-injection recovery              NOT STARTED
+0C-2 Poll / retry / backoff policy         PASS
+0C-3 Fault-injection recovery              NEXT
 0C-4 Source-composition policy             NOT STARTED
 ```
 
@@ -135,18 +135,7 @@ This prevents an old slow request that finishes late from regressing health afte
 
 ### Restart boundary
 
-`HealthSnapshot` / `HealthTracker.from_snapshot()` preserve:
-
-```text
-health state
-consecutive failure / recovery streaks
-ordering watermark
-sample-id idempotency
-last failure kind
-health counters
-```
-
-Gate 0C-2 may therefore persist scheduler/health state without moving health semantics into a database implementation.
+`HealthSnapshot` / `HealthTracker.from_snapshot()` preserve health state, recovery/failure streaks, ordering watermark, sample-id idempotency, last failure kind and health counters.
 
 ### Partial-platform aggregation
 
@@ -183,7 +172,7 @@ A failure on one creator/provider scope must not falsely claim that the entire p
 19 invalid thresholds rejected                             PASS
 ```
 
-Clean CI evidence after duplicate prototype cleanup:
+Clean single-model CI evidence:
 
 ```text
 workflow  Gate 0C Health Smoke
@@ -193,76 +182,154 @@ result    completed / success
 suite     19 tests / 19 PASS
 ```
 
-Intermediate failed runs during the health-model cleanup are test-tooling/repository-shape failures and are superseded by the clean single-model run above. They are not counted as platform-health semantic evidence.
+Intermediate failed runs during duplicate prototype cleanup are superseded by this clean run and are not semantic Gate failures.
 
 ---
 
-## Gate 0C-2 — Poll / retry / backoff policy — CURRENT
+## Gate 0C-2 — Poll / retry / backoff policy — PASS
 
-Gate 0C-2 defines scheduler decisions only. It must not perform provider HTTP calls and must not mutate creator LIVE/OFFLINE state.
-
-The policy output should be a next-poll delay / cooldown decision derived from:
+Canonical implementation:
 
 ```text
-HealthState
-FailureKind | null
-consecutive failure count
-optional deterministic jitter input
+experiments/gate0c/poll_policy.py
+experiments/gate0c/test_poll_policy.py
 ```
 
-Required behavior:
+The polling policy is pure: it receives health/failure facts and returns only a next-poll timing decision. It performs no HTTP request, mutates no `HealthTracker`, and exposes no creator LIVE/OFFLINE field.
+
+### Gate timing defaults
 
 ```text
+STARTING                 30 s
+HEALTHY                  60 s
+DEGRADED                120 s
+UNAVAILABLE base        180 s
+UNAVAILABLE ceiling    1800 s
+RATE_LIMIT minimum      600 s
+AUTH/BLOCKED minimum    900 s
+jitter                  +/-10%
+```
+
+These are acceptance-test parameters, **not production SLA or provider-safe values**.
+
+### State-driven cadence
+
+```text
+STARTING
+    -> normal initial probe cadence
+
 HEALTHY
-    -> normal polling cadence
+    -> normal cadence
 
 DEGRADED
-    -> slower / conservative cadence
+    -> conservative cadence
 
 UNAVAILABLE
-    -> exponential recovery-probe backoff with a hard ceiling
-
-RATE_LIMIT
-    -> explicit minimum cooldown override
-
-AUTH / BLOCKED
-    -> long recovery-probe cooldown; never tight-loop
-
-jitter
-    -> bounded and testable; avoid synchronized polling bursts
-
-successful recovery
-    -> backoff resets through current health state / streak facts
+    -> RECOVERY_PROBE mode
+    -> exponential backoff using the current failure streak
+    -> hard ceiling
 ```
 
-Gate timing values remain configurable acceptance parameters until real provider-rate-limit evidence exists. No aggressive production intervals are frozen here.
-
-### 0C-2 acceptance targets
+Default unavailable sequence for failure streak 1..5 is:
 
 ```text
-01 HEALTHY uses normal cadence                              PENDING
-02 DEGRADED uses conservative cadence                       PENDING
-03 UNAVAILABLE backoff grows exponentially                  PENDING
-04 backoff is capped                                        PENDING
-05 RATE_LIMIT enforces minimum cooldown                     PENDING
-06 AUTH/BLOCKED never tight-loop                            PENDING
-07 bounded jitter never violates minimum cooldown           PENDING
-08 deterministic jitter makes tests reproducible            PENDING
-09 recovery/healthy state resets backoff                    PENDING
-10 scheduling policy never emits creator LIVE/OFFLINE       PENDING
-11 invalid policy configuration rejected                    PENDING
-12 pure snapshot inputs produce deterministic decision      PENDING
+180 -> 360 -> 720 -> 1440 -> 1800(capped)
+```
+
+Once health recovers to `HEALTHY`, old failure streak input cannot keep the unavailable backoff active; health state is the controlling scheduler fact.
+
+### Provider-safe cooldown overrides
+
+```text
+RATE_LIMIT
+    -> minimum 600 s
+
+AUTH / BLOCKED
+    -> minimum 900 s
+```
+
+The minimum cooldown is applied **after jitter**, so negative jitter can never shorten a provider-safe cooldown.
+
+### Deterministic jitter
+
+The pure policy does not call randomness internally. The scheduler supplies a bounded `jitter_unit` in `[-1, +1]` and the policy applies:
+
+```text
+1 + jitter_fraction * jitter_unit
+```
+
+This keeps production scheduling de-synchronized while making Gate tests reproducible. With a 10% jitter setting, a 100 s base becomes exactly 90..110 s.
+
+### Creator-state isolation
+
+`PollDecision` contains timing/operational facts only:
+
+```text
+delay_s
+base_delay_s
+minimum_cooldown_s
+mode
+backoff_step
+capped
+```
+
+There is deliberately no `status`, `canonical_status`, `live_status`, LiveSession mutation, or notification output.
+
+### Gate 0C-2 acceptance — PASS 15/15
+
+```text
+01 HEALTHY uses normal cadence                              PASS
+02 DEGRADED uses conservative cadence                       PASS
+03 UNAVAILABLE backoff grows exponentially                  PASS
+04 backoff is capped                                        PASS
+05 RATE_LIMIT enforces minimum cooldown                     PASS
+06 AUTH/BLOCKED never tight-loop                            PASS
+07 bounded jitter never violates minimum cooldown           PASS
+08 deterministic jitter makes decisions reproducible        PASS
+09 HEALTHY state resets unavailable backoff                 PASS
+10 scheduler exposes no creator live-state output           PASS
+11 invalid policy configuration rejected                    PASS
+12 identical snapshot inputs produce same decision          PASS
+13 STARTING uses separate initial cadence                   PASS
+14 jitter remains bounded around non-cooldown base          PASS
+15 invalid poll context rejected                            PASS
+```
+
+Combined Gate 0C CI evidence:
+
+```text
+workflow  Gate 0C Health Smoke
+run       32007431910
+head      66407497413af6b17de047cf5f1bd970eb70a9b2
+result    completed / success
+syntax    platform_health + poll_policy PASS
+suite     34 tests / 34 PASS
 ```
 
 ---
 
-## Later Gate 0C work
+## Gate 0C-3 — Fault-injection recovery — NEXT
 
-### 0C-3 Fault-injection recovery
+0C-3 must prove complete operational sequences, not isolated functions. It should compose `HealthTracker + poll_policy` under deterministic fault scenarios while keeping creator state facts untouched.
 
-Prove timeout, network break, parse/schema drift, rate-limit, blocked/auth failure and recovery sequences against the health + polling policy without producing fake live transitions.
+Required scenarios:
 
-### 0C-4 Source-composition policy
+```text
+healthy -> TIMEOUT -> TIMEOUT -> degraded -> recovery
+healthy -> NETWORK outage -> unavailable -> recovery probes -> healthy
+healthy -> PARSE/schema failure -> degraded/unavailable -> recovery
+healthy -> RATE_LIMIT -> cooldown -> later clean recovery
+healthy -> AUTH/BLOCKED -> immediate unavailable -> long recovery cooldown
+slow decisive LIVE/OFFLINE -> degraded health but decisive creator fact preserved
+old delayed failure after newer success -> stale/no regression
+mixed scopes: one unavailable + one healthy -> aggregate degraded
+```
+
+Acceptance must explicitly verify that no fault sequence fabricates creator OFFLINE or closes a Gate 0B LiveSession through health logic.
+
+---
+
+## Gate 0C-4 — Source-composition policy — NOT STARTED
 
 Freeze how canonical status, corroboration and metadata enrichment interact when one source is degraded/unavailable. Source selection may change; creator truth must still obey the normalized observation contract and `UNKNOWN != OFFLINE`.
 
@@ -272,7 +339,8 @@ Freeze how canonical status, corroboration and metadata enrichment interact when
 Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C-1  PASS
-Gate 0C-2  CURRENT
+Gate 0C-2  PASS
+Gate 0C-3  NEXT
 Gate 0C    IN PROGRESS
 Gate 0D    NOT STARTED
 Gate 0E    NOT STARTED
