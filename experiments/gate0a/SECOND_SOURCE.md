@@ -144,6 +144,38 @@ live_url returned = https://live.douyin.com/nuanxinnengl
 
 This is the strongest current StreamGet Gate evidence because both LIVE and OFFLINE use the same identity-level input mode and both remained stable across all three rounds.
 
+#### Formal Gate probe replay — PASS
+
+After `streamget_status_probe.py` was upgraded to support PROFILE inputs directly, the formal probe was replayed against both controls without a Douyin login cookie.
+
+OFFLINE X.四五六 at `2026-08-17T14:41:30+08:00`:
+
+```text
+input_mode       = PROFILE
+raw_room_status  = 4
+status           = OFFLINE
+anchor_name      = 𝑿.四五六🍉
+live_url         = https://live.douyin.com/82553285031
+m3u8_present     = false
+flv_present      = false
+confidence       = 0.90
+```
+
+LIVE 央视网财经 at `2026-08-17T14:41:46+08:00`:
+
+```text
+input_mode       = PROFILE
+raw_room_status  = 2
+status           = LIVE
+anchor_name      = 央视网财经
+live_url         = https://live.douyin.com/nuanxinnengl
+m3u8_present     = true
+flv_present      = true
+confidence       = 0.95
+```
+
+The formal probe therefore matches the earlier manual 3x dual-control experiment and confirms that the implemented PROFILE path preserves the expected semantics.
+
 Current decision:
 
 ```text
@@ -151,6 +183,8 @@ StreamGet explicit OFFLINE semantics          PASS
 StreamGet explicit LIVE semantics             PASS
 StreamGet profile OFFLINE repeated stability  PASS (3/3)
 StreamGet profile LIVE repeated stability     PASS (3/3)
+Formal PROFILE probe OFFLINE replay            PASS
+Formal PROFILE probe LIVE replay               PASS
 StreamGet identity consistency                PASS
 StreamGet no-cookie path                      PASS
 Historical room-URL OFFLINE stability         DEGRADED
@@ -161,6 +195,8 @@ PROFILE_STATUS_CONFIRMATION_CANDIDATE         PASS / PROMOTED
 Preferred experimental monitoring input is now stable `PlatformAccount` identity, especially `sec_uid`/profile URL, not a historical room URL. Room/live URLs remain metadata and navigation targets, not canonical identity keys.
 
 `streamget_status_probe.py` now supports both PROFILE and LIVE_URL inputs and marks PROFILE as the preferred Gate monitoring path.
+
+The Gate 0A Douyin Smoke for commit `05fb257e9a92074c81e5ada8d6dd1fb338fadf94` completed successfully (run `32002387708`).
 
 This is still not production approval and does not make Gate 0A complete by itself.
 
