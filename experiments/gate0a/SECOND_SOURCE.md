@@ -119,31 +119,64 @@ F2 as OFFLINE confirmer          REJECTED
 
 F2 may remain useful as an independent positive-LIVE control, but it does not solve Gate 0A's OFFLINE-confirmation blocker. Do not infer OFFLINE from null/missing `user_live` data.
 
-### 2. StreamGet — NEXT SPIKE
+### 2. StreamGet — OFFLINE SINGLE-SAMPLE PASS / LIVE CONTROL PENDING
 
 Repository: `ihmily/streamget`
 
-The project exposes `StreamData.is_live` and documents Douyin support without requiring a login cookie. Its Douyin path does require Node.js. Unlike the hosted DouyinLiveJava status path below, it can be exercised locally without adding another commercial status provider.
+Runtime baseline:
 
-Why promoted to the next spike:
+- StreamGet version `4.0.10`
+- Python `3.12.1`
+- no Douyin login cookie
+- local Gate probe: `streamget_status_probe.py`
 
-- local/self-hosted library;
-- explicit `is_live` output;
-- no Douyin login cookie required by the documented support matrix;
-- existing Gate targets already have stable live-room URLs, allowing the same OFFLINE/LIVE controls to be compared cheaply;
-- more independent from TikHub than the hosted DouyinLiveJava status service.
+The Gate probe normalizes only explicit room status values already used by StreamGet's Douyin implementation:
 
-Acceptance requires:
+```text
+2 -> LIVE
+4 -> OFFLINE
+anything else / parse failure -> UNKNOWN
+```
 
-1. X.四五六 independently confirmed OFFLINE -> explicit `is_live=false` from the known room URL;
-2. a currently LIVE control -> explicit `is_live=true` plus a non-empty stream URL;
-3. request/parse/Node/runtime failures -> `UNKNOWN`, never OFFLINE;
-4. repeat across several creators before promotion to `OFFLINE_CONFIRMATION_CANDIDATE`.
+#### Known-OFFLINE control — X.四五六
 
-Known URLs for the first spike:
+Independent ground truth: OFFLINE in Douyin App/web.
 
-- OFFLINE X.四五六: `https://live.douyin.com/975645387460`
-- LIVE 央视网财经: derive/use the currently verified live-room URL while it is still live; room_id observed via F2 was `7664459902303111978`, but Gate must not invent a canonical room URL from room_id without validating StreamGet's accepted URL form.
+Input:
+
+- room URL: `https://live.douyin.com/975645387460`
+- cookie: none
+
+Observed at `2026-08-17T13:39:26+08:00`:
+
+```text
+raw_room_status   = 4
+anchor_name       = 𝑿.四五六🍉
+title             = 重生之我在旭旭宝宝传媒当歌手
+m3u8_present      = false
+flv_present       = false
+normalized status = OFFLINE
+confidence        = 0.90
+```
+
+Evidence:
+
+- `explicit_room_status:4`
+- returned anchor identity matched the known target
+
+Result: **PASS for one explicit OFFLINE control sample**.
+
+This is the first tested independent local source in Gate 0A that has produced an explicit non-null state consistent with the independently observed OFFLINE ground truth. It is not yet sufficient for promotion to canonical OFFLINE confirmation because the same path still needs a known-LIVE control and repeated/multi-creator validation.
+
+Current StreamGet status:
+
+```text
+StreamGet runtime / request path       PASS
+Known-OFFLINE explicit status=4        PASS (1 sample)
+Known-LIVE explicit status=2           NOT YET
+False-OFFLINE protection               PASS by probe contract
+OFFLINE_CONFIRMATION_CANDIDATE          PROVISIONAL / PENDING LIVE CONTROL
+```
 
 ### 3. DouyinLiveJava `/status` service — DEFERRED / MEDIATED
 
@@ -169,12 +202,15 @@ It should remain the preferred long-term compliance/production track where coope
 
 ## Next execution
 
-Move to StreamGet as the next independent OFFLINE second-source spike. First verify local prerequisites (Python and Node.js), then test the known OFFLINE room URL. Only if that yields explicit `is_live=false` should the LIVE control be tested immediately afterward.
+Run a known-LIVE StreamGet control immediately while independent ground truth is still current. Preferred control: `央视网财经` if still visibly live.
 
-Do not spend additional effort trying to reinterpret F2's null OFFLINE response.
+The current Gate probe accepts `live.douyin.com/<web_rid>` URLs. If only a profile/sec_uid URL is available, first resolve a verified current live-room URL or extend the experimental probe to use StreamGet's app/profile URL path without weakening the explicit-state rule.
+
+Only after StreamGet returns explicit `status=2` for a known-LIVE control should it be promoted to `OFFLINE_CONFIRMATION_CANDIDATE` and moved into repeated/multi-creator validation.
 
 ## Decision rule
 
 - Only explicit, ground-truth-consistent state fields can advance a candidate.
-- A candidate that proves LIVE but expresses OFFLINE only as absence/null is rejected for the OFFLINE confirmer role.
+- One correct OFFLINE sample is necessary but not sufficient; the same source must also correctly identify a known-LIVE sample.
+- Failures, missing state, risk control, or schema drift remain UNKNOWN.
 - Never convert absence into OFFLINE.
