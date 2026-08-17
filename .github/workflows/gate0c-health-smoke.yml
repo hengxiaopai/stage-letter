@@ -26,8 +26,8 @@ jobs:
       - name: Syntax check
         run: |
           python -m py_compile \
-            experiments/gate0c/health_engine.py \
-            experiments/gate0c/test_health_engine.py
+            experiments/gate0c/platform_health.py \
+            experiments/gate0c/test_platform_health.py
 
       - name: Gate 0C health acceptance tests
         run: python -m unittest discover -s experiments/gate0c -p "test_*.py" -v
