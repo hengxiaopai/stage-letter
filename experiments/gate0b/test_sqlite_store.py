@@ -10,9 +10,11 @@ from sqlite_store import InjectedPersistenceFailure, PersistentStateEngine
 from state_engine import (
     EngineConfig,
     EngineState,
+    LiveEventCause,
     LiveEventType,
     LiveObservation,
     ObservationStatus,
+    SessionOrigin,
 )
 
 
@@ -20,12 +22,20 @@ TZ = timezone(timedelta(hours=8))
 BASE = datetime(2026, 8, 17, 15, 30, tzinfo=TZ)
 
 
-def obs(number: int, status: ObservationStatus) -> LiveObservation:
+def obs(
+    number: int,
+    status: ObservationStatus,
+    *,
+    observation_id: str | None = None,
+    observed_at: datetime | None = None,
+    source_started_at: datetime | None = None,
+) -> LiveObservation:
     return LiveObservation(
-        observation_id=f"obs-{number}",
+        observation_id=observation_id or f"obs-{number}",
         status=status,
-        observed_at=BASE + timedelta(seconds=number),
+        observed_at=observed_at or (BASE + timedelta(seconds=number)),
         source="gate0b-test",
+        source_started_at=source_started_at,
     )
 
 
@@ -58,6 +68,7 @@ class PersistentStateEngineTest(unittest.TestCase):
         snapshot = restarted.snapshot()
         self.assertEqual(snapshot.state, EngineState.OFFLINE_CONFIRMED)
         self.assertEqual(snapshot.observation_count, 1)
+        self.assertEqual(snapshot.observation_watermark, obs(1, ObservationStatus.OFFLINE).observed_at)
 
     def test_02_live_pending_survives_restart_and_confirms(self) -> None:
         first = self.store()
@@ -73,6 +84,7 @@ class PersistentStateEngineTest(unittest.TestCase):
         self.assertIsNotNone(snapshot.open_session)
         self.assertEqual(len(snapshot.events), 1)
         self.assertEqual(snapshot.events[0].event_type, LiveEventType.LIVE_STARTED)
+        self.assertEqual(snapshot.events[0].cause, LiveEventCause.TRANSITION)
 
     def test_03_open_session_survives_restart(self) -> None:
         first = self.store()
@@ -87,6 +99,7 @@ class PersistentStateEngineTest(unittest.TestCase):
         self.assertIsNotNone(snapshot.open_session)
         assert snapshot.open_session is not None
         self.assertEqual(snapshot.open_session.session_id, session_id)
+        self.assertEqual(snapshot.open_session.origin, SessionOrigin.TRANSITION)
         self.assertEqual(len(snapshot.events), 1)
 
     def test_04_offline_pending_survives_restart_and_closes_same_session(self) -> None:
@@ -122,6 +135,7 @@ class PersistentStateEngineTest(unittest.TestCase):
         duplicate = restarted.process(obs(3, ObservationStatus.LIVE))
         after = restarted.snapshot()
         self.assertTrue(duplicate.duplicate)
+        self.assertFalse(duplicate.stale)
         self.assertFalse(duplicate.accepted)
         self.assertEqual(after.observation_count, before.observation_count)
         self.assertEqual(len(after.sessions), 1)
@@ -172,6 +186,7 @@ class PersistentStateEngineTest(unittest.TestCase):
         self.assertEqual(after_failure.state, before.state)
         self.assertEqual(after_failure.observation_count, before.observation_count)
         self.assertEqual(after_failure.live_streak, 0)
+        self.assertEqual(after_failure.observation_watermark, before.observation_watermark)
 
         retry = self.store().process(obs(2, ObservationStatus.LIVE))
         self.assertEqual(retry.current_state, EngineState.LIVE_PENDING)
@@ -264,6 +279,87 @@ class PersistentStateEngineTest(unittest.TestCase):
         self.assertIsNone(b.open_session)
         self.assertEqual(len(b.events), 0)
         self.assertEqual(b.observation_count, 1)
+
+    def test_13_bootstrap_pending_survives_restart_and_adopts_live(self) -> None:
+        first = self.store()
+        first.process(obs(1, ObservationStatus.LIVE))
+        self.assertEqual(first.snapshot().state, EngineState.BOOTSTRAP_LIVE_PENDING)
+        self.assertEqual(first.snapshot().live_streak, 1)
+
+        restarted = self.store()
+        result = restarted.process(obs(2, ObservationStatus.LIVE))
+        snapshot = restarted.snapshot()
+        self.assertEqual(result.current_state, EngineState.LIVE_CONFIRMED)
+        session = snapshot.open_session
+        assert session is not None
+        self.assertEqual(session.origin, SessionOrigin.BOOTSTRAP_LIVE)
+        self.assertEqual(snapshot.events[0].cause, LiveEventCause.BOOTSTRAP_LIVE)
+
+    def test_14_bootstrap_source_started_at_survives_restart(self) -> None:
+        source_started = BASE - timedelta(minutes=30)
+        first = self.store()
+        first.process(obs(1, ObservationStatus.LIVE, source_started_at=source_started))
+        restarted = self.store()
+        restarted.process(obs(2, ObservationStatus.LIVE, source_started_at=source_started))
+        snapshot = self.store().snapshot()
+        session = snapshot.open_session
+        assert session is not None
+        self.assertEqual(session.source_started_at, source_started)
+        self.assertEqual(session.opened_at, obs(2, ObservationStatus.LIVE).observed_at)
+
+    def test_15_watermark_survives_restart_and_stale_new_fact_is_durable_noop(self) -> None:
+        store = self.store()
+        current = obs(10, ObservationStatus.OFFLINE)
+        store.process(current)
+        self.assertEqual(store.snapshot().observation_watermark, current.observed_at)
+
+        restarted = self.store()
+        stale_observation = obs(
+            11,
+            ObservationStatus.LIVE,
+            observation_id="stale-live",
+            observed_at=current.observed_at - timedelta(seconds=5),
+        )
+        result = restarted.process(stale_observation)
+        snapshot = restarted.snapshot()
+        self.assertTrue(result.stale)
+        self.assertFalse(result.accepted)
+        self.assertEqual(snapshot.state, EngineState.OFFLINE_CONFIRMED)
+        self.assertEqual(snapshot.live_streak, 0)
+        self.assertEqual(snapshot.observation_watermark, current.observed_at)
+        self.assertEqual(snapshot.observation_count, 2)
+
+        replay = self.store().process(stale_observation)
+        self.assertTrue(replay.duplicate)
+        self.assertFalse(replay.stale)
+        self.assertEqual(self.store().snapshot().observation_count, 2)
+
+    def test_16_newer_unknown_watermark_blocks_older_offline_after_restart(self) -> None:
+        first = self.store()
+        self.open_live(first)
+        first.process(obs(4, ObservationStatus.OFFLINE))
+        newer_unknown = obs(10, ObservationStatus.UNKNOWN)
+        first.process(newer_unknown)
+        before_restart = first.snapshot()
+        self.assertEqual(before_restart.state, EngineState.OFFLINE_PENDING)
+        self.assertEqual(before_restart.offline_streak, 1)
+
+        restarted = self.store()
+        stale = restarted.process(
+            obs(
+                11,
+                ObservationStatus.OFFLINE,
+                observation_id="late-old-offline",
+                observed_at=newer_unknown.observed_at - timedelta(seconds=1),
+            )
+        )
+        snapshot = restarted.snapshot()
+        self.assertTrue(stale.stale)
+        self.assertEqual(snapshot.state, EngineState.OFFLINE_PENDING)
+        self.assertEqual(snapshot.offline_streak, 1)
+        self.assertIsNotNone(snapshot.open_session)
+        self.assertEqual(len(snapshot.events), 1)
+        self.assertEqual(snapshot.observation_watermark, newer_unknown.observed_at)
 
 
 if __name__ == "__main__":
