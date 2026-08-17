@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""Stage Letter Gate 0B-2 — minimal SQLite persistence experiment.
+"""Stage Letter Gate 0B — minimal SQLite persistence experiment.
 
-This module deliberately stays below the production persistence layer. It uses
-Python's standard-library sqlite3 module to prove restart safety, durable
-idempotency, account isolation, and atomic persistence for the Gate 0B state
-engine.
-
-One PersistentStateEngine instance represents one PlatformAccount. Every
-observation is processed in one SQLite transaction:
-
-    load durable engine -> process observation -> persist observation/state/
-    sessions/events -> COMMIT
-
-If any write fails, the transaction rolls back and the next process loads the
-last committed state. UNKNOWN semantics remain owned by state_engine.py.
+Gate 0B-2 proved restart safety and atomicity. Gate 0B-3 extends the durable
+projection with bootstrap-live provenance and an observation ordering watermark.
+SQLite remains a Gate harness, not a production database decision.
 """
 
 from __future__ import annotations
@@ -28,11 +18,13 @@ from state_engine import (
     EngineSnapshot,
     EngineState,
     LiveEvent,
+    LiveEventCause,
     LiveEventType,
     LiveObservation,
     LiveSession,
     LiveSessionSnapshot,
     ProcessResult,
+    SessionOrigin,
     StateEngine,
 )
 
@@ -46,6 +38,7 @@ class DurableSnapshot:
     sessions: tuple[LiveSession, ...]
     events: tuple[LiveEvent, ...]
     observation_count: int
+    observation_watermark: datetime | None
 
     @property
     def open_session(self) -> LiveSession | None:
@@ -79,6 +72,20 @@ class PersistentStateEngine:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @staticmethod
+    def _ensure_column(
+        connection: sqlite3.Connection,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.executescript(
@@ -90,7 +97,8 @@ class PersistentStateEngine:
                     offline_streak INTEGER NOT NULL CHECK (offline_streak >= 0),
                     next_session_id INTEGER NOT NULL CHECK (next_session_id >= 1),
                     live_confirmations_required INTEGER NOT NULL CHECK (live_confirmations_required >= 1),
-                    offline_confirmations_required INTEGER NOT NULL CHECK (offline_confirmations_required >= 1)
+                    offline_confirmations_required INTEGER NOT NULL CHECK (offline_confirmations_required >= 1),
+                    observation_watermark TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS observations (
@@ -99,6 +107,7 @@ class PersistentStateEngine:
                     status TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
                     source TEXT NOT NULL,
+                    source_started_at TEXT,
                     PRIMARY KEY (account_id, observation_id)
                 );
 
@@ -107,6 +116,8 @@ class PersistentStateEngine:
                     session_id INTEGER NOT NULL,
                     opened_at TEXT NOT NULL,
                     closed_at TEXT,
+                    origin TEXT NOT NULL DEFAULT 'TRANSITION',
+                    source_started_at TEXT,
                     PRIMARY KEY (account_id, session_id)
                 );
 
@@ -119,11 +130,45 @@ class PersistentStateEngine:
                     event_type TEXT NOT NULL,
                     session_id INTEGER NOT NULL,
                     occurred_at TEXT NOT NULL,
+                    cause TEXT NOT NULL DEFAULT 'TRANSITION',
                     PRIMARY KEY (account_id, event_type, session_id),
                     FOREIGN KEY (account_id, session_id)
                         REFERENCES sessions(account_id, session_id)
                 );
                 """
+            )
+
+            # Forward-compatible Gate migration for local SQLite files created
+            # by Gate 0B-2 before bootstrap/watermark fields existed.
+            self._ensure_column(
+                connection,
+                "engine_state",
+                "observation_watermark",
+                "observation_watermark TEXT",
+            )
+            self._ensure_column(
+                connection,
+                "observations",
+                "source_started_at",
+                "source_started_at TEXT",
+            )
+            self._ensure_column(
+                connection,
+                "sessions",
+                "origin",
+                "origin TEXT NOT NULL DEFAULT 'TRANSITION'",
+            )
+            self._ensure_column(
+                connection,
+                "sessions",
+                "source_started_at",
+                "source_started_at TEXT",
+            )
+            self._ensure_column(
+                connection,
+                "events",
+                "cause",
+                "cause TEXT NOT NULL DEFAULT 'TRANSITION'",
             )
 
             row = connection.execute(
@@ -138,8 +183,8 @@ class PersistentStateEngine:
                     INSERT INTO engine_state (
                         account_id, state, live_streak, offline_streak,
                         next_session_id, live_confirmations_required,
-                        offline_confirmations_required
-                    ) VALUES (?, ?, 0, 0, 1, ?, ?)
+                        offline_confirmations_required, observation_watermark
+                    ) VALUES (?, ?, 0, 0, 1, ?, ?, NULL)
                     """,
                     (
                         self.account_id,
@@ -177,10 +222,16 @@ class PersistentStateEngine:
                     if session_row["closed_at"] is not None
                     else None
                 ),
+                origin=SessionOrigin(session_row["origin"]),
+                source_started_at=(
+                    datetime.fromisoformat(session_row["source_started_at"])
+                    if session_row["source_started_at"] is not None
+                    else None
+                ),
             )
             for session_row in connection.execute(
                 """
-                SELECT session_id, opened_at, closed_at
+                SELECT session_id, opened_at, closed_at, origin, source_started_at
                 FROM sessions
                 WHERE account_id = ?
                 ORDER BY session_id
@@ -193,10 +244,11 @@ class PersistentStateEngine:
                 event_type=LiveEventType(event_row["event_type"]),
                 session_id=event_row["session_id"],
                 occurred_at=datetime.fromisoformat(event_row["occurred_at"]),
+                cause=LiveEventCause(event_row["cause"]),
             )
             for event_row in connection.execute(
                 """
-                SELECT event_type, session_id, occurred_at
+                SELECT event_type, session_id, occurred_at, cause
                 FROM events
                 WHERE account_id = ?
                 ORDER BY occurred_at, session_id, event_type
@@ -219,6 +271,11 @@ class PersistentStateEngine:
             events=events,
             seen_observation_ids=seen_ids,
             next_session_id=row["next_session_id"],
+            observation_watermark=(
+                datetime.fromisoformat(row["observation_watermark"])
+                if row["observation_watermark"] is not None
+                else None
+            ),
         )
         return StateEngine.from_snapshot(snapshot, config)
 
@@ -233,7 +290,8 @@ class PersistentStateEngine:
         connection.execute(
             """
             UPDATE engine_state
-            SET state = ?, live_streak = ?, offline_streak = ?, next_session_id = ?
+            SET state = ?, live_streak = ?, offline_streak = ?, next_session_id = ?,
+                observation_watermark = ?
             WHERE account_id = ?
             """,
             (
@@ -241,6 +299,11 @@ class PersistentStateEngine:
                 snapshot.live_streak,
                 snapshot.offline_streak,
                 snapshot.next_session_id,
+                (
+                    snapshot.observation_watermark.isoformat()
+                    if snapshot.observation_watermark is not None
+                    else None
+                ),
                 self.account_id,
             ),
         )
@@ -251,8 +314,9 @@ class PersistentStateEngine:
         connection.execute("DELETE FROM sessions WHERE account_id = ?", (self.account_id,))
         connection.executemany(
             """
-            INSERT INTO sessions (account_id, session_id, opened_at, closed_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO sessions (
+                account_id, session_id, opened_at, closed_at, origin, source_started_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -260,6 +324,12 @@ class PersistentStateEngine:
                     session.session_id,
                     session.opened_at.isoformat(),
                     session.closed_at.isoformat() if session.closed_at else None,
+                    session.origin.value,
+                    (
+                        session.source_started_at.isoformat()
+                        if session.source_started_at is not None
+                        else None
+                    ),
                 )
                 for session in snapshot.sessions
             ],
@@ -270,8 +340,8 @@ class PersistentStateEngine:
 
         connection.executemany(
             """
-            INSERT INTO events (account_id, event_type, session_id, occurred_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO events (account_id, event_type, session_id, occurred_at, cause)
+            VALUES (?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -279,6 +349,7 @@ class PersistentStateEngine:
                     event.event_type.value,
                     event.session_id,
                     event.occurred_at.isoformat(),
+                    event.cause.value,
                 )
                 for event in snapshot.events
             ],
@@ -300,11 +371,15 @@ class PersistentStateEngine:
                 connection.rollback()
                 return result
 
+            # Accepted and stale-new observations are both durable ledger facts.
+            # A stale observation changes only durable idempotency, never the
+            # canonical state/watermark projection.
             connection.execute(
                 """
                 INSERT INTO observations (
-                    account_id, observation_id, status, observed_at, source
-                ) VALUES (?, ?, ?, ?, ?)
+                    account_id, observation_id, status, observed_at, source,
+                    source_started_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     self.account_id,
@@ -312,6 +387,11 @@ class PersistentStateEngine:
                     observation.status.value,
                     observation.observed_at.isoformat(),
                     observation.source,
+                    (
+                        observation.source_started_at.isoformat()
+                        if observation.source_started_at is not None
+                        else None
+                    ),
                 ),
             )
 
@@ -350,4 +430,5 @@ class PersistentStateEngine:
                 sessions=tuple(engine.sessions),
                 events=tuple(engine.events),
                 observation_count=observation_count,
+                observation_watermark=engine.observation_watermark,
             )
