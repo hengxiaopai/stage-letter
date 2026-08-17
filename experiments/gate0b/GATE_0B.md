@@ -131,32 +131,30 @@ LIVE_ENDED
 
 Both events are bound to the same `session_id` for one lifecycle.
 
-## Gate 0B-1 acceptance matrix
+## Gate 0B-1 acceptance matrix — PASS
 
-The standard-library unittest suite must prove all of the following:
+The standard-library unittest suite proves:
 
 ```text
-01 UNKNOWN does not become OFFLINE                         PASS required
-02 initial LIVE cannot bypass frozen OFFLINE baseline     PASS required
-03 explicit OFFLINE creates OFFLINE_CONFIRMED baseline    PASS required
-04 first LIVE creates LIVE_PENDING only                   PASS required
-05 second LIVE confirms and opens exactly one session     PASS required
-06 opposite OFFLINE cancels LIVE_PENDING                  PASS required
-07 UNKNOWN pauses LIVE_PENDING                            PASS required
-08 repeated LIVE does not duplicate session/event         PASS required
-09 first OFFLINE creates OFFLINE_PENDING only             PASS required
-10 second OFFLINE closes the same session                 PASS required
-11 UNKNOWN during OFFLINE_PENDING never closes session    PASS required
-12 LIVE cancels OFFLINE_PENDING                           PASS required
-13 repeated OFFLINE does not duplicate LIVE_ENDED         PASS required
-14 duplicate observation_id is idempotent                 PASS required
-15 two full cycles create two distinct sessions           PASS required
-16 invalid confirmation threshold is rejected             PASS required
+01 UNKNOWN does not become OFFLINE                         PASS
+02 initial LIVE cannot bypass frozen OFFLINE baseline     PASS
+03 explicit OFFLINE creates OFFLINE_CONFIRMED baseline    PASS
+04 first LIVE creates LIVE_PENDING only                   PASS
+05 second LIVE confirms and opens exactly one session     PASS
+06 opposite OFFLINE cancels LIVE_PENDING                  PASS
+07 UNKNOWN pauses LIVE_PENDING                            PASS
+08 repeated LIVE does not duplicate session/event         PASS
+09 first OFFLINE creates OFFLINE_PENDING only             PASS
+10 second OFFLINE closes the same session                 PASS
+11 UNKNOWN during OFFLINE_PENDING never closes session    PASS
+12 LIVE cancels OFFLINE_PENDING                           PASS
+13 repeated OFFLINE does not duplicate LIVE_ENDED         PASS
+14 duplicate observation_id is idempotent                 PASS
+15 two full cycles create two distinct sessions           PASS
+16 invalid confirmation threshold is rejected             PASS
 ```
 
-## PASS rule
-
-Gate 0B-1 is PASS only when:
+## Gate 0B-1 result — PASS
 
 ```text
 syntax check                         PASS
@@ -165,7 +163,16 @@ GitHub Actions Gate 0B State Smoke   PASS
 no external runtime dependency       PASS
 ```
 
-A test implementation passing does not yet mean Gate 0B is complete. Later Gate 0B work must add persistence/transaction semantics and explicitly decide the initial-LIVE bootstrap policy.
+GitHub Actions evidence:
+
+```text
+workflow  Gate 0B State Smoke
+run       32005422864
+result    completed / success
+head      ac6f07e6302b6c1ebdaafc6ad64dce8314771489
+```
+
+Gate 0B-1 PASS does not mean Gate 0B overall is complete. Later Gate 0B work must add persistence/transaction semantics and explicitly decide the initial-LIVE bootstrap policy.
 
 ## Local command
 
@@ -175,14 +182,29 @@ From repository root:
 python -m unittest discover -s experiments/gate0b -p "test_*.py" -v
 ```
 
-On the current Windows Gate virtualenv, the equivalent command can be run with any installed Python 3.12+ interpreter; the Gate 0B-1 implementation uses only the standard library.
+On Windows, any installed Python 3.12+ interpreter is sufficient; Gate 0B-1 uses only the standard library.
+
+## Next: Gate 0B-2
+
+Gate 0B-2 should validate persistence and restart safety without expanding into the full production stack:
+
+```text
+observation idempotency survives restart
+open LiveSession survives restart
+pending confirmation state survives restart
+replayed observations do not duplicate events
+transaction boundary prevents session/event partial writes
+```
+
+The initial-LIVE bootstrap policy remains an explicit design decision and is not changed by Gate 0B-1.
 
 ## Current progression
 
 ```text
 Gate 0A evidence status      DEGRADED / deferred lifecycle gap
 Gate 0A progression          ALLOWED WITH KNOWN GAP
-Gate 0B-1                    IMPLEMENTED / AWAITING TEST EVIDENCE
+Gate 0B-1                    PASS
+Gate 0B-2                    NEXT
 Gate 0B overall              IN PROGRESS
 Gate 0C                      NOT STARTED
 ```
