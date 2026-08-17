@@ -3,7 +3,8 @@
 
 This module deliberately stays below the production persistence layer. It uses
 Python's standard-library sqlite3 module to prove restart safety, durable
-idempotency, and atomic persistence for the Gate 0B state engine.
+idempotency, account isolation, and atomic persistence for the Gate 0B state
+engine.
 
 One PersistentStateEngine instance represents one PlatformAccount. Every
 observation is processed in one SQLite transaction:
@@ -24,11 +25,13 @@ from pathlib import Path
 
 from state_engine import (
     EngineConfig,
+    EngineSnapshot,
     EngineState,
     LiveEvent,
     LiveEventType,
     LiveObservation,
     LiveSession,
+    LiveSessionSnapshot,
     ProcessResult,
     StateEngine,
 )
@@ -73,6 +76,7 @@ class PersistentStateEngine:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
     def _initialize(self) -> None:
@@ -82,11 +86,11 @@ class PersistentStateEngine:
                 CREATE TABLE IF NOT EXISTS engine_state (
                     account_id TEXT PRIMARY KEY,
                     state TEXT NOT NULL,
-                    live_streak INTEGER NOT NULL,
-                    offline_streak INTEGER NOT NULL,
-                    next_session_id INTEGER NOT NULL,
-                    live_confirmations_required INTEGER NOT NULL,
-                    offline_confirmations_required INTEGER NOT NULL
+                    live_streak INTEGER NOT NULL CHECK (live_streak >= 0),
+                    offline_streak INTEGER NOT NULL CHECK (offline_streak >= 0),
+                    next_session_id INTEGER NOT NULL CHECK (next_session_id >= 1),
+                    live_confirmations_required INTEGER NOT NULL CHECK (live_confirmations_required >= 1),
+                    offline_confirmations_required INTEGER NOT NULL CHECK (offline_confirmations_required >= 1)
                 );
 
                 CREATE TABLE IF NOT EXISTS observations (
@@ -106,12 +110,18 @@ class PersistentStateEngine:
                     PRIMARY KEY (account_id, session_id)
                 );
 
+                CREATE UNIQUE INDEX IF NOT EXISTS one_open_session_per_account
+                    ON sessions(account_id)
+                    WHERE closed_at IS NULL;
+
                 CREATE TABLE IF NOT EXISTS events (
                     account_id TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     session_id INTEGER NOT NULL,
                     occurred_at TEXT NOT NULL,
-                    PRIMARY KEY (account_id, event_type, session_id)
+                    PRIMARY KEY (account_id, event_type, session_id),
+                    FOREIGN KEY (account_id, session_id)
+                        REFERENCES sessions(account_id, session_id)
                 );
                 """
             )
@@ -144,9 +154,7 @@ class PersistentStateEngine:
                     offline_confirmations_required=row["offline_confirmations_required"],
                 )
                 if persisted != self.requested_config:
-                    raise ValueError(
-                        "persisted EngineConfig differs from requested config"
-                    )
+                    raise ValueError("persisted EngineConfig differs from requested config")
 
     def _load_engine(self, connection: sqlite3.Connection) -> StateEngine:
         row = connection.execute(
@@ -160,14 +168,8 @@ class PersistentStateEngine:
             live_confirmations_required=row["live_confirmations_required"],
             offline_confirmations_required=row["offline_confirmations_required"],
         )
-        engine = StateEngine(config)
-        engine.state = EngineState(row["state"])
-        engine.live_streak = row["live_streak"]
-        engine.offline_streak = row["offline_streak"]
-        engine._next_session_id = row["next_session_id"]
-
-        engine.sessions = [
-            LiveSession(
+        sessions = tuple(
+            LiveSessionSnapshot(
                 session_id=session_row["session_id"],
                 opened_at=datetime.fromisoformat(session_row["opened_at"]),
                 closed_at=(
@@ -185,9 +187,8 @@ class PersistentStateEngine:
                 """,
                 (self.account_id,),
             )
-        ]
-
-        engine.events = [
+        )
+        events = tuple(
             LiveEvent(
                 event_type=LiveEventType(event_row["event_type"]),
                 session_id=event_row["session_id"],
@@ -202,19 +203,33 @@ class PersistentStateEngine:
                 """,
                 (self.account_id,),
             )
-        ]
-
-        engine._seen_observation_ids = {
+        )
+        seen_ids = frozenset(
             observation_row["observation_id"]
             for observation_row in connection.execute(
                 "SELECT observation_id FROM observations WHERE account_id = ?",
                 (self.account_id,),
             )
-        }
-        engine._assert_invariants()
-        return engine
+        )
+        snapshot = EngineSnapshot(
+            state=EngineState(row["state"]),
+            live_streak=row["live_streak"],
+            offline_streak=row["offline_streak"],
+            sessions=sessions,
+            events=events,
+            seen_observation_ids=seen_ids,
+            next_session_id=row["next_session_id"],
+        )
+        return StateEngine.from_snapshot(snapshot, config)
 
-    def _write_engine(self, connection: sqlite3.Connection, engine: StateEngine) -> None:
+    def _write_engine(
+        self,
+        connection: sqlite3.Connection,
+        engine: StateEngine,
+        *,
+        inject_failure_at: str | None = None,
+    ) -> None:
+        snapshot = engine.snapshot()
         connection.execute(
             """
             UPDATE engine_state
@@ -222,14 +237,17 @@ class PersistentStateEngine:
             WHERE account_id = ?
             """,
             (
-                engine.state.value,
-                engine.live_streak,
-                engine.offline_streak,
-                engine._next_session_id,
+                snapshot.state.value,
+                snapshot.live_streak,
+                snapshot.offline_streak,
+                snapshot.next_session_id,
                 self.account_id,
             ),
         )
 
+        # Events depend on sessions through a foreign key, so the durable
+        # projection is rebuilt in dependency-safe order inside the same tx.
+        connection.execute("DELETE FROM events WHERE account_id = ?", (self.account_id,))
         connection.execute("DELETE FROM sessions WHERE account_id = ?", (self.account_id,))
         connection.executemany(
             """
@@ -243,11 +261,13 @@ class PersistentStateEngine:
                     session.opened_at.isoformat(),
                     session.closed_at.isoformat() if session.closed_at else None,
                 )
-                for session in engine.sessions
+                for session in snapshot.sessions
             ],
         )
 
-        connection.execute("DELETE FROM events WHERE account_id = ?", (self.account_id,))
+        if inject_failure_at == "after_sessions_write":
+            raise InjectedPersistenceFailure("after_sessions_write")
+
         connection.executemany(
             """
             INSERT INTO events (account_id, event_type, session_id, occurred_at)
@@ -260,7 +280,7 @@ class PersistentStateEngine:
                     event.session_id,
                     event.occurred_at.isoformat(),
                 )
-                for event in engine.events
+                for event in snapshot.events
             ],
         )
 
@@ -274,13 +294,12 @@ class PersistentStateEngine:
         try:
             connection.execute("BEGIN IMMEDIATE")
             engine = self._load_engine(connection)
+            result = engine.process(observation)
 
-            if observation.observation_id in engine._seen_observation_ids:
-                result = engine.process(observation)
+            if result.duplicate:
                 connection.rollback()
                 return result
 
-            result = engine.process(observation)
             connection.execute(
                 """
                 INSERT INTO observations (
@@ -299,7 +318,11 @@ class PersistentStateEngine:
             if inject_failure_at == "after_observation_insert":
                 raise InjectedPersistenceFailure("after_observation_insert")
 
-            self._write_engine(connection, engine)
+            self._write_engine(
+                connection,
+                engine,
+                inject_failure_at=inject_failure_at,
+            )
 
             if inject_failure_at == "after_state_write":
                 raise InjectedPersistenceFailure("after_state_write")
