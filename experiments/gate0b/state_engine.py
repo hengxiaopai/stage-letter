@@ -85,6 +85,24 @@ class LiveEvent:
 
 
 @dataclass(frozen=True)
+class LiveSessionSnapshot:
+    session_id: int
+    opened_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True)
+class EngineSnapshot:
+    state: EngineState
+    live_streak: int
+    offline_streak: int
+    sessions: tuple[LiveSessionSnapshot, ...]
+    events: tuple[LiveEvent, ...]
+    seen_observation_ids: frozenset[str]
+    next_session_id: int
+
+
+@dataclass(frozen=True)
 class ProcessResult:
     accepted: bool
     duplicate: bool
@@ -94,11 +112,11 @@ class ProcessResult:
 
 
 class StateEngine:
-    """In-memory Gate engine for one PlatformAccount.
+    """Pure Gate engine for one PlatformAccount.
 
-    The engine is intentionally deterministic and side-effect free except for
-    its own in-memory state. Persistence/transactions belong to later Gate 0B
-    steps.
+    Gate 0B-1 uses it in-memory. Gate 0B-2 persists an EngineSnapshot and
+    reconstructs the engine after restart. Snapshot/restore therefore belongs
+    to the domain boundary rather than to a specific database implementation.
     """
 
     def __init__(self, config: EngineConfig | None = None) -> None:
@@ -117,6 +135,57 @@ class StateEngine:
         if len(open_sessions) > 1:
             raise AssertionError("invariant violated: more than one open LiveSession")
         return open_sessions[0] if open_sessions else None
+
+    def snapshot(self) -> EngineSnapshot:
+        """Return a persistence-safe value snapshot of all behavior-relevant state."""
+        return EngineSnapshot(
+            state=self.state,
+            live_streak=self.live_streak,
+            offline_streak=self.offline_streak,
+            sessions=tuple(
+                LiveSessionSnapshot(
+                    session_id=session.session_id,
+                    opened_at=session.opened_at,
+                    closed_at=session.closed_at,
+                )
+                for session in self.sessions
+            ),
+            events=tuple(self.events),
+            seen_observation_ids=frozenset(self._seen_observation_ids),
+            next_session_id=self._next_session_id,
+        )
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: EngineSnapshot,
+        config: EngineConfig | None = None,
+    ) -> StateEngine:
+        """Reconstruct an engine exactly enough to continue deterministically."""
+        engine = cls(config=config)
+        engine.state = snapshot.state
+        engine.live_streak = snapshot.live_streak
+        engine.offline_streak = snapshot.offline_streak
+        engine.sessions = [
+            LiveSession(
+                session_id=session.session_id,
+                opened_at=session.opened_at,
+                closed_at=session.closed_at,
+            )
+            for session in snapshot.sessions
+        ]
+        engine.events = list(snapshot.events)
+        engine._seen_observation_ids = set(snapshot.seen_observation_ids)
+        engine._next_session_id = snapshot.next_session_id
+
+        max_session_id = max((session.session_id for session in engine.sessions), default=0)
+        if engine._next_session_id <= max_session_id:
+            raise ValueError("snapshot next_session_id must be greater than existing session ids")
+        if engine.live_streak < 0 or engine.offline_streak < 0:
+            raise ValueError("snapshot streaks must be non-negative")
+
+        engine._assert_invariants()
+        return engine
 
     def process_many(self, observations: Iterable[LiveObservation]) -> list[ProcessResult]:
         return [self.process(observation) for observation in observations]
