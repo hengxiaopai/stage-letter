@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Stage Letter Gate 0A — StreamGet Douyin room-status second-source probe.
+"""Stage Letter Gate 0A — StreamGet Douyin status second-source probe.
 
 Purpose
 -------
 Validate an independent, local Douyin observation path against known OFFLINE
-and LIVE controls using StreamGet's raw room status.
+and LIVE controls using StreamGet's explicit room status.
 
 StreamGet's current Douyin implementation treats room status 2 as live and
-returns early for status 4 before stream extraction. For this Gate experiment
-we normalize only these explicit values:
+returns status 4 for a non-live room. For this Gate experiment we normalize
+only these explicit values:
 
     2 -> LIVE
     4 -> OFFLINE
@@ -16,15 +16,22 @@ we normalize only these explicit values:
 Any missing status, exception, request/parse failure, risk-control behavior, or
 other value MUST remain UNKNOWN.
 
-This mapping is experimental until it matches independently observed ground
-truth on both OFFLINE and LIVE controls. It is not production-approved and does
-not mutate LiveSession or notification state.
+Two input modes are supported:
+- PROFILE: https://www.douyin.com/user/<sec_uid>  (preferred for monitoring)
+- LIVE_URL: https://live.douyin.com/<web_rid-or-douyin-id>
+
+The PROFILE path is preferred after Gate evidence showed stable repeated
+OFFLINE/LIVE classification while one historical numeric live-room URL became
+intermittently unparseable for an OFFLINE creator.
+
+This mapping remains experimental. It is not production-approved and does not
+mutate LiveSession or notification state.
 
 Security
 --------
 - Optional Douyin cookie is read only from DOUYIN_COOKIE.
 - Cookie contents are never printed or returned.
-- First Gate runs should use no login cookie.
+- Gate runs should default to no login cookie.
 - Raw provider payload is not returned.
 """
 
@@ -58,12 +65,34 @@ def classify_room_status(value: Any) -> str:
     return "UNKNOWN"
 
 
-def safe_url(value: str) -> bool:
+def input_mode(value: str) -> str | None:
     value = value.strip()
-    return value.startswith("https://live.douyin.com/") and len(value) <= 300
+    if value.startswith("https://www.douyin.com/user/") and len(value) <= 500:
+        return "PROFILE"
+    if value.startswith("https://live.douyin.com/") and len(value) <= 300:
+        return "LIVE_URL"
+    return None
 
 
 async def probe(url: str) -> dict[str, Any]:
+    mode = input_mode(url)
+    if mode is None:
+        return {
+            "ok": False,
+            "platform": "douyin",
+            "url": url,
+            "input_mode": None,
+            "status": "UNKNOWN",
+            "raw_room_status": None,
+            "observed_at": now_iso(),
+            "source_type": SOURCE_TYPE,
+            "source_provider": SOURCE_PROVIDER,
+            "streamget_version": None,
+            "cookie_configured": bool(os.environ.get("DOUYIN_COOKIE", "").strip()),
+            "production_approved": False,
+            "error_type": "INVALID_DOUYIN_INPUT_URL",
+        }
+
     try:
         from streamget import DouyinLiveStream
     except Exception as exc:
@@ -71,6 +100,7 @@ async def probe(url: str) -> dict[str, Any]:
             "ok": False,
             "platform": "douyin",
             "url": url,
+            "input_mode": mode,
             "status": "UNKNOWN",
             "raw_room_status": None,
             "observed_at": now_iso(),
@@ -92,7 +122,11 @@ async def probe(url: str) -> dict[str, Any]:
 
     try:
         live = DouyinLiveStream(cookies=cookie or None)
-        room = await live.fetch_web_stream_data(url)
+        if mode == "PROFILE":
+            room = await live.fetch_app_stream_data(url)
+        else:
+            room = await live.fetch_web_stream_data(url)
+
         raw_status = room.get("status")
         status = classify_room_status(raw_status)
 
@@ -104,6 +138,7 @@ async def probe(url: str) -> dict[str, Any]:
         anchor_name = room.get("anchor_name")
         title = room.get("title")
         live_url = room.get("live_url")
+        room_id = room.get("id") or room.get("room_id")
 
         m3u8_present = False
         flv_present = False
@@ -116,6 +151,7 @@ async def probe(url: str) -> dict[str, Any]:
             "ok": False,
             "platform": "douyin",
             "url": url,
+            "input_mode": mode,
             "status": "UNKNOWN",
             "raw_room_status": None,
             "observed_at": now_iso(),
@@ -138,7 +174,6 @@ async def probe(url: str) -> dict[str, Any]:
             evidence.append("stream_url_present")
             confidence = 0.95
         else:
-            # Raw LIVE without a usable stream remains useful but weaker.
             confidence = 0.8
     elif status == "OFFLINE":
         evidence.append(f"explicit_room_status:{raw_status}")
@@ -151,11 +186,13 @@ async def probe(url: str) -> dict[str, Any]:
         "ok": status in ("LIVE", "OFFLINE"),
         "platform": "douyin",
         "url": url,
+        "input_mode": mode,
         "status": status,
         "raw_room_status": raw_status,
         "anchor_name": anchor_name,
         "title": title,
         "live_url": live_url,
+        "room_id": room_id,
         "m3u8_present": m3u8_present,
         "flv_present": flv_present,
         "observed_at": now_iso(),
@@ -172,16 +209,6 @@ async def probe(url: str) -> dict[str, Any]:
 
 def main() -> int:
     url = (sys.argv[1] if len(sys.argv) > 1 else "https://live.douyin.com/975645387460").strip()
-    if not safe_url(url):
-        print(json.dumps({
-            "ok": False,
-            "platform": "douyin",
-            "url": url,
-            "status": "UNKNOWN",
-            "error_type": "INVALID_DOUYIN_LIVE_URL",
-        }, ensure_ascii=False, indent=2))
-        return 2
-
     result = asyncio.run(probe(url))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("status") in ("LIVE", "OFFLINE") else 1
