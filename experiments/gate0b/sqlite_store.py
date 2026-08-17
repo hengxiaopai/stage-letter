@@ -87,119 +87,123 @@ class PersistentStateEngine:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS engine_state (
-                    account_id TEXT PRIMARY KEY,
-                    state TEXT NOT NULL,
-                    live_streak INTEGER NOT NULL CHECK (live_streak >= 0),
-                    offline_streak INTEGER NOT NULL CHECK (offline_streak >= 0),
-                    next_session_id INTEGER NOT NULL CHECK (next_session_id >= 1),
-                    live_confirmations_required INTEGER NOT NULL CHECK (live_confirmations_required >= 1),
-                    offline_confirmations_required INTEGER NOT NULL CHECK (offline_confirmations_required >= 1),
-                    observation_watermark TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS observations (
-                    account_id TEXT NOT NULL,
-                    observation_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    observed_at TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    source_started_at TEXT,
-                    PRIMARY KEY (account_id, observation_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS sessions (
-                    account_id TEXT NOT NULL,
-                    session_id INTEGER NOT NULL,
-                    opened_at TEXT NOT NULL,
-                    closed_at TEXT,
-                    origin TEXT NOT NULL DEFAULT 'TRANSITION',
-                    source_started_at TEXT,
-                    PRIMARY KEY (account_id, session_id)
-                );
-
-                CREATE UNIQUE INDEX IF NOT EXISTS one_open_session_per_account
-                    ON sessions(account_id)
-                    WHERE closed_at IS NULL;
-
-                CREATE TABLE IF NOT EXISTS events (
-                    account_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    session_id INTEGER NOT NULL,
-                    occurred_at TEXT NOT NULL,
-                    cause TEXT NOT NULL DEFAULT 'TRANSITION',
-                    PRIMARY KEY (account_id, event_type, session_id),
-                    FOREIGN KEY (account_id, session_id)
-                        REFERENCES sessions(account_id, session_id)
-                );
-                """
-            )
-
-            # Forward-compatible Gate migration for local SQLite files created
-            # by Gate 0B-2 before bootstrap/watermark fields existed.
-            self._ensure_column(
-                connection,
-                "engine_state",
-                "observation_watermark",
-                "observation_watermark TEXT",
-            )
-            self._ensure_column(
-                connection,
-                "observations",
-                "source_started_at",
-                "source_started_at TEXT",
-            )
-            self._ensure_column(
-                connection,
-                "sessions",
-                "origin",
-                "origin TEXT NOT NULL DEFAULT 'TRANSITION'",
-            )
-            self._ensure_column(
-                connection,
-                "sessions",
-                "source_started_at",
-                "source_started_at TEXT",
-            )
-            self._ensure_column(
-                connection,
-                "events",
-                "cause",
-                "cause TEXT NOT NULL DEFAULT 'TRANSITION'",
-            )
-
-            row = connection.execute(
-                "SELECT * FROM engine_state WHERE account_id = ?",
-                (self.account_id,),
-            ).fetchone()
-
-            if row is None:
-                config = self.requested_config or EngineConfig()
-                connection.execute(
+        connection = self._connect()
+        try:
+            with connection:
+                connection.executescript(
                     """
-                    INSERT INTO engine_state (
-                        account_id, state, live_streak, offline_streak,
-                        next_session_id, live_confirmations_required,
-                        offline_confirmations_required, observation_watermark
-                    ) VALUES (?, ?, 0, 0, 1, ?, ?, NULL)
-                    """,
-                    (
-                        self.account_id,
-                        EngineState.UNKNOWN.value,
-                        config.live_confirmations_required,
-                        config.offline_confirmations_required,
-                    ),
+                    CREATE TABLE IF NOT EXISTS engine_state (
+                        account_id TEXT PRIMARY KEY,
+                        state TEXT NOT NULL,
+                        live_streak INTEGER NOT NULL CHECK (live_streak >= 0),
+                        offline_streak INTEGER NOT NULL CHECK (offline_streak >= 0),
+                        next_session_id INTEGER NOT NULL CHECK (next_session_id >= 1),
+                        live_confirmations_required INTEGER NOT NULL CHECK (live_confirmations_required >= 1),
+                        offline_confirmations_required INTEGER NOT NULL CHECK (offline_confirmations_required >= 1),
+                        observation_watermark TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS observations (
+                        account_id TEXT NOT NULL,
+                        observation_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        observed_at TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        source_started_at TEXT,
+                        PRIMARY KEY (account_id, observation_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        account_id TEXT NOT NULL,
+                        session_id INTEGER NOT NULL,
+                        opened_at TEXT NOT NULL,
+                        closed_at TEXT,
+                        origin TEXT NOT NULL DEFAULT 'TRANSITION',
+                        source_started_at TEXT,
+                        PRIMARY KEY (account_id, session_id)
+                    );
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS one_open_session_per_account
+                        ON sessions(account_id)
+                        WHERE closed_at IS NULL;
+
+                    CREATE TABLE IF NOT EXISTS events (
+                        account_id TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        session_id INTEGER NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        cause TEXT NOT NULL DEFAULT 'TRANSITION',
+                        PRIMARY KEY (account_id, event_type, session_id),
+                        FOREIGN KEY (account_id, session_id)
+                            REFERENCES sessions(account_id, session_id)
+                    );
+                    """
                 )
-            elif self.requested_config is not None:
-                persisted = EngineConfig(
-                    live_confirmations_required=row["live_confirmations_required"],
-                    offline_confirmations_required=row["offline_confirmations_required"],
+
+                # Forward-compatible Gate migration for local SQLite files
+                # created by Gate 0B-2 before bootstrap/watermark fields existed.
+                self._ensure_column(
+                    connection,
+                    "engine_state",
+                    "observation_watermark",
+                    "observation_watermark TEXT",
                 )
-                if persisted != self.requested_config:
-                    raise ValueError("persisted EngineConfig differs from requested config")
+                self._ensure_column(
+                    connection,
+                    "observations",
+                    "source_started_at",
+                    "source_started_at TEXT",
+                )
+                self._ensure_column(
+                    connection,
+                    "sessions",
+                    "origin",
+                    "origin TEXT NOT NULL DEFAULT 'TRANSITION'",
+                )
+                self._ensure_column(
+                    connection,
+                    "sessions",
+                    "source_started_at",
+                    "source_started_at TEXT",
+                )
+                self._ensure_column(
+                    connection,
+                    "events",
+                    "cause",
+                    "cause TEXT NOT NULL DEFAULT 'TRANSITION'",
+                )
+
+                row = connection.execute(
+                    "SELECT * FROM engine_state WHERE account_id = ?",
+                    (self.account_id,),
+                ).fetchone()
+
+                if row is None:
+                    config = self.requested_config or EngineConfig()
+                    connection.execute(
+                        """
+                        INSERT INTO engine_state (
+                            account_id, state, live_streak, offline_streak,
+                            next_session_id, live_confirmations_required,
+                            offline_confirmations_required, observation_watermark
+                        ) VALUES (?, ?, 0, 0, 1, ?, ?, NULL)
+                        """,
+                        (
+                            self.account_id,
+                            EngineState.UNKNOWN.value,
+                            config.live_confirmations_required,
+                            config.offline_confirmations_required,
+                        ),
+                    )
+                elif self.requested_config is not None:
+                    persisted = EngineConfig(
+                        live_confirmations_required=row["live_confirmations_required"],
+                        offline_confirmations_required=row["offline_confirmations_required"],
+                    )
+                    if persisted != self.requested_config:
+                        raise ValueError("persisted EngineConfig differs from requested config")
+        finally:
+            connection.close()
 
     def _load_engine(self, connection: sqlite3.Connection) -> StateEngine:
         row = connection.execute(
@@ -416,7 +420,8 @@ class PersistentStateEngine:
             connection.close()
 
     def snapshot(self) -> DurableSnapshot:
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
             engine = self._load_engine(connection)
             observation_count = connection.execute(
                 "SELECT COUNT(*) FROM observations WHERE account_id = ?",
@@ -432,3 +437,5 @@ class PersistentStateEngine:
                 observation_count=observation_count,
                 observation_watermark=engine.observation_watermark,
             )
+        finally:
+            connection.close()
