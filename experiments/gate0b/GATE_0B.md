@@ -1,10 +1,10 @@
 # Gate 0B — State Engine + LiveSession
 
-Status: **IN PROGRESS**
+Status: **PASS**
 
 ## Scope
 
-Gate 0B validates the domain behavior between normalized observations and canonical live-session state:
+Gate 0B validates the canonical domain behavior between normalized observations and live-session state:
 
 ```text
 LiveObservation
@@ -13,29 +13,37 @@ LiveObservation
     -> LiveEvent
 ```
 
-Gate 0A progression was allowed with a known deferred lifecycle evidence gap. Gate 0B must not convert that waiver into fabricated evidence.
+Gate 0A progression was allowed with a known deferred real-world lifecycle capture gap. Gate 0B does not convert that waiver into fabricated source evidence; it validates deterministic domain behavior for normalized observations.
 
 ## Frozen safety invariants
 
 ```text
 UNKNOWN != OFFLINE
-UNKNOWN never closes a LiveSession
+UNKNOWN never opens or closes a LiveSession
 one PlatformAccount -> at most one open LiveSession
-one confirmed session -> exactly one LIVE_STARTED
-one closed session -> exactly one LIVE_ENDED
-duplicate observation -> no duplicate transition/session/event
+one canonical session -> exactly one LIVE_STARTED record
+one closed session -> exactly one LIVE_ENDED record
+duplicate observation id -> no duplicate transition/session/event
+stale observation -> no state/streak/session/event mutation
 stale title/live_url metadata cannot override explicit state
 ```
 
-## Gate 0B-1 — Pure state model — PASS
-
-State chain:
+Default Gate confirmation configuration:
 
 ```text
-UNKNOWN
-   |
-   | explicit OFFLINE baseline
-   v
+live_confirmations_required    = 2
+offline_confirmations_required = 2
+```
+
+Thresholds are configuration, not hard-coded product truth.
+
+---
+
+## Gate 0B-1 — Pure state model — PASS
+
+Normal transition chain:
+
+```text
 OFFLINE_CONFIRMED
    |
    | LIVE #1
@@ -55,14 +63,7 @@ OFFLINE_PENDING
 OFFLINE_CONFIRMED
 ```
 
-Default Gate configuration:
-
-```text
-live_confirmations_required    = 2
-offline_confirmations_required = 2
-```
-
-`UNKNOWN` is a pause/no-op observation: it does not advance or cancel pending transitions, never opens/closes a session, and never emits LIVE_STARTED/LIVE_ENDED.
+`UNKNOWN` is a pause/no-op for decisive state. It does not advance or cancel pending confirmation and never emits a session transition.
 
 Explicit opposite evidence cancels pending transitions:
 
@@ -71,19 +72,7 @@ LIVE_PENDING + OFFLINE -> OFFLINE_CONFIRMED
 OFFLINE_PENDING + LIVE -> LIVE_CONFIRMED
 ```
 
-### Bootstrap rule — unresolved for production
-
-Gate 0B-1/0B-2 preserve the conservative bootstrap chain:
-
-```text
-UNKNOWN + LIVE -> UNKNOWN
-```
-
-A new account therefore requires an explicit OFFLINE baseline before a later LIVE transition can become canonical. This avoids fabricating a start event but means an account first onboarded while already LIVE is not represented correctly. Gate 0B-3 must resolve this explicitly.
-
-### Gate 0B-1 acceptance — PASS
-
-The pure-domain suite proves UNKNOWN safety, explicit OFFLINE baseline, LIVE/OFFLINE pending confirmation, opposite-state cancellation, duplicate observation idempotency, no duplicate sessions/events, distinct session cycles, and config validation.
+Gate 0B-1 established duplicate-id idempotency, anti-flapping confirmation, one-open-session semantics, exact LIVE_STARTED/LIVE_ENDED pairing, and multi-cycle behavior.
 
 Initial CI evidence:
 
@@ -91,16 +80,17 @@ Initial CI evidence:
 workflow  Gate 0B State Smoke
 run       32005422864
 result    completed / success
-head      ac6f07e6302b6c1ebdaafc6ad64dce8314771489
 ```
 
-The engine also exposes an explicit `EngineSnapshot` / `StateEngine.from_snapshot()` boundary so persistence can reconstruct behavior-relevant state without defining domain semantics itself.
+The engine exposes `EngineSnapshot` / `StateEngine.from_snapshot()` so persistence reconstructs behavior-relevant domain state without owning state-machine semantics.
+
+---
 
 ## Gate 0B-2 — SQLite persistence + restart safety — PASS
 
-SQLite is used only as a minimal standard-library transaction harness. It is **not** a production database selection.
+SQLite is used only as a standard-library transaction harness. It is **not** a production database selection.
 
-Persistent projection:
+Durable projection:
 
 ```text
 engine_state
@@ -115,8 +105,8 @@ Every observation is handled in one transaction:
 BEGIN IMMEDIATE
   load durable EngineSnapshot
   process canonical LiveObservation
-  persist observation idempotency key
-  persist engine state + pending counters
+  persist observation idempotency fact
+  persist engine state + pending counters + watermark
   persist LiveSession projection
   persist LiveEvent projection
 COMMIT
@@ -134,43 +124,155 @@ one open session per account_id via partial UNIQUE index
 event -> session foreign key
 ```
 
-### Gate 0B-2 persistence acceptance — PASS 12/12
+Gate 0B-2 proved restart-safe pending counters, open-session durability, session-id continuity, durable observation idempotency, config continuity, account isolation, and full rollback when failure occurs after observation insert, after state write, or after session write but before event write.
+
+---
+
+## Gate 0B-3 — bootstrap LIVE + observation ordering — PASS
+
+### A. Creator first observed while already LIVE
+
+The previous conservative policy `UNKNOWN + LIVE -> UNKNOWN` is superseded.
+
+New bootstrap chain:
 
 ```text
-01 OFFLINE baseline survives restart                         PASS
-02 LIVE_PENDING + streak survives restart and confirms       PASS
-03 open LiveSession survives restart                         PASS
-04 OFFLINE_PENDING survives restart and closes same session  PASS
-05 duplicate observation survives restart without new event  PASS
-06 UNKNOWN after restart never closes open session           PASS
-07 session id sequence continues across restart              PASS
-08 failure after observation insert rolls back atomically    PASS
-09 state/session/event transition rollback                   PASS
-10 persisted EngineConfig reused; mismatch rejected          PASS
-11 fail after session row / before event -> full rollback     PASS
-12 two PlatformAccounts isolated in one SQLite database      PASS
+UNKNOWN
+   |
+   | initial LIVE #1
+   v
+BOOTSTRAP_LIVE_PENDING
+   |
+   | repeated decisive LIVE reaches threshold
+   v
+LIVE_CONFIRMED
 ```
 
-The strongest fault injection deliberately interrupts a second LIVE confirmation **after the session row has been written but before the LIVE_STARTED event is written**. After rollback and restart the database still contains the prior `LIVE_PENDING` state with zero session and zero event; retry creates exactly one session and one event.
+If explicit OFFLINE arrives during `BOOTSTRAP_LIVE_PENDING`, bootstrap is cancelled and the engine becomes `OFFLINE_CONFIRMED`. `UNKNOWN` pauses bootstrap without advancing or cancelling it.
 
-### Latest Gate 0B-2 CI evidence — PASS
+A confirmed bootstrap creates a canonical open LiveSession with:
+
+```text
+session.origin = BOOTSTRAP_LIVE
+```
+
+A normal observed OFFLINE -> LIVE transition creates:
+
+```text
+session.origin = TRANSITION
+```
+
+A bootstrap session records one `LIVE_STARTED` domain event for session completeness, but the event is explicitly marked:
+
+```text
+event.cause = BOOTSTRAP_LIVE
+```
+
+A true observed transition uses:
+
+```text
+event.cause = TRANSITION
+```
+
+Therefore a bootstrap discovery is **not semantically indistinguishable from a real start transition**. Gate 0D notification policy must not treat `LIVE_STARTED + cause=BOOTSTRAP_LIVE` as an ordinary “刚刚开播” notification by default.
+
+### opened_at vs source_started_at
+
+Gate 0B-3 freezes the time semantics:
+
+```text
+LiveSession.opened_at
+    = time the canonical session becomes confirmed in Stage Letter
+
+LiveSession.source_started_at
+    = platform/provider-reported source start time when trustworthy and available
+    = null when unavailable
+```
+
+`opened_at` must never be presented as an invented platform start time. If `source_started_at` is absent, later UI/API may describe the time as “检测到直播 / 状态确认时间”, not a fabricated exact开播时间.
+
+### B. Per-account observation ordering watermark
+
+Each StateEngine now carries:
+
+```text
+observation_watermark: datetime | null
+```
+
+Ordering rule:
+
+```text
+observation_id already seen
+    -> DUPLICATE
+    -> no mutation
+
+observed_at < observation_watermark
+    -> STALE
+    -> record durable observation/idempotency fact
+    -> do NOT change state
+    -> do NOT change pending streak
+    -> do NOT open/close session
+    -> do NOT emit event
+    -> do NOT move watermark backwards
+
+observed_at >= watermark
+    -> process normally
+```
+
+Equal timestamps are not classified stale because `observed_at` alone cannot establish ordering between equal-time observations.
+
+A newer `UNKNOWN` observation advances the watermark while remaining a decisive-state no-op. This is intentional: an older delayed OFFLINE/LIVE response arriving after that newer observation must not regress canonical state.
+
+Duplicate classification takes precedence over stale classification. A replayed known observation id remains DUPLICATE even if its timestamp is older than the current watermark.
+
+The watermark, bootstrap pending state, bootstrap session origin, event cause, and source start provenance all survive SQLite restart.
+
+---
+
+## Gate 0B-3 acceptance evidence — PASS
+
+The final suite proves, among other existing Gate cases:
+
+```text
+initial LIVE -> BOOTSTRAP_LIVE_PENDING                     PASS
+second decisive initial LIVE -> LIVE_CONFIRMED             PASS
+bootstrap session origin persisted                          PASS
+bootstrap LIVE_STARTED cause persisted                      PASS
+UNKNOWN pauses bootstrap                                    PASS
+OFFLINE cancels bootstrap pending                           PASS
+bootstrap source_started_at provenance survives restart     PASS
+stale unique observation cannot mutate state                PASS
+stale observation cannot advance pending streak             PASS
+stale observation cannot close open session                 PASS
+newer UNKNOWN advances watermark                            PASS
+older delayed OFFLINE blocked after newer UNKNOWN           PASS
+watermark survives restart                                  PASS
+stale observation becomes durable duplicate on replay       PASS
+equal timestamp is not falsely classified stale             PASS
+threshold=1 immediate bootstrap/close semantics              PASS
+SQLite connections close deterministically                  PASS
+```
+
+Latest CI evidence:
 
 ```text
 workflow  Gate 0B Persistence Smoke
-run       32005925909
-head      2cc6430829fec8b3e5d96afe6e5c30f17217101c
+run       32006556736
+head      28556b1378b562e4ba710e5f6e6754abd69676f8
 result    completed / success
 
 workflow  Gate 0B State Smoke
-run       32005925822
-head      2cc6430829fec8b3e5d96afe6e5c30f17217101c
+run       32006556771
+head      28556b1378b562e4ba710e5f6e6754abd69676f8
 result    completed / success
 
 Python    3.13.15
-suite     26 tests total / 26 PASS
+suite     37 tests total / 37 PASS
 ```
 
-Gate 0B-2 therefore proves restart-safe idempotency, pending-state durability, open-session durability, transaction rollback safety, and account isolation with no external runtime dependency.
+The final persistence run contains no SQLite ResourceWarning from Gate code; connection lifecycle is explicitly closed.
+
+---
 
 ## Current domain objects
 
@@ -181,9 +283,8 @@ observation_id
 status: LIVE | OFFLINE | UNKNOWN
 observed_at
 source
+source_started_at | null
 ```
-
-`observation_id` is the durable idempotency key.
 
 ### LiveSession
 
@@ -191,60 +292,48 @@ source
 session_id
 opened_at
 closed_at | null
+origin: TRANSITION | BOOTSTRAP_LIVE
+source_started_at | null
 ```
-
-Exactly one session may be open at a time per engine / PlatformAccount.
 
 ### LiveEvent
 
 ```text
-LIVE_STARTED
-LIVE_ENDED
+type: LIVE_STARTED | LIVE_ENDED
+session_id
+occurred_at
+cause: TRANSITION | BOOTSTRAP_LIVE
 ```
 
-Both events are bound to the same session_id for one normal observed lifecycle.
-
-## Next: Gate 0B-3 — bootstrap + observation ordering policy
-
-Two production-significant semantics remain unresolved.
-
-### A. Account first observed while already LIVE
-
-Current behavior:
+### State ordering
 
 ```text
-new account + LIVE -> UNKNOWN
+observation_watermark | null
 ```
 
-This is safe against false notifications but incomplete for Stage Letter: a user may follow a creator who is already live.
+---
 
-Recommended domain direction for Gate 0B-3:
+## Gate 0B result — PASS
 
 ```text
-repeated confirmed initial LIVE
-  -> canonical open LiveSession
-  -> session origin explicitly marks BOOTSTRAP / DISCOVERED_LIVE
-  -> must NOT be indistinguishable from a real OFFLINE -> LIVE start event
+Gate 0B-1 state semantics                 PASS
+Gate 0B-2 restart / transaction safety    PASS
+Gate 0B-3 bootstrap / ordering policy     PASS
+GitHub State Smoke                        PASS
+GitHub Persistence Smoke                  PASS
+full Gate suite                           37 / 37 PASS
+external runtime dependency               NONE
 ```
 
-Gate 0B-3 must freeze how this affects LiveEvent semantics, later notification eligibility, `opened_at` when source start time is unavailable, UNKNOWN during bootstrap, restart behavior, and idempotency.
-
-### B. Out-of-order / stale observations
-
-Unique observation ids do not prevent a slower old request from arriving after a newer result. A stale OFFLINE result must never regress a newer LIVE state.
-
-Gate 0B-3 must define a durable per-account ordering watermark and prove:
+Known items intentionally outside Gate 0B:
 
 ```text
-newer observation accepted
-older unique observation rejected as STALE / no state mutation
-stale observation cannot open or close a session
-stale observation cannot advance pending confirmation counters
-ordering watermark survives restart
-UNKNOWN and decisive observations obey one explicit ordering rule
+real source OFFLINE -> LIVE -> OFFLINE capture       Gate 0A deferred evidence gap
+provider polling health / degradation policy         Gate 0C
+production provider authorization/compliance         separate production track
+WeChat notification eligibility/delivery truth       Gate 0D
+end-to-end golden path                               Gate 0E
 ```
-
-No provider HTTP logic or notification delivery implementation belongs in 0B-3; only the canonical domain facts and ordering rules are in scope.
 
 ## Local verification
 
@@ -252,7 +341,7 @@ No provider HTTP logic or notification delivery implementation belongs in 0B-3; 
 python -m unittest discover -s experiments/gate0b -p "test_*.py" -v
 ```
 
-Gate 0B-1/0B-2 use only the Python standard library.
+Gate 0B uses only the Python standard library.
 
 ## Current progression
 
@@ -261,7 +350,9 @@ Gate 0A evidence status      DEGRADED / deferred lifecycle gap
 Gate 0A progression          ALLOWED WITH KNOWN GAP
 Gate 0B-1                    PASS
 Gate 0B-2                    PASS
-Gate 0B-3                    NEXT
-Gate 0B overall              IN PROGRESS
-Gate 0C                      NOT STARTED
+Gate 0B-3                    PASS
+Gate 0B overall              PASS
+Gate 0C                      READY TO START
+Gate 0D                      NOT STARTED
+Gate 0E                      NOT STARTED
 ```
