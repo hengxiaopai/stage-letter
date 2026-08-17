@@ -77,19 +77,24 @@ class PersistentStateEngineTest(unittest.TestCase):
     def test_03_open_session_survives_restart(self) -> None:
         first = self.store()
         self.open_live(first)
-        session_id = first.snapshot().open_session.session_id
+        session = first.snapshot().open_session
+        assert session is not None
+        session_id = session.session_id
 
         restarted = self.store()
         snapshot = restarted.snapshot()
         self.assertEqual(snapshot.state, EngineState.LIVE_CONFIRMED)
         self.assertIsNotNone(snapshot.open_session)
+        assert snapshot.open_session is not None
         self.assertEqual(snapshot.open_session.session_id, session_id)
         self.assertEqual(len(snapshot.events), 1)
 
     def test_04_offline_pending_survives_restart_and_closes_same_session(self) -> None:
         first = self.store()
         self.open_live(first)
-        session_id = first.snapshot().open_session.session_id
+        session = first.snapshot().open_session
+        assert session is not None
+        session_id = session.session_id
         first.process(obs(4, ObservationStatus.OFFLINE))
         self.assertEqual(first.snapshot().state, EngineState.OFFLINE_PENDING)
         self.assertEqual(first.snapshot().offline_streak, 1)
@@ -148,6 +153,8 @@ class PersistentStateEngineTest(unittest.TestCase):
         snapshot = restarted.snapshot()
         self.assertEqual(snapshot.state, EngineState.LIVE_CONFIRMED)
         self.assertEqual([session.session_id for session in snapshot.sessions], [1, 2])
+        self.assertIsNotNone(snapshot.open_session)
+        assert snapshot.open_session is not None
         self.assertEqual(snapshot.open_session.session_id, 2)
 
     def test_08_transaction_rolls_back_after_observation_insert(self) -> None:
@@ -209,6 +216,54 @@ class PersistentStateEngineTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             self.store(EngineConfig(live_confirmations_required=2, offline_confirmations_required=2))
+
+    def test_11_transaction_rolls_back_if_session_written_before_event(self) -> None:
+        store = self.store()
+        self.baseline(store)
+        store.process(obs(2, ObservationStatus.LIVE))
+        before = store.snapshot()
+
+        with self.assertRaises(InjectedPersistenceFailure):
+            store.process(
+                obs(3, ObservationStatus.LIVE),
+                inject_failure_at="after_sessions_write",
+            )
+
+        after_failure = self.store().snapshot()
+        self.assertEqual(after_failure.state, EngineState.LIVE_PENDING)
+        self.assertEqual(after_failure.live_streak, 1)
+        self.assertEqual(after_failure.observation_count, before.observation_count)
+        self.assertEqual(len(after_failure.sessions), 0)
+        self.assertEqual(len(after_failure.events), 0)
+
+        retry = self.store().process(obs(3, ObservationStatus.LIVE))
+        snapshot = self.store().snapshot()
+        self.assertEqual(retry.current_state, EngineState.LIVE_CONFIRMED)
+        self.assertEqual(len(snapshot.sessions), 1)
+        self.assertEqual(len(snapshot.events), 1)
+        self.assertEqual(snapshot.events[0].event_type, LiveEventType.LIVE_STARTED)
+
+    def test_12_two_accounts_are_isolated_in_same_database(self) -> None:
+        account_a = PersistentStateEngine(self.db, "douyin:account:a")
+        account_b = PersistentStateEngine(self.db, "douyin:account:b")
+
+        account_a.process(obs(1, ObservationStatus.OFFLINE))
+        account_a.process(obs(2, ObservationStatus.LIVE))
+        account_a.process(obs(3, ObservationStatus.LIVE))
+        account_b.process(obs(1, ObservationStatus.OFFLINE))
+
+        a = PersistentStateEngine(self.db, "douyin:account:a").snapshot()
+        b = PersistentStateEngine(self.db, "douyin:account:b").snapshot()
+
+        self.assertEqual(a.state, EngineState.LIVE_CONFIRMED)
+        self.assertIsNotNone(a.open_session)
+        self.assertEqual(len(a.events), 1)
+        self.assertEqual(a.observation_count, 3)
+
+        self.assertEqual(b.state, EngineState.OFFLINE_CONFIRMED)
+        self.assertIsNone(b.open_session)
+        self.assertEqual(len(b.events), 0)
+        self.assertEqual(b.observation_count, 1)
 
 
 if __name__ == "__main__":
