@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Stage Letter Gate 0A — capture a real OFFLINE -> LIVE -> OFFLINE lifecycle.
 
-This watcher deliberately reuses streamget_status_probe.py as the single
-normalization authority. Every probe result is appended to JSONL. UNKNOWN
-observations are logged but never advance or close the lifecycle.
+This watcher imports and reuses streamget_status_probe.py's async ``probe``
+function as the single normalization authority. Every probe result is appended
+to JSONL. UNKNOWN observations are logged but never advance or close the
+lifecycle.
 
 Expected Gate sequence:
     OFFLINE(status=4) -> LIVE(status=2) -> OFFLINE(status=4)
@@ -21,14 +22,15 @@ Security:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
-import os
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from streamget_status_probe import probe as status_probe
 
 TZ_UTC8 = timezone(timedelta(hours=8))
 
@@ -41,10 +43,6 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def probe_script() -> Path:
-    return Path(__file__).resolve().with_name("streamget_status_probe.py")
-
-
 def default_output(profile_url: str) -> Path:
     sec_tail = profile_url.rstrip("/").split("/")[-1].split("?", 1)[0]
     safe_tail = "".join(ch for ch in sec_tail if ch.isalnum() or ch in "-_" )[-24:] or "profile"
@@ -53,33 +51,20 @@ def default_output(profile_url: str) -> Path:
 
 
 def run_probe(profile_url: str) -> dict[str, Any]:
-    proc = subprocess.run(
-        [sys.executable, str(probe_script()), profile_url],
-        cwd=repo_root(),
-        env=os.environ.copy(),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    """Run the canonical Gate probe in-process.
 
-    stdout = proc.stdout.strip()
-    if not stdout:
-        return {
-            "ok": False,
-            "platform": "douyin",
-            "url": profile_url,
-            "input_mode": "PROFILE",
-            "status": "UNKNOWN",
-            "raw_room_status": None,
-            "observed_at": now_iso(),
-            "error_type": "WATCHER_EMPTY_PROBE_OUTPUT",
-            "probe_exit_code": proc.returncode,
-        }
+    The original watcher spawned the probe as a child process and parsed its
+    JSON stdout. On Windows, redirected child stdout can use a different text
+    encoding from the interactive Git Bash console. A creator name containing
+    styled Unicode/emoji could therefore fail before JSON reached the parent,
+    surfacing only as WATCHER_EMPTY_PROBE_OUTPUT.
 
+    Importing the canonical async probe directly removes that transport/
+    encoding boundary while preserving exactly the same normalization rules.
+    """
     try:
-        result = json.loads(stdout)
-    except json.JSONDecodeError:
+        result = asyncio.run(status_probe(profile_url))
+    except Exception as exc:
         return {
             "ok": False,
             "platform": "douyin",
@@ -88,11 +73,22 @@ def run_probe(profile_url: str) -> dict[str, Any]:
             "status": "UNKNOWN",
             "raw_room_status": None,
             "observed_at": now_iso(),
-            "error_type": "WATCHER_PROBE_OUTPUT_PARSE_ERROR",
-            "probe_exit_code": proc.returncode,
+            "error_type": "WATCHER_PROBE_INVOCATION_ERROR",
+            "message": type(exc).__name__,
         }
 
-    result["probe_exit_code"] = proc.returncode
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "platform": "douyin",
+            "url": profile_url,
+            "input_mode": "PROFILE",
+            "status": "UNKNOWN",
+            "raw_room_status": None,
+            "observed_at": now_iso(),
+            "error_type": "WATCHER_INVALID_PROBE_RESULT",
+        }
+
     return result
 
 
