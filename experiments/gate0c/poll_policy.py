@@ -122,11 +122,19 @@ def decide_poll(
     elif context.failure_kind in (FailureKind.AUTH, FailureKind.BLOCKED):
         minimum_cooldown = policy.hard_failure_min_cooldown_s
 
-    # Jitter is symmetric around the base decision. A cooldown override is
-    # applied *after* jitter so negative jitter can never violate provider-safe
-    # minimum cooldowns.
+    # Jitter is symmetric around the base decision. For UNAVAILABLE recovery
+    # probes, jitter itself may not escape the exponential-backoff ceiling.
+    # A provider-safety minimum cooldown is applied after that ceiling and may
+    # intentionally be longer than the generic backoff cap if configured so.
     jitter_multiplier = 1.0 + policy.jitter_fraction * context.jitter_unit
-    jittered = max(1, round(base_delay * jitter_multiplier))
+    jittered_unbounded = max(1, round(base_delay * jitter_multiplier))
+    if context.health_state is HealthState.UNAVAILABLE:
+        if jittered_unbounded > policy.unavailable_max_interval_s:
+            capped = True
+        jittered = min(jittered_unbounded, policy.unavailable_max_interval_s)
+    else:
+        jittered = jittered_unbounded
+
     delay = max(jittered, minimum_cooldown)
 
     return PollDecision(
