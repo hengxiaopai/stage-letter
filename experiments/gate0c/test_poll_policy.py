@@ -162,7 +162,25 @@ class PollPolicyGate0C2Tests(unittest.TestCase):
         self.assertEqual(low.delay_s, 90)
         self.assertEqual(high.delay_s, 110)
 
-    def test_15_invalid_poll_context_is_rejected(self) -> None:
+    def test_15_positive_jitter_cannot_escape_unavailable_backoff_cap(self) -> None:
+        config = PollPolicyConfig(
+            unavailable_base_interval_s=100,
+            unavailable_max_interval_s=400,
+            jitter_fraction=0.50,
+        )
+        decision = decide_poll(
+            PollContext(
+                HealthState.UNAVAILABLE,
+                consecutive_failures=4,
+                jitter_unit=1.0,
+            ),
+            config,
+        )
+        self.assertEqual(decision.base_delay_s, 400)
+        self.assertEqual(decision.delay_s, 400)
+        self.assertTrue(decision.capped)
+
+    def test_16_invalid_poll_context_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             PollContext(HealthState.HEALTHY, consecutive_failures=-1)
         with self.assertRaises(ValueError):
