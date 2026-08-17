@@ -216,7 +216,28 @@ OFFLINE (status=4)
     -> OFFLINE (status=4)
 ```
 
-`streamget_lifecycle_watch.py` was added to capture this transition as timestamped JSONL while reusing `streamget_status_probe.py` as the single normalization authority. `UNKNOWN` observations are logged but never advance or close the lifecycle.
+`streamget_lifecycle_watch.py` captures this transition as timestamped JSONL while reusing `streamget_status_probe.py` as the single normalization authority. `UNKNOWN` observations are logged but never advance or close the lifecycle.
+
+### Watcher Windows transport issue — FIXED
+
+The first watcher run on `X.四五六` produced repeated:
+
+```text
+WATCHER_EMPTY_PROBE_OUTPUT
+```
+
+while the same profile succeeded when `streamget_status_probe.py` was invoked directly. This isolated the problem to the watcher's subprocess/stdout wrapper rather than StreamGet state semantics.
+
+On Windows, redirected child-process stdout can use a different text encoding from the interactive Git Bash console. The probe output contains styled Unicode/emoji creator names, so the child could fail before JSON reached the parent. The watcher has therefore been changed to import and call the canonical async `probe()` function in-process instead of spawning a child and reparsing JSON stdout.
+
+Safety remains unchanged:
+
+```text
+probe exception / invalid result -> UNKNOWN
+UNKNOWN never advances lifecycle
+```
+
+The failed pre-fix JSONL remains diagnostic evidence only and must not count as lifecycle state evidence.
 
 Recommended starting target is an independently confirmed currently-OFFLINE profile so the watcher can capture the complete sequence without reconstructing earlier state.
 
