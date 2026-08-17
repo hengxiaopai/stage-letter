@@ -119,7 +119,33 @@ F2 as OFFLINE confirmer          REJECTED
 
 F2 may remain useful as an independent positive-LIVE control, but it does not solve Gate 0A's OFFLINE-confirmation blocker. Do not infer OFFLINE from null/missing `user_live` data.
 
-### 2. DouyinLiveJava `/status` service — NEXT SPIKE
+### 2. StreamGet — NEXT SPIKE
+
+Repository: `ihmily/streamget`
+
+The project exposes `StreamData.is_live` and documents Douyin support without requiring a login cookie. Its Douyin path does require Node.js. Unlike the hosted DouyinLiveJava status path below, it can be exercised locally without adding another commercial status provider.
+
+Why promoted to the next spike:
+
+- local/self-hosted library;
+- explicit `is_live` output;
+- no Douyin login cookie required by the documented support matrix;
+- existing Gate targets already have stable live-room URLs, allowing the same OFFLINE/LIVE controls to be compared cheaply;
+- more independent from TikHub than the hosted DouyinLiveJava status service.
+
+Acceptance requires:
+
+1. X.四五六 independently confirmed OFFLINE -> explicit `is_live=false` from the known room URL;
+2. a currently LIVE control -> explicit `is_live=true` plus a non-empty stream URL;
+3. request/parse/Node/runtime failures -> `UNKNOWN`, never OFFLINE;
+4. repeat across several creators before promotion to `OFFLINE_CONFIRMATION_CANDIDATE`.
+
+Known URLs for the first spike:
+
+- OFFLINE X.四五六: `https://live.douyin.com/975645387460`
+- LIVE 央视网财经: derive/use the currently verified live-room URL while it is still live; room_id observed via F2 was `7664459902303111978`, but Gate must not invent a canonical room URL from room_id without validating StreamGet's accepted URL form.
+
+### 3. DouyinLiveJava `/status` service — DEFERRED / MEDIATED
 
 Repository: `lulajax/DouyinLiveJava`
 
@@ -131,22 +157,9 @@ GET /status?secUid=<sec_uid>
   -> { uid, secUid, nickname, live: true|false, roomId }
 ```
 
-The documented contract explicitly says `live=false` has `roomId=null`, which makes it worth testing against the same known-OFFLINE and known-LIVE controls.
+The contract is attractive because it explicitly distinguishes `live=true|false`. However, the repository states that the client does not include the platform signing implementation and that the convenient hosted path is a RapidAPI gateway operated under the TikHub team account. A self-hosted signing/status service is possible only if the user supplies that implementation separately.
 
-Caveat: the status service is mediated by a signing/service layer (self-hosted or RapidAPI). This is less independent than F2's direct-web path, so Gate evidence must record the actual provider and must not assume `live=false` is trustworthy until it matches independent ground truth.
-
-Acceptance requires:
-
-1. X.四五六 independently confirmed OFFLINE -> explicit `live=false`, `roomId=null`;
-2. a currently LIVE control -> explicit `live=true`, non-empty `roomId`;
-3. failures, quota errors, auth/sign failures, missing fields, or schema drift -> `UNKNOWN`, never OFFLINE;
-4. repeat across several creators before promotion.
-
-### 3. StreamGet — TERTIARY
-
-Repository: `ihmily/streamget`
-
-StreamGet exposes `StreamData.is_live` and supports Douyin without a login cookie in its documented support matrix. It requires Node.js for Douyin and is principally a stream extractor from live-room URLs, so it remains a tertiary control rather than the preferred user-level OFFLINE source.
+Therefore the hosted path is not sufficiently independent from the current TikHub primary source to be the next second-source Gate. Keep it as a diagnostic/alternative only, unless an independently self-hosted signer becomes available.
 
 ### 4. Official Douyin Live SDK / webcast-open — PRODUCTION TRACK, NOT GATE SUBSTITUTE
 
@@ -156,10 +169,7 @@ It should remain the preferred long-term compliance/production track where coope
 
 ## Next execution
 
-Move to DouyinLiveJava `/status` as the next second-source spike. Use the same controls whenever their independent ground truth is current:
-
-- OFFLINE: X.四五六 — UID `2206033664807300`
-- LIVE: 央视网财经 — UID `720916559455351` (only while independently verified live)
+Move to StreamGet as the next independent OFFLINE second-source spike. First verify local prerequisites (Python and Node.js), then test the known OFFLINE room URL. Only if that yields explicit `is_live=false` should the LIVE control be tested immediately afterward.
 
 Do not spend additional effort trying to reinterpret F2's null OFFLINE response.
 
