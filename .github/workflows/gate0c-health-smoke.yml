@@ -27,7 +27,9 @@ jobs:
         run: |
           python -m py_compile \
             experiments/gate0c/platform_health.py \
-            experiments/gate0c/test_platform_health.py
+            experiments/gate0c/test_platform_health.py \
+            experiments/gate0c/poll_policy.py \
+            experiments/gate0c/test_poll_policy.py
 
-      - name: Gate 0C health acceptance tests
+      - name: Gate 0C acceptance tests
         run: python -m unittest discover -s experiments/gate0c -p "test_*.py" -v
