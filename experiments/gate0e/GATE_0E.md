@@ -1,6 +1,6 @@
 # Gate 0E — End-to-End Golden Path
 
-Status: **IN PROGRESS**
+Status: **IN PROGRESS / REAL HANDOFF 9 OF 10 CONFIRMED**
 
 ## Purpose
 
@@ -36,7 +36,7 @@ crash-after-send/before-response -> AMBIGUOUS -> no blind resend
 
 ```text
 0E-1 Deterministic cross-gate golden path        PASS 15/15
-0E-2 Real provider handoff from golden event     CURRENT
+0E-2 Real provider handoff from golden event     PARTIAL PASS 9/10
 Gate 0E                                           IN PROGRESS
 ```
 
@@ -51,16 +51,9 @@ experiments/gate0e/golden_path.py
 experiments/gate0e/test_golden_path.py
 ```
 
-The harness reuses, rather than copies, the accepted implementations from:
+The harness reuses the accepted Gate 0C source composition, Gate 0B state/persistence, and Gate 0D notification/retry semantics rather than copying them.
 
-```text
-Gate 0C source_composition.py
-Gate 0B state_engine.py + sqlite_store.py
-Gate 0D notification_truth.py
-Gate 0D provider_result.py + delivery_retry.py
-```
-
-### Acceptance matrix
+Acceptance matrix:
 
 ```text
 01 OFFLINE -> LIVE -> LIVE emits TRANSITION LIVE_STARTED           PASS
@@ -89,15 +82,13 @@ OK
 
 Acceptance: **PASS 15/15**.
 
-### Frozen deterministic happy path
+Frozen deterministic happy path:
 
 ```text
 StreamGet OFFLINE
   -> OFFLINE_CONFIRMED
-
 StreamGet LIVE #1
   -> LIVE_PENDING
-
 StreamGet LIVE #2
   -> LIVE_CONFIRMED
   -> LiveSession(origin=TRANSITION)
@@ -109,119 +100,80 @@ StreamGet LIVE #2
   -> delivery SENT
 ```
 
-The notification context retains title, live-room URL and trusted `source_started_at` when present.
-
 ---
 
-## Gate 0E-2 — Real provider handoff from golden event — CURRENT
+## Gate 0E-2 — Real provider handoff from golden event — PARTIAL PASS 9/10
 
-Canonical operator harness:
+Canonical operator/evidence assets:
 
 ```text
 experiments/gate0e/real_golden_handoff.py
+experiments/gate0e/REAL_GATE0E_20260818.md
 ```
 
-0E-2 does not repeat Gate 0D's provider experiments for their own sake. Gate 0D already proved:
+0E-2 proves the narrower integration fact that the exact eligible `LIVE_STARTED` produced by Gate 0E is the logical delivery that crosses the already-proven WeChat boundary.
+
+### Dry preflight — PASS
+
+Observed without provider side effect:
 
 ```text
-real wx.requestSubscribeMessage accept
-real provider errcode=0
-real phone receipt
-SENT != proven global grant exhaustion
-exact same provider payload can create two messages
-no payload-based provider deduplication guarantee
+source_transition             OFFLINE -> LIVE -> LIVE
+event                         LIVE_STARTED / TRANSITION
+event_id                      douyin:gate0e-real:LIVE_STARTED:1
+delivery.live_event_id        douyin:gate0e-real:LIVE_STARTED:1
+session identity              1 -> 1
+context.title                 爱播开播啦
+context.live_url              https://live.douyin.com/gate0e
+provider_send_count           0
+runtime_state_before_send     PENDING
+secrets_persisted             false
 ```
 
-0E-2 proves one narrower integration fact:
+### One-shot real provider handoff — provider side PASS
+
+Observed sanitized result:
 
 ```text
-controlled OFFLINE -> LIVE -> LIVE source sequence
-  -> Gate 0C composition
-  -> Gate 0B TRANSITION LIVE_STARTED
-  -> Gate 0D eligible logical NotificationDelivery
-  -> Stage Letter live-start payload built from the preserved event context
-  -> delivery runtime enters IN_FLIGHT before provider send
-  -> exactly one real WeChat provider call
-  -> provider result is applied to that exact logical delivery
-  -> intended account visibly receives the corresponding notification
+source_transition             OFFLINE -> LIVE -> LIVE
+event                         LIVE_STARTED / TRANSITION
+event_id                      douyin:gate0e-real:LIVE_STARTED:1
+delivery.live_event_id        douyin:gate0e-real:LIVE_STARTED:1
+provider_send_count           1
+openid_source                 code2session
+token_acquired                true
+runtime_state_before_send     IN_FLIGHT
+provider.errcode              0
+provider.errmsg               ok
+provider.normalized           SENT
+provider.msgid                4654855139856711681
+provider_mapping_status       CONFIRMED_SENT
+runtime_state_after_send      SENT
+secrets_persisted             false
 ```
 
-The source-side transition remains a controlled Gate harness rather than a claim that Gate 0A's deferred real lifecycle evidence gap has disappeared.
+The exact provider payload is fingerprinted in canonical evidence; secret material and raw openid are not persisted.
 
-### Safety rules
+### 0E-2 acceptance matrix
 
 ```text
-provider send count = exactly 1 per operator run
-IN_FLIGHT is recorded before the external side effect
-no blind retry exists in the operator tool
-non-zero provider codes remain conservative/unmapped
-AppSecret/access_token/session_key/login-code/raw-openid are not persisted
-rerunning the operator manually is a new external send and can duplicate a message
+A source transition is OFFLINE -> LIVE -> LIVE                     PASS
+B emitted event is exactly LIVE_STARTED / TRANSITION               PASS
+C exactly one eligible logical NotificationDelivery is selected   PASS
+D payload is built from preserved GoldenPath notification context PASS
+E runtime state is IN_FLIGHT before provider send                  PASS
+F provider_send_count == 1                                        PASS
+G real provider result is errcode=0 / SENT                         PASS
+H runtime finishes SENT for that exact delivery                    PASS
+I intended account visibly receives corresponding message         PENDING OPERATOR CONFIRMATION
+J canonical evidence contains no secret material                  PASS
+-----------------------------------------------------------------------
+Gate 0E-2                                                         PARTIAL PASS 9/10
 ```
 
-### Current verified template defaults
+`phone_receipt_confirmed: false` in the operator output is expected until the human operator confirms the intended account actually received the corresponding message. Provider acceptance alone is not promoted into phone-receipt truth.
 
-The operator defaults to the currently verified live-start template field mapping:
-
-```text
-thing1 -> 直播间名称
-thing2 -> 达人名称
-time3  -> 开播时间
-thing5 -> 直播主题
-thing6 -> 直播间活动
-```
-
-These field names are operator-overridable if the WeChat template changes.
-
-### Operator procedure
-
-1. Sync the repository.
-2. Do **not** request another subscription grant if the existing accepted grant is intentionally being used for this handoff.
-3. Obtain one fresh `wx.login` code immediately before the run.
-4. Run a dry validation first:
-
-```bash
-./.venv-gate0a-streamget/Scripts/python.exe \
-  experiments/gate0e/real_golden_handoff.py \
-  --creator-name "珩小派" \
-  --room-name "开场信 Gate 0E Golden Path" \
-  --activity "Gate 0E 真实链路验证" \
-  --title "爱播开播啦 · Gate 0E" \
-  --live-url "https://live.douyin.com/gate0e"
-```
-
-5. Then perform the single real handoff:
-
-```bash
-./.venv-gate0a-streamget/Scripts/python.exe \
-  experiments/gate0e/real_golden_handoff.py \
-  --login-code "FRESH_WX_LOGIN_CODE" \
-  --creator-name "珩小派" \
-  --room-name "开场信 Gate 0E Golden Path" \
-  --activity "Gate 0E 真实链路验证" \
-  --title "爱播开播啦 · Gate 0E" \
-  --live-url "https://live.douyin.com/gate0e" \
-  --send
-```
-
-AppID, AppSecret and template ID may come from the already-established local `WECHAT_*` environment variables. AppSecret is prompted without echo if not present in the environment.
-
-### Required 0E-2 PASS evidence
-
-```text
-A. source transition is OFFLINE -> LIVE -> LIVE
-B. emitted event is exactly LIVE_STARTED / TRANSITION
-C. exactly one eligible logical NotificationDelivery is selected
-D. payload is built from the preserved GoldenPath notification context
-E. runtime state is IN_FLIGHT before provider send
-F. provider_send_count == 1
-G. real provider result is errcode=0 / SENT
-H. runtime finishes SENT for that exact delivery
-I. intended WeChat account visibly receives the corresponding message
-J. canonical evidence contains no secret material
-```
-
-Required acceptance: **10/10 PASS**.
+Do not rerun the provider handoff merely to confirm receipt. Gate 0D proved that repeated sends can create duplicate external notifications.
 
 ## Current progression
 
@@ -231,8 +183,8 @@ Gate 0B    PASS
 Gate 0C    PASS
 Gate 0D    PASS
 Gate 0E-1  PASS 15/15
-Gate 0E-2  CURRENT
+Gate 0E-2  PARTIAL PASS 9/10 / phone receipt confirmation pending
 Gate 0E    IN PROGRESS
 ```
 
-After Gate 0E PASS, proceed to formal V0.1 engineering / Gate 1.
+Once the intended account's receipt from this exact one-shot run is confirmed, Gate 0E-2 may close 10/10 and Gate 0E may be marked PASS. After Gate 0E PASS, proceed to formal V0.1 engineering / Gate 1.
