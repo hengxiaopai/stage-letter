@@ -1,13 +1,14 @@
 # Gate 1.1 — Domain Model + PostgreSQL Schema
 
-Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PERSISTENCE MODELS STARTED**
+Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 EXPAND CURRENT**
 
 Entry authority: Gate 1.0 PASS.
 
-Detailed freezes:
+Detailed freezes/evidence:
 
 - [`GATE_1_1_PORTS_FREEZE.md`](./GATE_1_1_PORTS_FREEZE.md)
 - [`GATE_1_1_PERSISTENCE_MODELS.md`](./GATE_1_1_PERSISTENCE_MODELS.md)
+- [`GATE_1_1_EXPAND_MIGRATION.md`](./GATE_1_1_EXPAND_MIGRATION.md)
 
 ## 1. Purpose
 
@@ -30,35 +31,7 @@ Execution order is frozen:
 
 ## 2. Gate 1.1-1 — Pure Domain — PASS
 
-Formal domain package:
-
-```text
-stage_letter/domain/
-  creators.py
-  follows.py
-  live.py
-  notifications.py
-  health.py
-```
-
-Frozen invariants:
-
-```text
-LiveObservation.status = LIVE | OFFLINE | UNKNOWN
-UNKNOWN != OFFLINE
-Creator != PlatformAccount
-one Creator may own N PlatformAccounts
-Follow != NotificationPreference
-LiveEvent = event_type + cause
-LIVE_STARTED + BOOTSTRAP_LIVE != LIVE_STARTED + TRANSITION
-logical delivery identity = (user_id, live_event_id, channel)
-AMBIGUOUS is first-class and forbids blind retry
-SENT is terminal for one logical delivery only
-runtime health = STARTING | HEALTHY | DEGRADED | UNAVAILABLE
-admin enabled/disabled is configuration, not runtime health
-```
-
-Local evidence on 2026-08-18:
+Accepted local evidence:
 
 ```text
 Ran 11 tests in 0.002s
@@ -66,11 +39,24 @@ OK
 PASS: pure domain has no forbidden runtime dependency
 ```
 
+Frozen invariants include:
+
+```text
+LiveObservation.status = LIVE | OFFLINE | UNKNOWN
+UNKNOWN != OFFLINE
+Creator != PlatformAccount
+Follow != NotificationPreference
+LIVE_STARTED + BOOTSTRAP_LIVE != LIVE_STARTED + TRANSITION
+logical NotificationDelivery identity = (user_id, live_event_id, channel)
+AMBIGUOUS forbids blind retry
+runtime health != admin disabled
+```
+
 Gate 1.1-1: **PASS**.
 
 ## 3. Gate 1.1-2 — Repository / Application Ports — PASS
 
-Formal application ports:
+Frozen ports:
 
 ```text
 CreatorRepository
@@ -80,53 +66,20 @@ NotificationRepository
 UnitOfWork
 ```
 
-Accepted local evidence on 2026-08-18:
+Accepted local evidence:
 
 ```text
-python -m unittest discover -s tests/gate1 -p "test_*.py" -v
 Ran 17 tests in 0.002s
 OK
-```
-
-The initial text grep dependency check was rejected as a false positive because it matched explanatory docstring text and `__pycache__`. A Python AST import audit then returned:
-
-```text
 PASS: domain/application contain no forbidden runtime imports
-```
-
-Separate runtime-boundary evidence:
-
-```text
 PASS: no experiments runtime imports
-```
-
-Acceptance:
-
-```text
-repository ports are Protocol contracts                    PASS
-repository I/O is async                                   PASS
-LiveObservation has first-class persistence methods       PASS
-Follow / NotificationPreference remain separate          PASS
-delivery persistence is keyed by DeliveryKey             PASS
-UnitOfWork commit/rollback boundary exists                PASS
-17/17 Gate 1 tests pass                                   PASS
-AST forbidden-import audit                                PASS
 ```
 
 Gate 1.1-2: **PASS**.
 
-## 4. Gate 1.1-3 — SQLAlchemy Persistence Models — CURRENT
+## 4. Gate 1.1-3 — SQLAlchemy Persistence Models — PASS
 
-Formal infrastructure package has started:
-
-```text
-stage_letter/infrastructure/
-  db/
-    base.py
-    models.py
-```
-
-The SQLAlchemy metadata represents exactly the ten frozen target domain tables:
+Formal metadata represents exactly the ten target domain tables:
 
 ```text
 users
@@ -141,42 +94,104 @@ live_events
 notification_deliveries
 ```
 
+Accepted user-local environment/evidence:
+
+```text
+Python      3.13.14
+SQLAlchemy  2.0.52
+Alembic     1.19.1
+PASS: Gate 1 DB dependencies available
+
+Ran 25 tests in 0.004s
+OK
+
+count: 10
+PASS: formal persistence metadata loaded
+```
+
 Persistence contracts include:
 
 ```text
 PlatformAccount -> creator_id owner
 Follow -> unique(user_id, platform_account_id)
 NotificationPreference -> separate persistence
-LiveObservation -> durable table with source-scoped stable identity
-LiveSession -> PostgreSQL partial unique open-session index
+LiveObservation -> source-scoped stable durable identity
+LiveSession -> target partial unique open-session invariant
 LiveEvent -> event_id + event_type + cause + occurred_at
-NotificationDelivery -> unique(user_id, live_event_id, channel)
-NotificationDelivery -> IN_FLIGHT/retry persistence fields
+NotificationDelivery -> event-based identity + durable send runtime fields
 ```
 
-Legacy required columns that must coexist during EXPAND are explicitly exposed only as `legacy_*` infrastructure bridge fields. They are not formal domain truth.
+Gate 1.1-3: **PASS**.
 
-Contract tests:
+## 5. Gate 1.1-4 — Alembic EXPAND Migration — CURRENT
+
+Forward-only revision landed:
 
 ```text
-tests/gate1/test_persistence_models.py
+a41f6c2e9b77_gate1_expand_formal_domain.py
 ```
 
-1.1-3 cannot be marked PASS until local test execution confirms the new SQLAlchemy metadata contracts and the existing 1.1-1/1.1-2 tests remain green.
-
-## 5. Remaining Gate 1.1 plan
-
-After 1.1-3 PASS:
+Revision chain:
 
 ```text
-1.1-4 Alembic EXPAND migration + deterministic backfill rules
-1.1-5 DB constraints + clean/legacy migration tests
+5354a9ed7741
+  -> c23b5e229894
+  -> e98c1011d830
+  -> a41f6c2e9b77
+```
+
+The upgrade is additive and keeps all legacy data/tables/columns. It creates the new formal tables and adds bridge columns needed by the post-EXPAND model.
+
+Deterministic backfills only:
+
+```text
+anchors -> creators / creator_profiles
+platform_accounts.anchor_id -> creator_id
+user_subscriptions -> follows
+user_subscriptions notification settings -> notification_preferences
+live_sessions.started_at -> source_started_at only when started_at_source='platform'
+live_events.detected_at -> occurred_at
+notification_deliveries.notification_job_id -> notification_jobs.live_event_id -> delivery.live_event_id
+```
+
+Explicitly not fabricated:
+
+```text
+historical LiveObservation rows
+unknown LiveSession origin
+unknown LiveEvent event_id/cause
+provider/grant truth
+UNKNOWN -> OFFLINE
+```
+
+Contract tests have landed in:
+
+```text
+tests/gate1/test_expand_migration_contract.py
+```
+
+1.1-4 remains CURRENT until local evidence confirms:
+
+```text
+full Gate 1 suite passes
+alembic heads == a41f6c2e9b77
+offline SQL compilation succeeds
+```
+
+DB-connected clean/legacy upgrade validation is deferred to Gate 1.1-5 by design.
+
+## 6. Remaining Gate 1.1 plan
+
+After 1.1-4 PASS:
+
+```text
+1.1-5 DB constraint hardening + clean/legacy migration tests
 1.1-6 Gate 0 regression and golden-path comparison
 ```
 
 No legacy table/column is dropped in Gate 1.1.
 
-## 6. Stop rules
+## 7. Stop rules
 
 Gate 1.1 must stop with FAIL/BLOCKED if any implementation requires:
 
@@ -191,13 +206,14 @@ SENT -> global grant exhaustion inference
 provider/notification failure -> creator live truth mutation
 ```
 
-## 7. Current progression
+## 8. Current progression
 
 ```text
 Gate 1.0    PASS
-Gate 1.1-1  PASS / pure domain + 11/11 evidence
+Gate 1.1-1  PASS / pure domain + 11/11
 Gate 1.1-2  PASS / ports + 17/17 + AST dependency audit
-Gate 1.1-3  CURRENT / SQLAlchemy models landed; evidence pending
-Gate 1.1-4  NOT STARTED
+Gate 1.1-3  PASS / SQLAlchemy models + 25/25 + metadata 10/10
+Gate 1.1-4  CURRENT / EXPAND migration landed; execution evidence pending
+Gate 1.1-5  NOT STARTED
 Gate 1.1    CURRENT
 ```
