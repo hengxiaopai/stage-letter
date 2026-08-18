@@ -222,8 +222,7 @@ class DeliveryRetryMachine:
             if started_at < self.next_attempt_at:
                 return BeginAttemptResult(False, None)
         if self.attempt_count >= self.policy.max_total_attempts:
-            self.state = ExecutionState.FAILED_TERMINAL
-            self.next_attempt_at = None
+            self._terminate_for_budget()
             return BeginAttemptResult(False, None)
 
         attempt = AttemptRecord(
@@ -300,8 +299,6 @@ class DeliveryRetryMachine:
                 self.state = ExecutionState.WAITING_RETRY
                 self.next_attempt_at = completed_at + timedelta(seconds=delay)
         else:
-            # A non-success result that is neither terminal nor retryable must
-            # represent a blocked/manual condition already handled above.
             raise AssertionError("unhandled provider-result semantics")
 
         self._assert_invariants()
@@ -317,18 +314,20 @@ class DeliveryRetryMachine:
         if self.state is not ExecutionState.WAITING_AUTH:
             return False
         if self.attempt_count >= self.policy.max_total_attempts:
-            self.state = ExecutionState.FAILED_TERMINAL
+            self._terminate_for_budget()
             return False
         self.state = ExecutionState.PENDING
+        self._assert_invariants()
         return True
 
     def resume_after_config_fix(self) -> bool:
         if self.state is not ExecutionState.BLOCKED_CONFIG:
             return False
         if self.attempt_count >= self.policy.max_total_attempts:
-            self.state = ExecutionState.FAILED_TERMINAL
+            self._terminate_for_budget()
             return False
         self.state = ExecutionState.PENDING
+        self._assert_invariants()
         return True
 
     def _retry_delay_seconds(self, result: NormalizedProviderResult) -> int:
@@ -352,6 +351,18 @@ class DeliveryRetryMachine:
             return delay
 
         raise AssertionError("retry delay requested for non-timed retry class")
+
+    def _terminate_for_budget(self) -> None:
+        last_outcome = next(
+            (attempt.outcome for attempt in reversed(self.attempts) if attempt.outcome is not None),
+            None,
+        )
+        if last_outcome is None:
+            raise AssertionError("attempt budget cannot be exhausted without a completed outcome")
+        self.state = ExecutionState.FAILED_TERMINAL
+        self.next_attempt_at = None
+        self.terminal_outcome = last_outcome
+        self._assert_invariants()
 
     def _find_attempt_index(self, attempt_id: str) -> int:
         for index, item in enumerate(self.attempts):
