@@ -24,6 +24,7 @@ Page({
         const value = res[templateId]
         this.setData({
           subscribeResult: JSON.stringify({
+            callback: 'success',
             errMsg: res.errMsg || '',
             templateResult: value || 'MISSING'
           }),
@@ -32,14 +33,20 @@ Page({
       },
       fail: (err) => {
         this.setData({
-          subscribeResult: '',
-          error: JSON.stringify({
+          subscribeResult: JSON.stringify({
+            callback: 'fail',
             errMsg: err.errMsg || '',
             errCode: err.errCode === undefined ? null : err.errCode
-          })
+          }),
+          error: ''
         })
       }
     })
+  },
+
+  copySubscribeResult() {
+    if (!this.data.subscribeResult) return
+    wx.setClipboardData({ data: this.data.subscribeResult })
   },
 
   getLoginCode() {
