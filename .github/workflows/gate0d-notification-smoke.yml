@@ -27,7 +27,9 @@ jobs:
         run: |
           python -m py_compile \
             experiments/gate0d/notification_truth.py \
-            experiments/gate0d/test_notification_truth.py
+            experiments/gate0d/test_notification_truth.py \
+            experiments/gate0d/provider_result.py \
+            experiments/gate0d/test_provider_result.py
 
       - name: Gate 0D acceptance tests
         run: python -m unittest discover -s experiments/gate0d -p "test_*.py" -v
