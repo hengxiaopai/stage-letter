@@ -1,6 +1,6 @@
 # Gate 1.1-2 — Repository / Application Ports Freeze
 
-Status: **CURRENT / CODE LANDED, TEST EVIDENCE PENDING**
+Status: **PASS**
 
 ## Purpose
 
@@ -39,25 +39,54 @@ All persistence I/O methods are async contracts. No SQLAlchemy/Redis/FastAPI/Dra
 
 ## Explicit non-goals
 
-1. No SQLAlchemy implementation yet.
-2. No Alembic migration yet.
+1. No SQLAlchemy implementation in the application package.
+2. No Alembic migration in 1.1-2.
 3. No Redis/Dramatiq queue contract yet.
 4. No provider-specific WeChat methods in repository ports.
-5. No direct import from `experiments/*`.
+5. No direct runtime import from `experiments/*`.
 6. No persistence method that treats timeout/parse/provider failure as OFFLINE truth.
+
+## Acceptance evidence
+
+Local evidence supplied on 2026-08-18:
+
+```text
+python -m unittest discover -s tests/gate1 -p "test_*.py" -v
+Ran 17 tests in 0.002s
+OK
+```
+
+The original text grep dependency check produced a false positive because the module docstring explicitly names the forbidden frameworks it avoids, and `__pycache__` was also scanned. That result is not treated as a code failure.
+
+A Python AST import audit was then run against `stage_letter/domain` and `stage_letter/application` and returned:
+
+```text
+PASS: domain/application contain no forbidden runtime imports
+```
+
+A separate experiment-import check returned:
+
+```text
+PASS: no experiments runtime imports
+```
 
 ## Acceptance
 
 ```text
-A. application package exists                                  CODE PASS
-B. repository ports are Protocol contracts                    CODE PASS
-C. persistence I/O is async                                   CODE PASS
-D. LiveObservation has a first-class persistence method       CODE PASS
-E. Follow and NotificationPreference remain separate          CODE PASS
-F. delivery lookup/create is event-key based                  CODE PASS
-G. explicit UnitOfWork commit/rollback boundary exists        CODE PASS
-H. no forbidden infrastructure dependency in application     PENDING EVIDENCE
-I. local/CI contract tests pass                                PENDING EVIDENCE
+A. application package exists                                  PASS
+B. repository ports are Protocol contracts                    PASS
+C. persistence I/O is async                                   PASS
+D. LiveObservation has a first-class persistence method       PASS
+E. Follow and NotificationPreference remain separate          PASS
+F. delivery lookup/create is event-key based                  PASS
+G. explicit UnitOfWork commit/rollback boundary exists        PASS
+H. no forbidden infrastructure dependency in application     PASS
+I. local contract tests pass: 17/17                           PASS
 ```
 
-After H-I pass, Gate 1.1-2 may close and Gate 1.1-3 can start SQLAlchemy persistence models.
+Decision:
+
+```text
+Gate 1.1-2 PASS
+Gate 1.1-3 READY — SQLAlchemy Persistence Models
+```
