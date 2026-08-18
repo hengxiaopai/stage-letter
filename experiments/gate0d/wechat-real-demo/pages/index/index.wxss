@@ -1,0 +1,60 @@
+.page {
+  padding: 32rpx;
+  background: #f5f6f7;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+}
+
+.title {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-bottom: 12rpx;
+}
+
+.label {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+.hint,
+.result,
+.code,
+.error {
+  font-size: 24rpx;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.hint {
+  color: #666666;
+}
+
+.input {
+  border: 1rpx solid #dcdfe6;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  margin-bottom: 20rpx;
+  background: #ffffff;
+}
+
+.result,
+.code {
+  margin-top: 20rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+}
+
+.error {
+  padding: 20rpx;
+  border-radius: 12rpx;
+  background: #fff1f0;
+}
