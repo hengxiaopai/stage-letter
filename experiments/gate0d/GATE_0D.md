@@ -1,6 +1,6 @@
 # Gate 0D — WeChat Notification Truth
 
-Status: **DEGRADED / REAL EVIDENCE REFINEMENT IN PROGRESS**
+Status: **DEGRADED / REAL EVIDENCE COMPLETION IN PROGRESS**
 
 ## Purpose
 
@@ -24,12 +24,12 @@ notification failure != LiveSession mutation
 
 ```text
 0D-1 Eligibility + logical delivery idempotency   PASS 16/16
-0D-2 Provider/grant result normalization          DEGRADED / REVALIDATION REQUIRED
-0D-3 Retry / terminal-failure semantics           DEGRADED / REVALIDATION REQUIRED
+0D-2 Provider/grant result normalization          PASS 18/18
+0D-3 Retry / terminal-failure semantics           PASS 20/20
 0D-4 Real WeChat acceptance evidence              DEGRADED / PARTIAL PASS
 ```
 
-The earlier 0D-2/0D-3 deterministic runs passed their then-current assertions, but subsequent real provider evidence disproved one assumption: `SENT` cannot be treated as proof that the user's provider-side grant inventory is globally exhausted. The implementation and tests have been corrected and must be rerun before 0D-2/0D-3 return to PASS.
+Real provider evidence corrected one earlier deterministic assumption: `SENT` cannot be treated as proof that the user's provider-side grant inventory is globally exhausted. The implementation/tests were corrected and the complete 54-test deterministic suite was rerun successfully on 2026-08-18.
 
 ---
 
@@ -73,7 +73,7 @@ Acceptance: **PASS 16/16**.
 
 ---
 
-## Gate 0D-2 — Provider / grant result normalization — DEGRADED / REVALIDATION REQUIRED
+## Gate 0D-2 — Provider / grant result normalization — PASS
 
 Canonical implementation:
 
@@ -143,11 +143,18 @@ NETWORK_ERROR    -> TRANSIENT, KEEP
 PROVIDER_ERROR   -> TRANSIENT at this boundary, KEEP
 ```
 
-The previous 18/18 local PASS is superseded by this semantic correction. Revalidation is required.
+Corrected deterministic revalidation on 2026-08-18:
+
+```text
+Gate 0D complete deterministic suite: 54/54 PASS
+Provider-result subset: 18/18 PASS
+```
+
+Acceptance: **PASS 18/18**.
 
 ---
 
-## Gate 0D-3 — Retry / terminal-failure semantics — DEGRADED / REVALIDATION REQUIRED
+## Gate 0D-3 — Retry / terminal-failure semantics — PASS
 
 Canonical implementation:
 
@@ -179,7 +186,7 @@ IN_FLIGHT at restart
 
 Retry/backoff, auth/config blocking, attempt budgets, restart safety and duplicate completion replay remain unchanged.
 
-The corrected delivery invariant is now:
+The corrected delivery invariant is:
 
 ```text
 SENT
@@ -188,7 +195,14 @@ SENT
   -> does not imply global GrantState.EXHAUSTED
 ```
 
-The previous 20/20 local PASS is superseded only for the affected grant assertion; the complete suite must rerun before 0D-3 returns to PASS.
+Corrected deterministic revalidation on 2026-08-18:
+
+```text
+Gate 0D complete deterministic suite: 54/54 PASS
+Retry/runtime subset: 20/20 PASS
+```
+
+Acceptance: **PASS 20/20**.
 
 ---
 
@@ -243,17 +257,17 @@ Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C    PASS
 Gate 0D-1  PASS
-Gate 0D-2  DEGRADED / corrected; revalidation pending
-Gate 0D-3  DEGRADED / corrected; revalidation pending
+Gate 0D-2  PASS
+Gate 0D-3  PASS
 Gate 0D-4  DEGRADED / real evidence partial
 Gate 0D    DEGRADED
 Gate 0E    NOT STARTED
 ```
 
-Next deterministic acceptance command after local merge state is clean:
+Next real-evidence priorities:
 
-```bash
-python -m unittest discover -s experiments/gate0d -p "test_*.py" -v
+```text
+1. capture exact wx.requestSubscribeMessage callback result
+2. run one controlled exact-payload replay experiment
+3. preserve non-zero errcode as unmapped unless evidence supports classification
 ```
-
-Expected count remains 54 tests. After 54/54 passes with the corrected grant semantics, 0D-2 and 0D-3 may return to PASS; 0D-4 will still require client grant-result and duplicate/replay evidence before Gate 0D can close.
