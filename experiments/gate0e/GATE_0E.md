@@ -1,6 +1,6 @@
 # Gate 0E — End-to-End Golden Path
 
-Status: **IN PROGRESS / REAL HANDOFF 9 OF 10 CONFIRMED**
+Status: **PASS**
 
 ## Purpose
 
@@ -36,8 +36,8 @@ crash-after-send/before-response -> AMBIGUOUS -> no blind resend
 
 ```text
 0E-1 Deterministic cross-gate golden path        PASS 15/15
-0E-2 Real provider handoff from golden event     PARTIAL PASS 9/10
-Gate 0E                                           IN PROGRESS
+0E-2 Real provider handoff from golden event     PASS 10/10
+Gate 0E                                           PASS
 ```
 
 ---
@@ -102,7 +102,7 @@ StreamGet LIVE #2
 
 ---
 
-## Gate 0E-2 — Real provider handoff from golden event — PARTIAL PASS 9/10
+## Gate 0E-2 — Real provider handoff from golden event — PASS
 
 Canonical operator/evidence assets:
 
@@ -111,7 +111,7 @@ experiments/gate0e/real_golden_handoff.py
 experiments/gate0e/REAL_GATE0E_20260818.md
 ```
 
-0E-2 proves the narrower integration fact that the exact eligible `LIVE_STARTED` produced by Gate 0E is the logical delivery that crosses the already-proven WeChat boundary.
+0E-2 proves that the exact eligible `LIVE_STARTED` produced by Gate 0E is the logical delivery that crosses the already-proven WeChat boundary.
 
 ### Dry preflight — PASS
 
@@ -130,7 +130,7 @@ runtime_state_before_send     PENDING
 secrets_persisted             false
 ```
 
-### One-shot real provider handoff — provider side PASS
+### One-shot real provider handoff — PASS
 
 Observed sanitized result:
 
@@ -152,7 +152,7 @@ runtime_state_after_send      SENT
 secrets_persisted             false
 ```
 
-The exact provider payload is fingerprinted in canonical evidence; secret material and raw openid are not persisted.
+The intended WeChat account then visibly received the corresponding notification, confirmed by the operator from the exact one-shot run. No extra send was performed for receipt confirmation.
 
 ### 0E-2 acceptance matrix
 
@@ -165,15 +165,34 @@ E runtime state is IN_FLIGHT before provider send                  PASS
 F provider_send_count == 1                                        PASS
 G real provider result is errcode=0 / SENT                         PASS
 H runtime finishes SENT for that exact delivery                    PASS
-I intended account visibly receives corresponding message         PENDING OPERATOR CONFIRMATION
+I intended account visibly receives corresponding message         PASS / operator confirmed
 J canonical evidence contains no secret material                  PASS
 -----------------------------------------------------------------------
-Gate 0E-2                                                         PARTIAL PASS 9/10
+Gate 0E-2                                                         PASS 10/10
 ```
 
-`phone_receipt_confirmed: false` in the operator output is expected until the human operator confirms the intended account actually received the corresponding message. Provider acceptance alone is not promoted into phone-receipt truth.
+## Gate 0E final decision
 
-Do not rerun the provider handoff merely to confirm receipt. Gate 0D proved that repeated sends can create duplicate external notifications.
+```text
+Gate 0E-1  PASS 15/15
+Gate 0E-2  PASS 10/10
+----------------------
+Gate 0E    PASS
+```
+
+Permanent conclusions carried forward:
+
+```text
+UNKNOWN never becomes OFFLINE by inference
+BOOTSTRAP_LIVE is not a notifyable real transition
+only TRANSITION LIVE_STARTED can enter live-start notification eligibility
+logical delivery identity is locally idempotent
+provider send is recorded IN_FLIGHT before the external side effect
+successful provider handoff does not imply global grant exhaustion
+exact same provider payload may produce duplicate external messages
+crash-after-send/before-response remains AMBIGUOUS with no blind resend
+notification/provider failures never mutate creator live truth
+```
 
 ## Current progression
 
@@ -182,9 +201,9 @@ Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C    PASS
 Gate 0D    PASS
-Gate 0E-1  PASS 15/15
-Gate 0E-2  PARTIAL PASS 9/10 / phone receipt confirmation pending
-Gate 0E    IN PROGRESS
+Gate 0E    PASS
 ```
 
-Once the intended account's receipt from this exact one-shot run is confirmed, Gate 0E-2 may close 10/10 and Gate 0E may be marked PASS. After Gate 0E PASS, proceed to formal V0.1 engineering / Gate 1.
+Gate 0 technical validation is complete under the documented Gate 0A lifecycle evidence limitation.
+
+Next phase: **Gate 1 — Stage Letter V0.1 formal engineering**.
