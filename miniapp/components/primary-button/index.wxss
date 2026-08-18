@@ -1,0 +1,4 @@
+.btn-primary { background: var(--brand); color: #fff; font-size: 15px; font-weight: 600; border-radius: var(--r-md); padding: 0 24px; height: 48px; line-height: 48px; border: none; }
+.btn-primary::after { border: none; }
+.btn-block { width: 100%; }
+.btn-hover { opacity: 0.85; }

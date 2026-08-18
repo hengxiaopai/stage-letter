@@ -1,0 +1,36 @@
+# StageLetter 开发环境基础设施(Gate 1)
+# 用法: docker compose up -d postgres redis
+# 数据库连接: postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stageletter-postgres
+    environment:
+      POSTGRES_USER: stageletter
+      POSTGRES_PASSWORD: stageletter
+      POSTGRES_DB: stageletter
+    ports:
+      # 本机已有 postgres 服务占 5432,故映射 5433
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stageletter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: stageletter-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

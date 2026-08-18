@@ -1,0 +1,1 @@
+<view class="pb {{'pb-' + platform}}">{{label}}</view>

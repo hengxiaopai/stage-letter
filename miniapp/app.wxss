@@ -1,0 +1,242 @@
+/**
+ * app.wxss — StageLetter 全局设计系统
+ * UI-1 Editorial Live Radar · 编辑式直播雷达(FROZEN 2026-08-13)
+ *
+ * 原则:
+ * - 大面积蓝已废除;品牌蓝仅主 CTA / 选中态 / 少量交互
+ * - 只有直播相关内容可以大面积使用红色(LIVE #E23B36)
+ * - 默认无阴影;靠 Surface + Border + Whitespace 建立层次
+ * - 不再默认 Card;优先开放 List / Section / Divider
+ * - 圆角仅三档: 8 / 12 / 16
+ * - 禁止: Glow / HUD / 扫描线 / 玻璃 / 无意义渐变
+ */
+
+page {
+  /* ─── Neutral 中性色 ─── */
+  --bg: #F7F8F7;
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F2;
+  --text-primary: #171A19;
+  --text-secondary: #6D7370;
+  --text-tertiary: #9CA29F;
+  --border: #E6E9E7;
+
+  /* ─── Brand 品牌(克制) ─── */
+  --brand: #176B8A;
+  --brand-soft: #EAF4F7;
+
+  /* ─── Semantic 语义色 ─── */
+  --live: #E23B36;         /* 唯一大面积红: 直播 */
+  --live-soft: #FDEDEC;
+  --online: #16875F;
+  --online-soft: #EAF6F1;
+  --warning: #D99118;
+  --warning-soft: #FFF6E3;
+  --offline: #919793;
+  --destructive: #D7473F;
+  --destructive-soft: #FCEEED;
+
+  /* ─── 平台色(仅小面积 Badge/标识) ─── */
+  --c-bilibili: #00AEEC;
+  --c-douyin: #3A3A3A;
+  --c-huya: #E07A1F;
+  --c-douyu: #5E9E2F;
+
+  /* ─── Typography 六档 ─── */
+  --t-display: 30px;       /* 28-32 / 700-800 */
+  --t-title: 26px;         /* 24-28 / 700 */
+  --t-section: 19px;       /* 18-20 / 650-700 */
+  --t-anchor: 17px;        /* 16-18 / 600-700 */
+  --t-body: 15px;          /* 15-16 / 400 */
+  --t-meta: 13px;          /* 12-14 / 400-500 */
+
+  /* ─── Spacing 8 档 ─── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;            /* 页面主 gutter */
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+
+  /* ─── Radius 三档 ─── */
+  --r-sm: 8px;             /* 小控件 */
+  --r-md: 12px;            /* 普通 Surface */
+  --r-lg: 16px;            /* 强调 Card / Bottom Sheet */
+
+  /* ─── Shadow(默认无,仅 3 场景) ─── */
+  --shadow-none: none;
+  --shadow-elev: 0 2px 8px rgba(23, 26, 25, 0.08);   /* Floating CTA */
+  --shadow-sheet: 0 -4px 24px rgba(23, 26, 25, 0.10); /* Bottom Sheet */
+
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: var(--t-body);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   基础工具
+   ═══════════════════════════════════════════════════════════ */
+
+/* 页面容器: 主 gutter 16px, 最大宽度居中 */
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: var(--sp-4) var(--sp-4) calc(88px + env(safe-area-inset-bottom));
+  max-width: 1000rpx;
+  margin: 0 auto;
+}
+
+/* 隐藏原生滚动条 */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 安全区底部 */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ─── Typography 实用类 ─── */
+.t-display {
+  font-size: var(--t-display);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.t-title {
+  font-size: var(--t-title);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+.t-section {
+  font-size: var(--t-section);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.t-anchor {
+  font-size: var(--t-anchor);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.t-body {
+  font-size: var(--t-body);
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.t-meta {
+  font-size: var(--t-meta);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.t-meta-strong {
+  font-size: var(--t-meta);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* ─── 分割线(开放式布局核心) ─── */
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.divider-inset {
+  height: 1px;
+  background: var(--border);
+  margin-left: 56px; /* 对齐 AnchorRow 文字起点 */
+}
+
+/* ─── 按压反馈(基础,组件内可覆盖) ─── */
+.press {
+  transition: opacity 0.15s ease;
+}
+
+.press-hover {
+  opacity: 0.6;
+}
+
+/* ─── 隐藏 hover 系统高亮 ─── */
+button::after,
+view {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── GPU 合成提示 ─── */
+.gpu {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ─── 空状态(EmptyState 组件的基础) ─── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: var(--sp-4);
+}
+
+.empty-title {
+  font-size: var(--t-section);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+}
+
+.empty-sub {
+  font-size: var(--t-meta);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-6);
+  max-width: 280px;
+}
+
+/* ─── 骨架屏(加载态) ─── */
+.skeleton {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.skeleton-row {
+  background: linear-gradient(90deg, #F0F2F1 25%, #E4E8E6 37%, #F0F2F1 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 6px;
+}
+
+.skeleton-circle {
+  border-radius: 50%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

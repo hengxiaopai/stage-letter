@@ -1,0 +1,68 @@
+// utils/format.wxs — 展示层格式化工具(时间/平台/粉丝数)
+
+/** 相对时间: "刚刚 / x分钟前 / x小时前 / 昨天 / MM-DD HH:mm" */
+function relTime(iso) {
+  if (!iso) return ''
+  var date = getDate(iso)
+  if (!date || isNaN(date.getTime())) return iso || ''
+
+  var now = getDate()
+  var diff = now.getTime() - date.getTime()  // ms
+  if (diff < 0) diff = 0
+
+  var min = Math.floor(diff / 60000)
+  if (min < 1) return '刚刚'
+  if (min < 60) return min + '分钟前'
+
+  var hr = Math.floor(min / 60)
+  if (hr < 24) return hr + '小时前'
+
+  var day = Math.floor(hr / 24)
+  if (day === 1) return '昨天 ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
+  if (day < 7) return day + '天前'
+
+  return (date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
+}
+
+/** 开播时长: "已播 2小时15分" / "已播 45分钟" */
+function duration(startIso) {
+  if (!startIso) return ''
+  var start = getDate(startIso)
+  if (!start || isNaN(start.getTime())) return ''
+  var mins = Math.floor((getDate().getTime() - start.getTime()) / 60000)
+  if (mins < 1) return '刚刚开播'
+  if (mins < 60) return '已播 ' + mins + ' 分钟'
+  var h = Math.floor(mins / 60)
+  var m = mins % 60
+  return m > 0 ? ('已播 ' + h + '小时' + m + '分') : ('已播 ' + h + ' 小时')
+}
+
+/** 平台 → 显示名 */
+function platformName(p) {
+  return { douyin: '抖音', bilibili: 'B站', huya: '虎牙', douyu: '斗鱼' }[p] || p
+}
+
+/** 平台 → 品牌色(用于平台徽章) */
+function platformClass(p) {
+  return 'platform-' + p
+}
+
+/** 粉丝数缩写: 7555000 → 755.5万 */
+function fans(n) {
+  if (!n && n !== 0) return ''
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万'
+  return String(n)
+}
+
+function pad(n) {
+  return n < 10 ? '0' + n : '' + n
+}
+
+module.exports = {
+  relTime: relTime,
+  duration: duration,
+  platformName: platformName,
+  platformClass: platformClass,
+  fans: fans,
+}

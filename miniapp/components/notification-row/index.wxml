@@ -1,0 +1,7 @@
+<view class="nr">
+  <view class="nr-left">
+    <view class="nr-title t-body">{{title}}</view>
+    <view class="nr-meta t-meta">{{meta}}</view>
+  </view>
+  <view class="nr-state {{kind === 'sent' ? 'k-sent' : kind === 'inapp' ? 'k-inapp' : 'k-fail'}}">{{label}}</view>
+</view>

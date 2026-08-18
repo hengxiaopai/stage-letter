@@ -1,0 +1,136 @@
+<view class="page home-page">
+  <!-- 编辑式大标题(§1.1) -->
+  <view class="home-head">
+    <view class="home-title-row">
+      <text class="home-title">今天谁开播了？</text>
+      <text class="home-add" hover-class="press-hover" bindtap="goAdd">＋ 添加</text>
+    </view>
+    <view class="home-meta t-meta" wx:if="{{!loading}}">{{total}} 个关注 · {{liveCount}} 位正在直播</view>
+  </view>
+
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}">
+    <view class="skeleton" wx:for="{{[1,2]}}" wx:key="*this">
+      <view class="sk-row">
+        <view class="skeleton-row skeleton-circle" style="width:56px;height:56px;"></view>
+        <view class="sk-lines">
+          <view class="skeleton-row" style="width:45%;height:17px;"></view>
+          <view class="skeleton-row" style="width:60%;height:13px;margin-top:8px;"></view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 错误 -->
+  <view wx:elif="{{error}}" class="empty">
+    <view class="empty-icon">!</view>
+    <view class="empty-title">加载失败</view>
+    <view class="empty-sub">{{error}}</view>
+    <primary-button bindtap="loadAll">重新加载</primary-button>
+  </view>
+
+  <!-- 无订阅 -->
+  <empty-state wx:elif="{{total === 0}}" icon="+" title="还没有关注主播" sub="搜索主播昵称或粘贴链接，订阅后开播秒提醒">
+    <primary-button bindtap="goAdd">添加主播</primary-button>
+  </empty-state>
+
+  <block wx:else>
+    <!-- ═══ 正在直播(§1.2 P0 区域) — 仅 LIVE 状态 ═══ -->
+    <block wx:if="{{liveList.length > 0}}">
+      <section-header title="正在直播"/>
+      <view wx:for="{{liveList}}" wx:key="anchor_id">
+        <live-anchor-feature
+          avatar="{{item.anchor_avatar}}"
+          name="{{item.anchor_name}}"
+          platform="{{item.platform}}"
+          platformLabel="{{item.platformLabel}}"
+          title="{{item.title}}"
+          meta="{{item.meta}}"
+          data-id="{{item.anchor_id}}"
+          bindtap="goDetail"
+        />
+      </view>
+    </block>
+
+    <!-- ═══ 状态确认中(P0-LiveTruth: 仅 CHECKING/SUSPECT 短暂过渡态) ═══ -->
+    <block wx:if="{{checkingList.length > 0}}">
+      <section-header title="状态确认中"/>
+      <view
+        wx:for="{{checkingList}}"
+        wx:key="anchor_id"
+        class="wait-row"
+        data-id="{{item.anchor_id}}"
+        bindtap="goDetail"
+        hover-class="press-hover"
+        hover-stay-time="60"
+      >
+        <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="sm"/>
+        <view class="wait-body">
+          <view class="wait-top">
+            <text class="wait-name t-anchor">{{item.anchor_name}}</text>
+            <platform-badge wx:if="{{item.platform}}" platform="{{item.platform}}" label="{{item.platformLabel}}"/>
+          </view>
+          <view class="wait-meta t-meta confirm-meta">状态确认中…</view>
+        </view>
+        <view class="wait-arrow"></view>
+      </view>
+    </block>
+
+    <!-- ═══ 暂时无法确认(P0-LiveTruth: UNKNOWN/FAILED/DEGRADED — 检测失败, 与"确认中"分开) ═══ -->
+    <block wx:if="{{unknownList.length > 0}}">
+      <section-header title="暂时无法确认"/>
+      <view
+        wx:for="{{unknownList}}"
+        wx:key="anchor_id"
+        class="wait-row"
+        data-id="{{item.anchor_id}}"
+        bindtap="goDetail"
+        hover-class="press-hover"
+        hover-stay-time="60"
+      >
+        <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="sm"/>
+        <view class="wait-body">
+          <view class="wait-top">
+            <text class="wait-name t-anchor">{{item.anchor_name}}</text>
+            <platform-badge wx:if="{{item.platform}}" platform="{{item.platform}}" label="{{item.platformLabel}}"/>
+          </view>
+          <view class="wait-meta t-meta fail-meta">{{item.freshness === 'never' ? '首次检测中…' : '检测失败 · 正在持续重试'}}</view>
+        </view>
+        <view class="wait-arrow"></view>
+      </view>
+    </block>
+
+    <!-- ═══ 等待开播(§1.3 弱化列表) ═══ -->
+    <block wx:if="{{waitList.length > 0}}">
+      <section-header title="等待开播"/>
+      <view
+        wx:for="{{waitList}}"
+        wx:key="anchor_id"
+        class="wait-row"
+        data-id="{{item.anchor_id}}"
+        bindtap="goDetail"
+        hover-class="press-hover"
+        hover-stay-time="60"
+      >
+        <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="sm"/>
+        <view class="wait-body">
+          <view class="wait-top">
+            <text class="wait-name t-anchor">{{item.anchor_name}}</text>
+            <platform-badge wx:if="{{item.platform}}" platform="{{item.platform}}" label="{{item.platformLabel}}"/>
+          </view>
+          <view class="wait-meta t-meta">等待开播</view>
+        </view>
+        <view class="wait-arrow"></view>
+      </view>
+    </block>
+
+    <!-- ═══ 无人直播(§1.5) — 所有列表全空才显示 ═══ -->
+    <block wx:if="{{liveList.length === 0 && checkingList.length === 0 && unknownList.length === 0 && waitList.length === 0}}">
+      <section-header title="正在直播"/>
+      <view class="empty">
+        <view class="empty-title">暂时没人开播</view>
+        <view class="empty-sub">有主播开播后会第一时间出现在这里</view>
+      </view>
+    </block>
+  </block>
+</view>

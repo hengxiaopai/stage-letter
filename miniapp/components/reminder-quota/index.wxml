@@ -1,0 +1,9 @@
+<view class="rq">
+  <view class="rq-label t-meta">开播提醒</view>
+  <view class="rq-num-row">
+    <text class="rq-num">还可提醒</text>
+    <text class="rq-count">{{count}}</text>
+    <text class="rq-unit">次</text>
+  </view>
+  <view class="rq-sub t-meta">{{sub}}</view>
+</view>

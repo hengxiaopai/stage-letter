@@ -1,0 +1,43 @@
+.sf { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: var(--r-sm); padding: 10px 14px; }
+.sf-icon { width: 14px; height: 14px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; position: relative; flex-shrink: 0; }
+.sf-icon::after { content: ''; position: absolute; right: -4px; bottom: -2px; width: 5px; height: 1.5px; background: var(--text-tertiary); transform: rotate(45deg); }
+.sf-input { flex: 1; font-size: 15px; color: var(--text-primary); }
+.sf-ph { color: var(--text-tertiary); }
+.sf-clear {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* CSS 关闭图标(替代 HTML Entity) */
+.sf-clear-x {
+  width: 8px;
+  height: 8px;
+  position: relative;
+}
+
+.sf-clear-x::before,
+.sf-clear-x::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 1.5px;
+  background: #fff;
+  border-radius: 1px;
+}
+
+.sf-clear-x::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.sf-clear-x::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}

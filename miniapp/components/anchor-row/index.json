@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "styleIsolation": "apply-shared",
+  "usingComponents": {
+    "anchor-avatar": "/components/anchor-avatar/index",
+    "platform-badge": "/components/platform-badge/index"
+  }
+}

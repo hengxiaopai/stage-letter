@@ -1,0 +1,128 @@
+<view class="page add-page">
+  <!-- §6.1 页面头部 -->
+  <view class="add-head">
+    <text class="add-title">添加主播</text>
+    <view class="add-sub t-meta">搜索主播昵称，或者粘贴直播间链接</view>
+  </view>
+
+  <!-- 顶部双入口(§6.2 Segmented) -->
+  <view class="add-tabs">
+    <view class="add-tab {{mode === 'search' ? 'add-tab-on' : ''}}" data-mode="search" bindtap="switchMode">搜索主播</view>
+    <view class="add-tab {{mode === 'link' ? 'add-tab-on' : ''}}" data-mode="link" bindtap="switchMode">粘贴链接</view>
+  </view>
+
+  <!-- ═══ 搜索模式 ═══ -->
+  <block wx:if="{{mode === 'search'}}">
+    <view class="add-search-block">
+      <search-field
+        placeholder="搜索昵称，或粘贴直播间链接"
+        value="{{keyword}}"
+        bind:input="onKeywordInput"
+        bind:confirm="onSearch"
+        bind:clear="onClearKeyword"
+      />
+      <!-- 平台筛选器(降级为筛选,非前置选择) -->
+      <filter-tabs items="{{filterTabs}}" active="{{platform}}" bind:change="onFilterChange"/>
+      <button class="add-search-btn" loading="{{searching}}" disabled="{{searching}}" bindtap="onSearch">
+        {{searching ? (platform === 'douyin' ? '抖音搜索较慢，请稍候…' : '搜索中…') : '搜索'}}
+      </button>
+    </view>
+
+    <view wx:if="{{searchError}}" class="notice">{{searchError}}</view>
+
+    <!-- V2: 结构化 status 提示(抖音 BLOCKED 等) -->
+    <view wx:if="{{searchStatus === 'BLOCKED' && !searching}}" class="notice notice-warn">
+      <text>{{searchMsg}}</text>
+      <view class="paste-cta" bindtap="onPasteLinkCta">
+        <text class="paste-cta-txt">粘贴链接更可靠</text>
+        <view class="ar-arrow"></view>
+      </view>
+    </view>
+
+    <!-- §6.3 无结果 Empty State(轻量) -->
+    <view wx:elif="{{searchMsg && !searching}}" class="search-empty">
+      <view class="t-meta">{{searchMsg}}</view>
+      <!-- 无结果时也给出粘贴链接 CTA -->
+      <view wx:if="{{showPasteLinkCta}}" class="paste-cta paste-cta-alone" bindtap="onPasteLinkCta">
+        <text class="paste-cta-txt">粘贴链接试试</text>
+        <view class="ar-arrow"></view>
+      </view>
+    </view>
+
+    <!-- 抖音平台固定提示(搜索前就提示,P0-09 已知 BLOCKED) -->
+    <view wx:if="{{platform === 'douyin' && !searching && results.length === 0 && !searchMsg}}" class="notice notice-info">
+      <text>抖音需登录才能搜主播：手机抖音App打开主播主页 → 分享 → 复制链接 → 粘贴即可</text>
+      <view class="paste-cta" bindtap="onPasteLinkCta">
+        <text class="paste-cta-txt">去粘贴链接</text>
+        <view class="ar-arrow"></view>
+      </view>
+    </view>
+
+    <!-- 搜索结果: 统一 AnchorRow -->
+    <view wx:if="{{results.length > 0}}">
+      <section-header title="搜索结果"/>
+      <view class="result-list">
+        <view
+          wx:for="{{results}}"
+          wx:key="user_id"
+          class="result-row {{item.is_subscribed || item.is_existing ? 'row-done' : ''}}"
+        >
+          <anchor-row
+            avatar="{{item.avatar}}"
+            name="{{item.display_name}}"
+            platform="{{item.platform}}"
+            platformLabel="{{item.platformLabel}}"
+            meta="{{item.meta}}"
+            size="md"
+            showArrow="{{false}}"
+            data-item="{{item}}"
+            bindtap="goAnchorDetail"
+          >
+            <!-- 订阅按钮: catchtap 阻止冒泡,独立触发订阅(UI-2.1A) -->
+            <view
+              slot="action"
+              class="sub-action {{item.is_subscribed || item.is_existing ? 'action-done' : ''}} {{subscribingId === item.user_id ? 'action-loading' : ''}}"
+              data-item="{{item}}"
+              catchtap="onToggleSubscribe"
+            >{{item.is_subscribed || item.is_existing ? '✓ 已订阅' : (subscribingId === item.user_id ? '授权中…' : '订阅')}}</view>
+          </anchor-row>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ═══ 链接模式 ═══ -->
+  <block wx:else>
+    <view class="link-card">
+      <view class="t-meta" style="margin-bottom:8px;">粘贴直播间 / 主页链接</view>
+      <search-field
+        placeholder="例如 live.bilibili.com/12345"
+        value="{{url}}"
+        bind:input="onUrlInput"
+        bind:confirm="onParse"
+      />
+      <button class="add-search-btn" loading="{{parsing}}" disabled="{{parsing}}" bindtap="onParse" style="margin-top:12px;">
+        {{parsing ? '解析中…' : '解析主播'}}
+      </button>
+    </view>
+
+    <view wx:if="{{parseError}}" class="notice">{{parseError}}</view>
+
+    <view wx:if="{{parsed}}">
+      <section-header title="解析结果"/>
+      <anchor-row
+        avatar="{{parsed.avatar}}"
+        name="{{parsed.display_name || '未知主播'}}"
+        platform="{{parsed.platform}}"
+        platformLabel="{{platformLabelMap[parsed.platform]}}"
+        meta="已确认 · 点击订阅"
+        size="md"
+        showArrow="{{false}}"
+      >
+        <view slot="action" class="sub-action {{parsing ? 'action-loading' : ''}}" catchtap="onConfirm">
+          {{parsing ? '订阅中…' : '订阅'}}
+        </view>
+      </anchor-row>
+    </view>
+  </block>
+</view>

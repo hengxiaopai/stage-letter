@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "添加订阅",
+  "usingComponents": {
+    "section-header": "/components/section-header/index",
+    "anchor-row": "/components/anchor-row/index",
+    "search-field": "/components/search-field/index",
+    "filter-tabs": "/components/filter-tabs/index"
+  }
+}

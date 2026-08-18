@@ -1,0 +1,2 @@
+.sh-wrap { display: flex; justify-content: space-between; align-items: baseline; padding: 20px 0 12px; }
+.sh-more { font-size: 13px; color: var(--text-secondary); }

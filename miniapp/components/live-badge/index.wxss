@@ -1,0 +1,9 @@
+.lb { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; border-radius: 999px; padding: 3px 10px; }
+.lb-dot { width: 6px; height: 6px; border-radius: 50%; }
+.lb-live { background: var(--live); color: #fff; }
+.lb-live .lb-dot { background: #fff; animation: lb-blink 1.4s ease-in-out infinite; }
+.lb-off { background: var(--surface-2); color: var(--offline); }
+.lb-off .lb-dot { background: var(--offline); }
+.lb-done { background: var(--surface-2); color: var(--text-tertiary); }
+.lb-done .lb-dot { background: var(--text-tertiary); }
+@keyframes lb-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }

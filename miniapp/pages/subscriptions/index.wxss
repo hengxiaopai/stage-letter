@@ -1,0 +1,116 @@
+/* 订阅页 — 开放式 List */
+
+.subs-page {
+  padding-top: 16px;
+}
+
+.subs-head {
+  padding: 12px 0 4px;
+}
+
+.subs-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.subs-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+.subs-add {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  padding: 8px 0 8px 16px;
+}
+
+.subs-meta {
+  margin-top: 6px;
+}
+
+/* 开放 List 行(§2.3: Divider 从文字区起始,与首页一致) */
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  min-height: 68px;
+  position: relative;
+}
+
+.sub-row::after {
+  content: '';
+  position: absolute;
+  left: 56px; /* Avatar 44px + gap 12px */
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.sub-row:last-child::after {
+  display: none;
+}
+
+.sub-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sub-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-meta {
+  margin-top: 4px;
+}
+
+/* 直播中: 状态用 LIVE 红 */
+.text-live {
+  color: var(--live);
+  font-weight: 500;
+}
+
+/* 未开播弱化 */
+.row-dim {
+  opacity: 0.6;
+}
+
+/* ··· 管理入口(§2.3: 触控区 ≥44px,颜色加深) */
+.sub-manage {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 12px 4px 12px 16px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 骨架屏 */
+.sk-row {
+  display: flex;
+  align-items: center;
+}
+
+.sk-lines {
+  flex: 1;
+  margin-left: 12px;
+}

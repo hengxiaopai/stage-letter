@@ -1,0 +1,88 @@
+/* 我的页 — 还可提醒 N 次 + 通知记录 (UI-2) */
+
+.profile-page {
+  padding-top: 16px;
+}
+
+.profile-head {
+  padding: 12px 0 8px;
+}
+
+.profile-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+/* §5.2 提醒额度块 */
+.quota-block {
+  padding: 8px 0 24px;
+}
+
+.quota-action {
+  margin-top: 20px;
+}
+
+/* §5.4 精简解释 */
+.quota-note {
+  margin-top: 16px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.quota-more {
+  margin-top: 8px;
+  color: var(--brand);
+  font-weight: 500;
+  padding-left: 8px;
+}
+
+/* §5.5 通知记录空状态(铃铛图标,中性) */
+.history-empty {
+  padding: 40px 0 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.history-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  margin-bottom: 12px;
+  position: relative;
+}
+
+/* 铃铛: CSS 绘制 */
+.history-empty-icon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 20px;
+  border: 2px solid var(--text-tertiary);
+  border-radius: 10px 10px 8px 8px;
+}
+
+.history-empty-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 2px;
+  background: var(--text-tertiary);
+}
+
+.history-empty-sub {
+  margin-top: 4px;
+  color: var(--text-tertiary);
+}

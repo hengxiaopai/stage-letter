@@ -1,0 +1,2 @@
+.pt-wrap { display: flex; flex-direction: column; gap: 6px; padding: 24px 0 8px; }
+.pt-meta { font-size: 13px; color: var(--text-secondary); }

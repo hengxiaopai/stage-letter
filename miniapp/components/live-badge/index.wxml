@@ -1,0 +1,4 @@
+<view class="lb lb-live" wx:if="{{live}}"><view class="lb-dot"></view>LIVE</view>
+<view class="lb lb-live" wx:elif="{{state === 'live'}}"><view class="lb-dot"></view>直播中</view>
+<view class="lb lb-off" wx:elif="{{state === 'off'}}"><view class="lb-dot"></view>未开播</view>
+<view class="lb lb-done" wx:elif="{{state === 'done'}}"><view class="lb-dot"></view>已结束</view>

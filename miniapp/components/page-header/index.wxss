@@ -1,0 +1,5 @@
+.ph { display: flex; align-items: center; height: 48px; padding: 8px 0; }
+.ph-back { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; margin-left: -8px; }
+.ph-arrow { width: 10px; height: 10px; border-left: 2px solid var(--text-primary); border-bottom: 2px solid var(--text-primary); transform: rotate(45deg); }
+.ph-title { flex: 1; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-right { min-width: 36px; display: flex; justify-content: flex-end; }

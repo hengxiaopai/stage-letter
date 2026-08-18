@@ -1,0 +1,15 @@
+<view class="ar" hover-class="press-hover" hover-stay-time="60" bindtap="onTap">
+  <anchor-avatar src="{{avatar}}" name="{{name}}" size="{{size}}"/>
+  <view class="ar-body">
+    <view class="ar-top">
+      <text class="ar-name t-anchor">{{name}}</text>
+      <platform-badge wx:if="{{platform}}" platform="{{platform}}" label="{{platformLabel}}"/>
+    </view>
+    <view class="ar-meta t-meta">{{meta}}</view>
+  </view>
+  <view class="ar-right" wx:if="{{showArrow}}"><view class="ar-arrow"></view></view>
+  <!-- 组件内拦截: action 区域点击不冒泡到行(UI-2.1A 防双触发) -->
+  <view class="ar-action" catchtap="onActionTap">
+    <slot name="action"/>
+  </view>
+</view>

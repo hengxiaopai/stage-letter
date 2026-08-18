@@ -1,0 +1,5 @@
+<view class="ph">
+  <view class="ph-back" wx:if="{{showBack}}" bindtap="onBack"><view class="ph-arrow"></view></view>
+  <view class="ph-title t-body">{{title}}</view>
+  <view class="ph-right"><slot name="right"/></view>
+</view>

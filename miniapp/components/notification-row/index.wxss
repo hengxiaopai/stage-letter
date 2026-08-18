@@ -1,0 +1,9 @@
+.nr { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.nr:last-child { border-bottom: none; }
+.nr-left { flex: 1; min-width: 0; }
+.nr-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nr-meta { margin-top: 4px; }
+.nr-state { flex-shrink: 0; margin-left: 12px; font-size: 12px; font-weight: 500; border-radius: 999px; padding: 3px 10px; }
+.k-sent { background: var(--online-soft); color: var(--online); }
+.k-inapp { background: var(--brand-soft); color: var(--brand); }
+.k-fail { background: var(--destructive-soft); color: var(--destructive); }

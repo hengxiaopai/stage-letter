@@ -1,0 +1,39 @@
+{
+  "pages": [
+    "pages/home/index",
+    "pages/add/index",
+    "pages/subscriptions/index",
+    "pages/profile/index",
+    "pages/detail/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "开场信",
+    "navigationBarBackgroundColor": "#F7F8F7",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F8F7",
+    "backgroundTextStyle": "dark",
+    "enablePullDownRefresh": false
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#9CA29F",
+    "selectedColor": "#176B8A",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/subscriptions/index",
+        "text": "订阅"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,11 @@
+{
+  "navigationBarTitleText": "主播详情",
+  "usingComponents": {
+    "anchor-avatar": "/components/anchor-avatar/index",
+    "platform-badge": "/components/platform-badge/index",
+    "primary-button": "/components/primary-button/index",
+    "section-header": "/components/section-header/index",
+    "reminder-status": "/components/reminder-status/index",
+    "live-history-row": "/components/live-history-row/index"
+  }
+}

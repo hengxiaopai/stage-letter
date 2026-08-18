@@ -1,0 +1,72 @@
+<view class="page detail-page">
+  <!-- 骨架屏 -->
+  <block wx:if="{{loading}}">
+    <view class="skeleton">
+      <view class="sk-row">
+        <view class="skeleton-row skeleton-circle" style="width:56px;height:56px;"></view>
+        <view class="sk-lines">
+          <view class="skeleton-row" style="width:50%;height:18px;"></view>
+          <view class="skeleton-row" style="width:35%;height:13px;margin-top:8px;"></view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{error}}">
+    <view class="empty">
+      <view class="empty-icon">!</view>
+      <view class="empty-title">加载失败</view>
+      <view class="empty-sub">{{error}}</view>
+      <primary-button bindtap="load">重新加载</primary-button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <!-- §3.1/4.1 稳定 Header Block -->
+    <view class="detail-head">
+      <anchor-avatar src="{{avatar}}" name="{{name}}" size="lg"/>
+      <view class="detail-info">
+        <view class="detail-name-row">
+          <text class="detail-name t-anchor">{{name}}</text>
+          <platform-badge wx:if="{{platform}}" platform="{{platform}}" label="{{platformLabel}}"/>
+        </view>
+        <!-- LIVE 状态直接位于主播信息下方(无"平台状态"系统术语); P0: 非 LIVE 也显示真实状态(未开播/确认中/无法确认) -->
+        <view class="detail-status">
+          <text wx:if="{{live}}" class="st-live">● 正在直播</text>
+          <text wx:elif="{{liveLabel === '未开播'}}" class="st-off">{{liveLabel}}</text>
+          <text wx:else class="st-dim">{{liveLabel}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- §3.2/4.2 当前直播信息(标题优先,时间格式统一) -->
+    <view class="detail-session" wx:if="{{live}}">
+      <view class="detail-session-title t-body" wx:if="{{sessionTitle}}">{{sessionTitle}}</view>
+      <view class="detail-session-meta t-meta">{{sessionMeta}}</view>
+      <!-- §3.3 P0: 行为=复制,按钮文案一致 -->
+      <view style="margin-top:20px;">
+        <primary-button bindtap="onGoLive">复制直播间链接</primary-button>
+      </view>
+    </view>
+    <view class="detail-session" wx:else>
+      <view class="detail-session-meta t-meta">暂时还没开播</view>
+      <view class="detail-session-sub t-meta">开播后会第一时间通知你</view>
+    </view>
+
+    <!-- §3.4/4.3 开播提醒(统一 Reminder 组件) -->
+    <view class="divider"></view>
+    <reminder-status on="{{remindOn}}" bind:change="onRemindChange"/>
+
+    <!-- §3.5/4.4 最近直播记录 -->
+    <view class="divider"></view>
+    <section-header title="最近直播"/>
+    <block wx:if="{{history.length > 0}}">
+      <view wx:for="{{history}}" wx:key="id">
+        <live-history-row title="{{item.title}}" meta="{{item.meta}}" live="{{item.live}}" stateLabel="{{item.stateLabel}}"/>
+      </view>
+    </block>
+    <view wx:else class="history-empty">
+      <view class="t-meta">检测到直播记录后会显示在这里</view>
+    </view>
+  </block>
+</view>

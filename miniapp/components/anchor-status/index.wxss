@@ -1,0 +1,5 @@
+.st { font-size: 13px; font-weight: 500; }
+.st-live { color: var(--live); }
+.st-online { color: var(--online); }
+.st-off { color: var(--offline); }
+.st-warn { color: var(--warning); }

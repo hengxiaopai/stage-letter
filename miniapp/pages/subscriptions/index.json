@@ -1,0 +1,13 @@
+{
+  "navigationBarTitleText": "我的订阅",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "usingComponents": {
+    "page-title": "/components/page-title/index",
+    "anchor-avatar": "/components/anchor-avatar/index",
+    "platform-badge": "/components/platform-badge/index",
+    "primary-button": "/components/primary-button/index",
+    "empty-state": "/components/empty-state/index",
+    "bottom-action-sheet": "/components/bottom-action-sheet/index"
+  }
+}

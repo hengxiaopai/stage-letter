@@ -1,0 +1,5 @@
+<view class="sf">
+  <view class="sf-icon"></view>
+  <input class="sf-input" placeholder="{{placeholder}}" placeholder-class="sf-ph" value="{{value}}" confirm-type="search" bindinput="onInput" bindconfirm="onConfirm"/>
+  <view class="sf-clear" wx:if="{{value}}" bindtap="onClear"><view class="sf-clear-x"></view></view>
+</view>

@@ -1,0 +1,28 @@
+# StageLetter V1 运行时依赖(Gate 1 骨架)
+# 安装: .venv/Scripts/pip install -r requirements.txt
+
+# Web
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# DB / ORM
+sqlalchemy>=2.0.30
+asyncpg>=0.29
+alembic>=1.13
+
+# 队列 / 缓存
+redis>=5.0
+dramatiq>=1.17
+
+# 平台抓取(已有 requests;抖音 web enter 已实测)
+requests>=2.32
+httpx>=0.27
+
+# 微信 access_token 缓存 / 加解密(V2+)
+cryptography>=42.0
+
+# 测试
+pytest>=8.2
+pytest-asyncio>=0.23

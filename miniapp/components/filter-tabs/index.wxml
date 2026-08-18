@@ -1,0 +1,3 @@
+<scroll-view scroll-x class="ft" show-scrollbar="{{false}}">
+  <view class="ft-item {{active === item.value ? 'ft-on' : ''}}" wx:for="{{items}}" wx:key="value" data-value="{{item.value}}" bindtap="onTap">{{item.label}}</view>
+</scroll-view>

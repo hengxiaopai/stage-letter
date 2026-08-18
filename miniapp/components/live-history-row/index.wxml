@@ -1,0 +1,7 @@
+<view class="lh">
+  <view class="lh-left">
+    <view class="lh-title t-body">{{title}}</view>
+    <view class="lh-meta t-meta">{{meta}}</view>
+  </view>
+  <view class="lh-state {{live ? 's-live' : 's-done'}}">{{stateLabel}}</view>
+</view>

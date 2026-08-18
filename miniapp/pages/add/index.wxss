@@ -1,0 +1,187 @@
+/* 添加页 — 全局搜索 + 平台筛选 */
+
+.add-page {
+  padding-top: 16px;
+}
+
+/* §6.1 页面头部 */
+.add-head {
+  padding: 12px 0 4px;
+}
+
+.add-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+.add-sub {
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
+/* §6.2 Segmented(Selected = Brand Soft + Brand Primary) */
+.add-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--border);
+  margin: 16px 0 20px;
+}
+
+.add-tab {
+  font-size: 16px;
+  color: var(--text-secondary);
+  padding: 12px 2px;
+  position: relative;
+}
+
+.add-tab-on {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.add-tab-on::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+/* 搜索区 */
+.add-search-block {
+  padding-bottom: 4px;
+}
+
+.add-search-btn {
+  width: 100%;
+  margin-top: 16px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--r-md);
+  height: 48px;
+  line-height: 48px;
+  border: none;
+}
+
+.add-search-btn::after {
+  border: none;
+}
+
+/* §8.1: 搜索中状态 — 按钮保留,置灰,布局不跳动 */
+.add-search-btn[disabled] {
+  background: var(--brand);
+  opacity: 0.6;
+}
+
+/* 提示条 */
+.notice {
+  font-size: 13px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--destructive-soft);
+  color: var(--destructive);
+}
+
+/* V2: 抖音 BLOCKED 警告条 */
+.notice-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* V2: 抖音固定信息提示条 */
+.notice-info {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* V2: 粘贴链接 CTA(警告条内嵌) */
+.paste-cta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(23, 107, 138, 0.1);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.paste-cta-alone {
+  display: inline-flex;
+  margin: 14px 0 0;
+}
+
+.paste-cta-txt {
+  color: var(--brand);
+}
+
+/* 复用 ar-arrow 箭头(CSS 三角,无 HTML entity) */
+.ar-arrow {
+  width: 6px;
+  height: 6px;
+  border-top: 1.5px solid var(--brand);
+  border-right: 1.5px solid var(--brand);
+  transform: rotate(45deg);
+  margin-top: -2px;
+}
+
+/* §6.3 无结果空状态(轻量) */
+.search-empty {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.search-empty .t-meta {
+  color: var(--text-tertiary);
+}
+
+/* 搜索结果(开放 List) */
+.result-list {
+  border-top: 1px solid var(--border);
+}
+
+.result-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.result-row .anchor-row {
+  min-height: 72px;
+}
+
+/* 订阅操作 */
+.sub-action {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 999px;
+  padding: 6px 16px;
+  margin-left: 8px;
+}
+
+/* 已订阅状态(§七: 品牌 Soft,非灰,弱化 Success) */
+.action-done {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* 授权中(UI-2.1A: 按钮 Disabled 视觉,防重复点击) */
+.action-loading {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+/* 链接模式 */
+.link-card {
+  padding: 4px 0;
+}

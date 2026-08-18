@@ -9,6 +9,8 @@
 # Python
 __pycache__/
 *.py[cod]
+.venv*/
+**/.venv*/
 
 # Gate 0 evidence
 experiments/gate0a/data/*.jsonl
@@ -16,8 +18,34 @@ experiments/gate0a/data/*.json
 experiments/gate0d/data/*.jsonl
 experiments/gate0d/data/*.json
 
+# Local WeChat real-test files
+wechat-template-data.json
+experiments/gate0d/wechat-real-demo/project.config.json
+experiments/gate0d/wechat-real-demo/project.private.config.json
+
 # OS/editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Local development/runtime artifacts
+.tools/
+.workbuddy/
+logs/
+
+# Local AI / browser runtime
+.workbuddy-ai/
+.workbuddy/
+
+# WeChat Developer Tools private configs
+project.private.config.json
+**/project.private.config.json
+
+# Temporary probe/output files
+douyin_live_tmp.html
+douyin_search_live.html
+search_test.json
+
+# Local backup files
+*.bak

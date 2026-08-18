@@ -1,0 +1,5 @@
+.pb { display: inline-flex; align-items: center; font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-secondary); }
+.pb-bilibili { background: #F0F9FE; color: #00AEEC; }
+.pb-douyin { background: #F5F5F5; color: #3A3A3A; }
+.pb-huya { background: #FEF5EC; color: #E07A1F; }
+.pb-douyu { background: #F2F8EC; color: #5E9E2F; }

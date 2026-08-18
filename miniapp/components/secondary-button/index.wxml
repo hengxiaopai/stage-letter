@@ -1,0 +1,3 @@
+<button class="btn-secondary {{block ? 'btn-block' : ''}}" hover-class="btn-hover" bindtap="onTap">
+  <slot/>
+</button>

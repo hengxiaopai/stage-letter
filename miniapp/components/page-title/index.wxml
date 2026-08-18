@@ -1,0 +1,4 @@
+<view class="pt-wrap">
+  <view class="{{size === 'display' ? 't-display' : 't-title'}}">{{title}}</view>
+  <view class="pt-meta" wx:if="{{meta}}">{{meta}}</view>
+</view>

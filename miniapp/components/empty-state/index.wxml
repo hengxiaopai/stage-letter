@@ -1,0 +1,6 @@
+<view class="empty">
+  <view class="empty-icon">{{icon}}</view>
+  <view class="empty-title t-section">{{title}}</view>
+  <view class="empty-sub t-meta" wx:if="{{sub}}">{{sub}}</view>
+  <slot/>
+</view>

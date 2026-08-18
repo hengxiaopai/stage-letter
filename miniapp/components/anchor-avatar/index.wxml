@@ -1,0 +1,4 @@
+<view class="av-wrap" style="width:{{px}};height:{{px}};">
+  <image wx:if="{{src}}" class="av-img" src="{{src}}" mode="aspectFill"/>
+  <view wx:else class="av-ph">{{initial}}</view>
+</view>

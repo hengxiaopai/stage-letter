@@ -1,0 +1,4 @@
+<view class="sh-wrap">
+  <view class="t-section">{{title}}</view>
+  <view class="sh-more" wx:if="{{more}}" bindtap="onMore">{{more}}</view>
+</view>

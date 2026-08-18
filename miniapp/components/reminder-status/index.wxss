@@ -1,0 +1,23 @@
+.rs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  min-height: 48px;
+}
+.rs-info {
+  flex: 1;
+  min-width: 0;
+}
+.rs-title {
+  font-weight: 600;
+}
+.rs-sub {
+  margin-top: 2px;
+}
+/* §3.4: switch 垂直居中 + 触控完整 */
+.rs switch {
+  flex-shrink: 0;
+  margin-left: 12px;
+  transform: scale(0.9);
+}

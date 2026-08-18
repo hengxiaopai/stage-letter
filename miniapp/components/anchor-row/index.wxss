@@ -1,0 +1,25 @@
+.ar { display: flex; align-items: center; gap: 12px; padding: 12px 0; min-height: 68px; }
+.ar-body { flex: 1; min-width: 0; }
+.ar-top { display: flex; align-items: center; gap: 8px; }
+.ar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-meta { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-right {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* action 区域: 独立于行点击,不冒泡(UI-2.1A) */
+.ar-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* CSS Chevron(统一图标,非 HTML Entity) */
+.ar-arrow {
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--text-tertiary);
+  border-right: 1.5px solid var(--text-tertiary);
+  transform: rotate(45deg);
+}

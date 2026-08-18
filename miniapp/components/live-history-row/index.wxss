@@ -1,0 +1,8 @@
+.lh { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.lh:last-child { border-bottom: none; }
+.lh-left { flex: 1; min-width: 0; }
+.lh-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lh-meta { margin-top: 4px; }
+.lh-state { flex-shrink: 0; margin-left: 12px; font-size: 12px; font-weight: 500; border-radius: 999px; padding: 3px 10px; }
+.s-live { background: var(--live-soft); color: var(--live); }
+.s-done { background: var(--surface-2); color: var(--text-tertiary); }

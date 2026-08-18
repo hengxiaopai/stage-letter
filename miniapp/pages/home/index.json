@@ -1,0 +1,12 @@
+{
+  "navigationBarTitleText": "开场信",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "page-title": "/components/page-title/index",
+    "section-header": "/components/section-header/index",
+    "anchor-row": "/components/anchor-row/index",
+    "live-anchor-feature": "/components/live-anchor-feature/index",
+    "primary-button": "/components/primary-button/index",
+    "empty-state": "/components/empty-state/index"
+  }
+}

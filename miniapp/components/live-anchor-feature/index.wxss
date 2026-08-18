@@ -1,0 +1,64 @@
+.laf {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--live);
+  border-radius: var(--r-md);
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: none;
+}
+.laf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.laf-info {
+  flex: 1;
+  min-width: 0;
+}
+.laf-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.laf-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.laf-meta {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+.laf-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--live);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.laf-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  animation: lb-blink 1.4s ease-in-out infinite;
+}
+.laf-title {
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes lb-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

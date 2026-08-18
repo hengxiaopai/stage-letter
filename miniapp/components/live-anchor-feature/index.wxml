@@ -1,0 +1,14 @@
+<view class="laf" hover-class="press-hover" hover-stay-time="80" bindtap="onTap">
+  <view class="laf-head">
+    <anchor-avatar src="{{avatar}}" name="{{name}}" size="lg"/>
+    <view class="laf-info">
+      <view class="laf-top">
+        <text class="laf-name t-anchor">{{name}}</text>
+        <platform-badge wx:if="{{platform}}" platform="{{platform}}" label="{{platformLabel}}"/>
+      </view>
+      <view class="laf-meta t-meta">{{meta}}</view>
+    </view>
+    <view class="laf-badge"><view class="laf-dot"></view>LIVE</view>
+  </view>
+  <view class="laf-title" wx:if="{{title}}">{{title}}</view>
+</view>

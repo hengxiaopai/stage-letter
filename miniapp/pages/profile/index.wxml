@@ -1,0 +1,41 @@
+<view class="page profile-page">
+  <!-- §5.1 Page Header -->
+  <view class="profile-head">
+    <text class="profile-title">我的</text>
+  </view>
+
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}">
+    <view class="skeleton" style="height:120px;"></view>
+    <view class="skeleton" style="height:80px;"></view>
+  </view>
+
+  <block wx:else>
+    <!-- §5.2 开播提醒额度(用户语言) -->
+    <view class="quota-block">
+      <reminder-quota count="{{count}}" sub="开播后第一时间通知你"/>
+      <view class="quota-action">
+        <primary-button bindtap="onTopUp">补充提醒次数</primary-button>
+      </view>
+      <!-- §5.4 精简解释(2-3 行) + 了解更多 -->
+      <view class="quota-note t-meta" bindtap="onWhy">
+        微信要求你主动授权订阅消息。每次点击「允许」，会增加 1 次开播提醒额度。
+      </view>
+      <view class="quota-more t-meta" bindtap="onWhy">为什么需要补充提醒？ ›</view>
+    </view>
+
+    <!-- §5.5 通知记录(第二核心) -->
+    <view class="divider"></view>
+    <section-header title="通知记录"/>
+    <block wx:if="{{history.length > 0}}">
+      <view wx:for="{{history}}" wx:key="id">
+        <notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/>
+      </view>
+    </block>
+    <view wx:else class="history-empty">
+      <view class="history-empty-icon"></view>
+      <view class="t-meta">暂无通知记录</view>
+      <view class="t-meta history-empty-sub">订阅的主播开播后会显示在这里</view>
+    </view>
+  </block>
+</view>

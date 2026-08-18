@@ -1,0 +1,7 @@
+.rq { padding: 8px 0 4px; }
+.rq-label { margin-bottom: 4px; }
+.rq-num-row { display: flex; align-items: baseline; gap: 8px; }
+.rq-num { font-size: 20px; font-weight: 700; color: var(--text-primary); }
+.rq-count { font-size: 40px; font-weight: 800; letter-spacing: -2px; color: var(--text-primary); line-height: 1; }
+.rq-unit { font-size: 16px; font-weight: 600; color: var(--text-secondary); }
+.rq-sub { margin-top: 6px; }

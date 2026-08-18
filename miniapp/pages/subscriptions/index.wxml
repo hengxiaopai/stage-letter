@@ -1,0 +1,69 @@
+<view class="page subs-page">
+  <!-- 页头: 总数 + 添加 -->
+  <view class="subs-head">
+    <view class="subs-title-row">
+      <text class="subs-title">我的订阅</text>
+      <text class="subs-add" hover-class="press-hover" bindtap="goAdd">＋ 添加</text>
+    </view>
+    <view class="subs-meta t-meta" wx:if="{{!loading}}">{{total}} 位主播 · {{liveCount}} 位正在直播</view>
+  </view>
+
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}">
+    <view class="skeleton" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="sk-row">
+        <view class="skeleton-row skeleton-circle" style="width:44px;height:44px;"></view>
+        <view class="sk-lines">
+          <view class="skeleton-row" style="width:45%;height:16px;"></view>
+          <view class="skeleton-row" style="width:30%;height:13px;margin-top:8px;"></view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{error}}" class="empty">
+    <view class="empty-icon">!</view>
+    <view class="empty-title">加载失败</view>
+    <view class="empty-sub">{{error}}</view>
+    <primary-button bindtap="load">重新加载</primary-button>
+  </view>
+
+  <!-- 空状态 -->
+  <empty-state wx:elif="{{total === 0}}" icon="+" title="还没有订阅主播" sub="搜索或粘贴链接，订阅后开播秒提醒">
+    <primary-button bindtap="goAdd">去添加主播</primary-button>
+  </empty-state>
+
+  <!-- 开放式 List(分割线, 无 Card) -->
+  <view wx:else>
+    <view
+      class="sub-row {{item.isLiveFlag ? 'row-live' : 'row-dim'}}"
+      wx:for="{{subs}}"
+      wx:key="id"
+      data-id="{{item.anchor_id}}"
+      bindtap="goDetail"
+      hover-class="press-hover"
+      hover-stay-time="60"
+    >
+      <anchor-avatar src="{{item.avatar}}" name="{{item.display_name}}" size="md"/>
+      <view class="sub-body">
+        <view class="sub-top">
+          <text class="sub-name t-anchor">{{item.display_name || item.platform}}</text>
+          <platform-badge platform="{{item.platform}}" label="{{item.platformLabel}}"/>
+        </view>
+        <view class="sub-meta t-meta">
+          <text class="{{item.isLiveFlag ? 'text-live' : ''}}">{{item.meta}}</text>
+        </view>
+      </view>
+      <view class="sub-manage" data-id="{{item.id}}" catchtap="onManage">···</view>
+    </view>
+  </view>
+
+  <!-- 底部管理弹层 -->
+  <bottom-action-sheet
+    show="{{sheetShow}}"
+    title="{{sheetTitle}}"
+    actions="{{sheetActions}}"
+    bind:action="onSheetAction"
+    bind:close="onSheetClose"
+  />
+</view>

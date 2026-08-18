@@ -1,0 +1,6 @@
+<view class="mask" wx:if="{{show}}" bindtap="onClose"/>
+<view class="sheet {{show ? 'sheet-in' : ''}}" wx:if="{{show}}">
+  <view class="sheet-title t-body">{{title}}</view>
+  <view class="sheet-row" wx:for="{{actions}}" wx:key="key" data-key="{{item.key}}" bindtap="onAction">{{item.label}}</view>
+  <view class="sheet-cancel" bindtap="onClose">取消</view>
+</view>
