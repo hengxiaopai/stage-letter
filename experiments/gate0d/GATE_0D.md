@@ -1,6 +1,6 @@
 # Gate 0D — WeChat Notification Truth
 
-Status: **DEGRADED / REAL EVIDENCE COMPLETION IN PROGRESS**
+Status: **PASS**
 
 ## Purpose
 
@@ -26,10 +26,10 @@ notification failure != LiveSession mutation
 0D-1 Eligibility + logical delivery idempotency   PASS 16/16
 0D-2 Provider/grant result normalization          PASS 18/18
 0D-3 Retry / terminal-failure semantics           PASS 20/20
-0D-4 Real WeChat acceptance evidence              DEGRADED / PARTIAL PASS
+0D-4 Real WeChat acceptance evidence              PASS
 ```
 
-Real provider evidence corrected one earlier deterministic assumption: `SENT` cannot be treated as proof that the user's provider-side grant inventory is globally exhausted. The implementation/tests were corrected and the complete 54-test deterministic suite was rerun successfully on 2026-08-18.
+The deterministic model was corrected after real-provider evidence showed that `SENT` does not prove global provider-side grant exhaustion. The corrected complete deterministic suite was rerun successfully: **54/54 PASS**.
 
 ---
 
@@ -60,8 +60,6 @@ Logical delivery uniqueness is:
 (user_id, live_event_id, channel)
 ```
 
-An eligible logical delivery enters as `PENDING`; duplicate evaluation returns the existing delivery.
-
 Acceptance: **PASS 16/16**.
 
 ---
@@ -75,7 +73,7 @@ experiments/gate0d/provider_result.py
 experiments/gate0d/test_provider_result.py
 ```
 
-Corrected semantics:
+Corrected successful-send semantics:
 
 ```text
 SENT
@@ -119,7 +117,7 @@ experiments/gate0d/delivery_retry.py
 experiments/gate0d/test_delivery_retry.py
 ```
 
-Execution states remain:
+Execution states:
 
 ```text
 PENDING
@@ -132,7 +130,7 @@ FAILED_TERMINAL
 AMBIGUOUS
 ```
 
-The crash-safety boundary is unchanged:
+Crash-safety boundary:
 
 ```text
 IN_FLIGHT at restart
@@ -140,7 +138,7 @@ IN_FLIGHT at restart
     -> no blind automatic resend
 ```
 
-The corrected delivery invariant is:
+Corrected delivery invariant:
 
 ```text
 SENT
@@ -160,9 +158,9 @@ Acceptance: **PASS 20/20**.
 
 ---
 
-## Gate 0D-4 — Real WeChat acceptance evidence — DEGRADED / PARTIAL PASS
+## Gate 0D-4 — Real WeChat acceptance evidence — PASS
 
-Canonical experiment/evidence assets:
+Canonical assets:
 
 ```text
 experiments/gate0d/REAL_WECHAT.md
@@ -172,9 +170,9 @@ experiments/gate0d/real_wechat_replay_probe.py
 experiments/gate0d/wechat-real-demo/
 ```
 
-### Confirmed real facts
+### A. Real client subscription result — PASS
 
-Real client subscription callback:
+Observed callback:
 
 ```json
 {
@@ -184,49 +182,44 @@ Real client subscription callback:
 }
 ```
 
-Two real service-side sends were observed for the same app/template/openid fingerprints:
+### B/C/D. Real provider send and phone receipt — PASS
+
+Two ordinary real sends were observed for the same app/template/openid fingerprints:
 
 ```text
 send #1  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:02
 send #2  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:10
 ```
 
-The controlled sequence did not intentionally call `wx.requestSubscribeMessage` between those two ordinary sends.
+### E. Post-send grant behavior — PASS
 
-This confirms:
-
-```text
-A. exact client wx.requestSubscribeMessage result  PASS / accept
-B. real provider response captured                 PASS
-C. real errcode=0 send                             PASS (two sends)
-D. corresponding phone receipt                     PASS (two receipts)
-E. post-send grant behavior observed               PASS / SENT != proven EXHAUSTED
-H. no secret material in canonical evidence        PASS
-```
-
-Still open:
+Real evidence demonstrated:
 
 ```text
-F. exact duplicate/replay/idempotency boundary     CURRENT
-G. evidence-backed non-zero errcode mappings       OPEN
+SENT != proven global grant exhaustion
 ```
 
-### Exact replay experiment
+The model was corrected accordingly and the complete deterministic suite returned **54/54 PASS**.
 
-`real_wechat_replay_probe.py` performs exactly two provider calls in one process with:
+### F. Exact replay / provider idempotency boundary — PASS
+
+Controlled experiment:
 
 ```text
-same access token
-same openid
-same template id
-same template data
-same page/miniprogram_state/lang
-same request-body fingerprint
+experiment                    EXACT_PAYLOAD_REPLAY
+replay_count                  2
+same_access_token_for_both    true
+openid_fingerprint            cbdafe5eb1a0ea94
+request_payload_fingerprint   9e040003c7649066
+
+attempt #1  errcode=0 / errmsg=ok / msgid=4654832376731369477
+attempt #2  errcode=0 / errmsg=ok / msgid=4654832384247562248
+phone receipt count: 2
 ```
 
-Only fingerprints and sanitized provider responses are persisted. The operator must also record whether the phone receives zero, one or two corresponding notifications.
+Both exact same-payload calls were accepted independently, returned distinct `msgid` values, and produced two visible corresponding notifications. Under the tested path, no automatic provider deduplication was observed.
 
-Until exact replay evidence proves otherwise, the deterministic safety rule remains mandatory:
+Therefore Stage Letter must not rely on payload equality for provider idempotency and must preserve:
 
 ```text
 IN_FLIGHT at crash/restart
@@ -234,7 +227,65 @@ IN_FLIGHT at crash/restart
   -> no blind automatic resend
 ```
 
+External exactly-once delivery is not claimed.
+
+### G. Non-zero raw provider mapping discipline — PASS
+
+The real probe freezes conservative mapping:
+
+```text
+errcode == 0                -> SENT
+transport failure           -> NETWORK_ERROR
+other non-zero provider     -> UNMAPPED_PROVIDER_ERROR
+```
+
+Non-zero raw WeChat codes are not promoted to `USER_REJECTED`, `GRANT_INVALID`, `AUTH_REQUIRED`, `TEMPLATE_INVALID`, `RATE_LIMITED`, or other specific domain outcomes without current documentation and/or direct observed evidence for that exact mapping.
+
+A real pre-send credential failure was observed earlier at `code2session` (`errcode=40125`, provider response reporting an invalid AppSecret). It remained a credential-layer failure and was not misclassified as user grant or notification-delivery truth.
+
+### H. Secret handling — PASS
+
+Canonical evidence persists no AppSecret, access token, session key, fresh login code, or raw openid. Raw local evidence remains gitignored.
+
+### 0D-4 acceptance matrix
+
+```text
+A client subscription result                         PASS
+B real provider response                            PASS
+C real errcode=0 send                               PASS
+D intended account visibly received                 PASS
+E post-send grant behavior                          PASS
+F exact replay / idempotency boundary               PASS
+G non-zero mapping discipline                       PASS
+H no secret material persisted                      PASS
+--------------------------------------------------------
+Gate 0D-4                                            PASS
+```
+
 ---
+
+## Gate 0D final decision
+
+```text
+Gate 0D-1  PASS
+Gate 0D-2  PASS
+Gate 0D-3  PASS
+Gate 0D-4  PASS
+----------------
+Gate 0D    PASS
+```
+
+Permanent safety conclusions:
+
+```text
+UNKNOWN notification/provider truth never mutates creator live truth
+successful send does not prove global grant exhaustion
+same logical NotificationDelivery is locally idempotent
+exact same provider payload may produce duplicate external notifications
+crash-after-send/before-response -> AMBIGUOUS -> no blind resend
+no provider-backed exactly-once claim
+non-zero provider codes remain conservative until evidence-backed
+```
 
 ## Current progression
 
@@ -242,17 +293,8 @@ IN_FLIGHT at crash/restart
 Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C    PASS
-Gate 0D-1  PASS
-Gate 0D-2  PASS
-Gate 0D-3  PASS
-Gate 0D-4  DEGRADED / real evidence partial
-Gate 0D    DEGRADED
+Gate 0D    PASS
 Gate 0E    NOT STARTED
 ```
 
-Next real-evidence priority:
-
-```text
-F. run one controlled exact-payload replay and record provider responses + phone receipt count
-G. preserve any non-zero errcode as unmapped unless evidence supports classification
-```
+Next gate: **Gate 0E — End-to-End Golden Path**.
