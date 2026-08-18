@@ -9,6 +9,8 @@
     <input class="input" value="{{templateId}}" bindinput="onTemplateInput" placeholder="从微信公众平台复制模板 ID" />
     <button type="primary" bindtap="requestSubscription">请求一次订阅授权</button>
     <view class="result" wx:if="{{subscribeResult}}">{{subscribeResult}}</view>
+    <button wx:if="{{subscribeResult}}" size="mini" bindtap="copySubscribeResult">复制授权结果</button>
+    <view class="hint">请保留完整 callback / errMsg / templateResult 或 errCode，作为 Gate 0D-4 客户端证据。</view>
   </view>
 
   <view class="card">
