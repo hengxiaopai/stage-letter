@@ -1,8 +1,24 @@
 # Gate 0D-4 — Real WeChat Evidence — 2026-08-18
 
-Status: **PARTIAL PASS / TWO REAL SENDS + TWO PHONE RECEIPTS CONFIRMED**
+Status: **PARTIAL PASS / CLIENT ACCEPT + TWO REAL SENDS + TWO PHONE RECEIPTS CONFIRMED**
 
 This sanitized record captures only non-secret facts from the real WeChat subscription-message experiment. Raw local JSON evidence remains under `experiments/gate0d/data/` and is gitignored.
+
+## Real client subscription result
+
+Observed from the real mini-program `wx.requestSubscribeMessage` callback:
+
+```json
+{
+  "callback": "success",
+  "errMsg": "requestSubscribeMessage:ok",
+  "templateResult": "accept"
+}
+```
+
+This is direct client evidence that the request completed through the success callback and the tested template result was `accept`.
+
+Gate item A: **PASS**.
 
 ## Real provider send #1
 
@@ -93,25 +109,33 @@ explicit grant-invalid/exhaustion evidence
   -> may mark local grant state EXHAUSTED
 ```
 
-This correction reopens the affected 0D-2/0D-3 assertions for deterministic revalidation before those sub-gates can be considered closed again.
+The corrected deterministic 54-test suite was rerun successfully after this finding.
 
 ## Gate items confirmed
 
 ```text
-B. real send provider response captured                 PASS
-C. at least one real errcode=0 provider send            PASS (two observed)
-D. corresponding message visibly received               PASS (two observed)
-E. post-send grant behavior observed                     PASS / FINDING: SENT != proven EXHAUSTED
-H. no secret material persisted in canonical evidence   PASS
+A. exact client wx.requestSubscribeMessage result       PASS / accept
+B. real send provider response captured                PASS
+C. at least one real errcode=0 provider send           PASS (two observed)
+D. corresponding message visibly received              PASS (two observed)
+E. post-send grant behavior observed                    PASS / SENT != proven EXHAUSTED
+H. no secret material persisted in canonical evidence  PASS
 ```
 
 ## Gate items still open
 
 ```text
-A. exact client wx.requestSubscribeMessage result        OPEN
-F. exact duplicate/replay/provider-idempotency boundary  OPEN
+F. exact duplicate/replay/provider-idempotency boundary  CURRENT
 G. non-zero raw errcode mappings                         OPEN / only map when evidenced
 ```
+
+A dedicated controlled operator tool now exists:
+
+```text
+experiments/gate0d/real_wechat_replay_probe.py
+```
+
+It performs exactly two service-side calls in one process using the same access token and the same request body, while persisting only a request-payload fingerprint and sanitized provider responses.
 
 The deterministic Gate 0D-3 crash safety rule remains unchanged:
 
@@ -121,4 +145,4 @@ IN_FLIGHT at crash/restart
   -> no blind automatic resend
 ```
 
-Two successful sends do not prove provider-side request idempotency or reconciliation. Exact duplicate/replay evidence is still required for item F.
+Two successful ordinary sends do not prove provider-side request idempotency or reconciliation. Exact replay evidence is still required for item F.
