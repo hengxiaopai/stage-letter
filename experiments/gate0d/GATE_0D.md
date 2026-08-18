@@ -1,6 +1,6 @@
 # Gate 0D — WeChat Notification Truth
 
-Status: **IN PROGRESS**
+Status: **DEGRADED / REAL EVIDENCE REFINEMENT IN PROGRESS**
 
 ## Purpose
 
@@ -24,10 +24,12 @@ notification failure != LiveSession mutation
 
 ```text
 0D-1 Eligibility + logical delivery idempotency   PASS 16/16
-0D-2 Provider/grant result normalization          PASS 18/18
-0D-3 Retry / terminal-failure semantics           PASS 20/20
-0D-4 Real WeChat acceptance evidence              CURRENT
+0D-2 Provider/grant result normalization          DEGRADED / REVALIDATION REQUIRED
+0D-3 Retry / terminal-failure semantics           DEGRADED / REVALIDATION REQUIRED
+0D-4 Real WeChat acceptance evidence              DEGRADED / PARTIAL PASS
 ```
+
+The earlier 0D-2/0D-3 deterministic runs passed their then-current assertions, but subsequent real provider evidence disproved one assumption: `SENT` cannot be treated as proof that the user's provider-side grant inventory is globally exhausted. The implementation and tests have been corrected and must be rerun before 0D-2/0D-3 return to PASS.
 
 ---
 
@@ -60,7 +62,7 @@ Logical delivery uniqueness is:
 
 An eligible logical delivery enters as `PENDING`; duplicate evaluation returns the existing delivery.
 
-Clean local acceptance evidence on 2026-08-18:
+Clean local acceptance evidence:
 
 ```text
 Ran 16 tests in 0.003s
@@ -71,7 +73,7 @@ Acceptance: **PASS 16/16**.
 
 ---
 
-## Gate 0D-2 — Provider / grant result normalization — PASS
+## Gate 0D-2 — Provider / grant result normalization — DEGRADED / REVALIDATION REQUIRED
 
 Canonical implementation:
 
@@ -80,7 +82,7 @@ experiments/gate0d/provider_result.py
 experiments/gate0d/test_provider_result.py
 ```
 
-0D-2 freezes provider-agnostic normalized outcomes without guessing raw WeChat non-zero errcode mappings:
+Normalized outcomes remain:
 
 ```text
 SENT
@@ -93,7 +95,7 @@ NETWORK_ERROR
 PROVIDER_ERROR
 ```
 
-Normalized facts are independent:
+Normalized facts remain independent:
 
 ```text
 success
@@ -105,12 +107,35 @@ provider diagnostics
 retry_after_seconds
 ```
 
-Semantic table:
+### Real-provider correction
+
+The original deterministic rule treated successful send as:
 
 ```text
-SENT             -> terminal success, CONSUME
+SENT -> CONSUME -> GrantState.EXHAUSTED
+```
+
+Gate 0D-4 then produced two consecutive real `errcode=0` sends to the same openid fingerprint, with two visible phone receipts, without an intentionally repeated subscription request between those two sends.
+
+Therefore a successful send proves only that one send entitlement was used. It does **not** prove that no additional entitlement remains when exact provider-side grant balance is unknown.
+
+Corrected semantics:
+
+```text
+SENT
+  -> success
+  -> terminal for this logical delivery
+  -> grant_effect = CONSUME_ONE
+  -> do not infer EXHAUSTED
+
+GRANT_INVALID / explicit exhaustion evidence
+  -> may mark GrantState.EXHAUSTED
+```
+
+Other semantic rows remain:
+
+```text
 USER_REJECTED    -> terminal failure, MARK_DENIED
-GRANT_INVALID    -> terminal failure, MARK_EXHAUSTED
 AUTH_REQUIRED    -> AFTER_AUTH, KEEP
 TEMPLATE_INVALID -> AFTER_CONFIG_FIX, KEEP
 RATE_LIMITED     -> AFTER_COOLDOWN, KEEP
@@ -118,18 +143,11 @@ NETWORK_ERROR    -> TRANSIENT, KEEP
 PROVIDER_ERROR   -> TRANSIENT at this boundary, KEEP
 ```
 
-Clean local combined evidence:
-
-```text
-Ran 34 tests in 0.005s
-OK
-```
-
-0D-2 acceptance: **PASS 18/18**.
+The previous 18/18 local PASS is superseded by this semantic correction. Revalidation is required.
 
 ---
 
-## Gate 0D-3 — Retry / terminal-failure semantics — PASS
+## Gate 0D-3 — Retry / terminal-failure semantics — DEGRADED / REVALIDATION REQUIRED
 
 Canonical implementation:
 
@@ -138,7 +156,7 @@ experiments/gate0d/delivery_retry.py
 experiments/gate0d/test_delivery_retry.py
 ```
 
-Execution states:
+Execution states remain:
 
 ```text
 PENDING
@@ -151,9 +169,7 @@ FAILED_TERMINAL
 AMBIGUOUS
 ```
 
-### Persist-before-send boundary
-
-Each provider attempt is recorded as `IN_FLIGHT` before the external send. If the process restarts while an unresolved attempt remains `IN_FLIGHT`, the runtime restores it as:
+The crash-safety boundary is unchanged:
 
 ```text
 IN_FLIGHT at restart
@@ -161,110 +177,62 @@ IN_FLIGHT at restart
     -> no blind automatic resend
 ```
 
-This prevents a crash-after-send/before-response window from silently creating duplicate user notifications when provider-side idempotency/reconciliation has not been proven.
+Retry/backoff, auth/config blocking, attempt budgets, restart safety and duplicate completion replay remain unchanged.
 
-Gate acceptance retry parameters are configurable test values, not production SLA values:
-
-```text
-max_total_attempts                = 5
-transient_base_delay_seconds     = 30
-transient_max_delay_seconds      = 600
-default_cooldown_seconds         = 300
-```
-
-Frozen behavior:
+The corrected delivery invariant is now:
 
 ```text
 SENT
-    -> terminal
-    -> grant consumed
-    -> cannot send again
-
-USER_REJECTED / GRANT_INVALID
-    -> FAILED_TERMINAL
-
-NETWORK_ERROR / PROVIDER_ERROR
-    -> bounded exponential WAITING_RETRY
-
-RATE_LIMITED
-    -> WAITING_RETRY
-    -> provider retry-after when supplied, otherwise default cooldown
-
-AUTH_REQUIRED
-    -> WAITING_AUTH
-    -> explicit auth resume required
-
-TEMPLATE_INVALID
-    -> BLOCKED_CONFIG
-    -> explicit config-fix resume required
-
-attempt budget exhausted
-    -> FAILED_TERMINAL
+  -> terminal for this NotificationDelivery
+  -> cannot send this same logical delivery again
+  -> does not imply global GrantState.EXHAUSTED
 ```
 
-Restart snapshots preserve resolved attempt history, retry schedule, grant truth and idempotency. Duplicate completion replay with the same stored outcome is idempotent; conflicting replay is rejected.
-
-Clean local acceptance evidence on 2026-08-18:
-
-```text
-Ran 54 tests in 0.011s
-OK
-```
-
-The 20 retry/runtime tests all passed. Therefore:
-
-```text
-0D-1  16/16 PASS
-0D-2  18/18 PASS
-0D-3  20/20 PASS
-------------------
-Total  54/54 PASS
-```
-
-Gate 0D-3 acceptance: **PASS 20/20**.
+The previous 20/20 local PASS is superseded only for the affected grant assertion; the complete suite must rerun before 0D-3 returns to PASS.
 
 ---
 
-## Gate 0D-4 — Real WeChat acceptance evidence — CURRENT
+## Gate 0D-4 — Real WeChat acceptance evidence — DEGRADED / PARTIAL PASS
 
-0D-4 is the only stage allowed to claim actual WeChat provider behavior.
-
-Canonical experiment assets:
+Canonical experiment/evidence assets:
 
 ```text
 experiments/gate0d/REAL_WECHAT.md
+experiments/gate0d/REAL_WECHAT_20260818.md
 experiments/gate0d/real_wechat_probe.py
 experiments/gate0d/wechat-real-demo/
 ```
 
-The mini-program probe captures the real `wx.requestSubscribeMessage` result and a fresh `wx.login` code when needed. The service-side probe can exchange the login code for an openid, obtain an access token and perform one real subscription-message send while refusing to persist AppSecret, access_token, session_key, login code or raw openid.
+### Confirmed real facts
 
-The provider probe deliberately maps only:
-
-```text
-errcode == 0                -> SENT
-transport failure           -> NETWORK_ERROR
-other non-zero provider     -> UNMAPPED_PROVIDER_ERROR
-```
-
-Non-zero raw WeChat errors are not guessed into the 0D-2 taxonomy until real/current evidence supports the mapping.
-
-Gate 0D-4 requires at least:
+Two real service-side sends were observed for the same app/template/openid fingerprints:
 
 ```text
-1. real client subscription result captured
-2. real provider response captured
-3. at least one errcode=0 send
-4. corresponding phone/account visibly receives the message
-5. one-time grant behavior observed after successful send
-6. duplicate/replay/provider-idempotency boundary documented
-7. only evidence-backed non-zero errcode mappings accepted
-8. no secret material persisted in repository evidence
+send #1  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:02
+send #2  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:10
 ```
 
-Raw local evidence is written under `experiments/gate0d/data/` and is gitignored. Only sanitized facts should be promoted into canonical Gate evidence.
+The controlled sequence did not intentionally call `wx.requestSubscribeMessage` between the two sends.
 
-Until real provider evidence closes these items, Gate 0D remains **IN PROGRESS**.
+This confirms:
+
+```text
+B. real provider response captured                 PASS
+C. real errcode=0 send                             PASS (two sends)
+D. corresponding phone receipt                     PASS (two receipts)
+E. post-send grant behavior observed               PASS / SENT != proven EXHAUSTED
+H. no secret material in canonical evidence        PASS
+```
+
+Still open:
+
+```text
+A. exact client wx.requestSubscribeMessage result  OPEN
+F. exact duplicate/replay/idempotency boundary     OPEN
+G. evidence-backed non-zero errcode mappings       OPEN
+```
+
+Two successful sends are **not** evidence of provider-side request idempotency. The `AMBIGUOUS` crash rule therefore remains mandatory.
 
 ---
 
@@ -275,9 +243,17 @@ Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C    PASS
 Gate 0D-1  PASS
-Gate 0D-2  PASS
-Gate 0D-3  PASS
-Gate 0D-4  CURRENT
-Gate 0D    IN PROGRESS
+Gate 0D-2  DEGRADED / corrected; revalidation pending
+Gate 0D-3  DEGRADED / corrected; revalidation pending
+Gate 0D-4  DEGRADED / real evidence partial
+Gate 0D    DEGRADED
 Gate 0E    NOT STARTED
 ```
+
+Next deterministic acceptance command after local merge state is clean:
+
+```bash
+python -m unittest discover -s experiments/gate0d -p "test_*.py" -v
+```
+
+Expected count remains 54 tests. After 54/54 passes with the corrected grant semantics, 0D-2 and 0D-3 may return to PASS; 0D-4 will still require client grant-result and duplicate/replay evidence before Gate 0D can close.
