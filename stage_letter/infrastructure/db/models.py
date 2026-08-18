@@ -1,6 +1,6 @@
 """Gate 1.1 formal SQLAlchemy persistence models.
 
-This module describes the post-EXPAND persistence shape for the ten frozen
+This module describes the post-hardening persistence shape for the ten frozen
 V0.1 domain entities. Existing legacy tables/columns remain readable during the
 migration window; bridge fields are explicitly named ``legacy_*`` and are not
 part of the formal domain vocabulary.
@@ -16,6 +16,7 @@ from datetime import datetime, time
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -76,9 +77,7 @@ class PlatformAccountModel(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    # EXPAND bridge: new canonical owner. Historical rows are backfilled from
-    # legacy anchor identity only when that mapping is deterministic.
-    creator_id: Mapped[int | None] = mapped_column(ForeignKey("creators.id"), nullable=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("creators.id"), nullable=False)
     legacy_anchor_id: Mapped[int] = mapped_column("anchor_id", BigInteger, nullable=False)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     platform_user_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -131,14 +130,16 @@ class LiveObservationModel(Base):
             "observation_id",
             name="uq_live_observation_identity",
         ),
+        CheckConstraint(
+            "status IN ('LIVE', 'OFFLINE', 'UNKNOWN')",
+            name="ck_g11_live_observation_status",
+        ),
         Index("idx_g11_observation_account_time", "platform_account_id", "observed_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     observation_id: Mapped[str] = mapped_column(String(255), nullable=False)
     platform_account_id: Mapped[int] = mapped_column(ForeignKey("platform_accounts.id"), nullable=False)
-    # Only LIVE/OFFLINE/UNKNOWN are valid canonical values; enforced by the
-    # domain layer and later DB CHECK constraint in the migration slice.
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -150,6 +151,10 @@ class LiveObservationModel(Base):
 class LiveSessionModel(Base):
     __tablename__ = "live_sessions"
     __table_args__ = (
+        CheckConstraint(
+            "origin IS NULL OR origin IN ('TRANSITION', 'BOOTSTRAP_LIVE')",
+            name="ck_g11_live_session_origin",
+        ),
         Index(
             "uq_g11_open_session_per_account",
             "platform_account_id",
@@ -167,8 +172,6 @@ class LiveSessionModel(Base):
     closed_at: Mapped[datetime | None] = mapped_column("ended_at", DateTime(timezone=True))
     origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Existing bridge column from pre-Gate-1 schema. It is provenance support,
-    # not a replacement for source_started_at.
     started_at_source: Mapped[str] = mapped_column(String(16), nullable=False, default="probe")
     legacy_state: Mapped[str] = mapped_column("state", String(16), nullable=False, default="OPEN")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -179,19 +182,22 @@ class LiveEventModel(Base):
     __tablename__ = "live_events"
     __table_args__ = (
         UniqueConstraint("event_id", name="uq_g11_live_event_id"),
+        CheckConstraint(
+            "cause IS NULL OR cause IN ('TRANSITION', 'BOOTSTRAP_LIVE')",
+            name="ck_g11_live_event_cause",
+        ),
         Index("idx_g11_event_account_time", "platform_account_id", "occurred_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    # Nullable during EXPAND because legacy rows may have no deterministic
-    # formal event identity/cause. New formal writes require both.
+    # event_id/cause remain nullable only for legacy rows whose truth was never persisted.
     event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     platform_account_id: Mapped[int] = mapped_column(ForeignKey("platform_accounts.id"), nullable=False)
     live_session_id: Mapped[int | None] = mapped_column(ForeignKey("live_sessions.id"))
     legacy_anchor_id: Mapped[int] = mapped_column("anchor_id", BigInteger, nullable=False)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     cause: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     legacy_detected_at: Mapped[datetime] = mapped_column("detected_at", DateTime(timezone=True), nullable=False)
     legacy_confidence: Mapped[str] = mapped_column("confidence", String(16), nullable=False, default="normal")
     payload: Mapped[dict | None] = mapped_column(JSONB)
@@ -214,7 +220,7 @@ class NotificationDeliveryModel(Base):
     # Supporting legacy queue bookkeeping remains during EXPAND/BACKFILL.
     legacy_notification_job_id: Mapped[int] = mapped_column("notification_job_id", BigInteger, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    live_event_id: Mapped[int | None] = mapped_column(ForeignKey("live_events.id"), nullable=True)
+    live_event_id: Mapped[int] = mapped_column(ForeignKey("live_events.id"), nullable=False)
     live_session_id: Mapped[int | None] = mapped_column(ForeignKey("live_sessions.id"))
     channel: Mapped[str] = mapped_column(String(32), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
