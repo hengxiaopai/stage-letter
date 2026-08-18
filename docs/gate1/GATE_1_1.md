@@ -1,6 +1,6 @@
 # Gate 1.1 — Domain Model + PostgreSQL Schema
 
-Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 PASS / 1.1-5 DB PROBE PASS, STATIC ACCEPTANCE PENDING**
+Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 PASS / 1.1-5 PASS / 1.1-6 CURRENT**
 
 Entry authority: Gate 1.0 PASS.
 
@@ -10,6 +10,7 @@ Detailed freezes/evidence:
 - [`GATE_1_1_PERSISTENCE_MODELS.md`](./GATE_1_1_PERSISTENCE_MODELS.md)
 - [`GATE_1_1_EXPAND_MIGRATION.md`](./GATE_1_1_EXPAND_MIGRATION.md)
 - [`GATE_1_1_DB_VALIDATION.md`](./GATE_1_1_DB_VALIDATION.md)
+- [`GATE_1_1_REGRESSION.md`](./GATE_1_1_REGRESSION.md)
 
 ## 1. Purpose
 
@@ -34,7 +35,7 @@ Execution order:
 
 ## 2. Gate 1.1-1 — Pure Domain — PASS
 
-Accepted local evidence:
+Accepted evidence:
 
 ```text
 Ran 11 tests in 0.002s
@@ -57,7 +58,7 @@ runtime health != admin disabled
 
 ## 3. Gate 1.1-2 — Repository / Application Ports — PASS
 
-Accepted local evidence:
+Accepted evidence:
 
 ```text
 Ran 17 tests in 0.002s
@@ -78,7 +79,7 @@ UnitOfWork
 
 ## 4. Gate 1.1-3 — SQLAlchemy Persistence Models — PASS
 
-Accepted user-local environment/evidence:
+Accepted environment/evidence:
 
 ```text
 Python      3.13.14
@@ -124,9 +125,7 @@ EXPAND preserves legacy tables/columns and performs only deterministic
 backfills. It does not fabricate LiveObservation history, source start time,
 event identity/cause, session origin, provider truth, or UNKNOWN->OFFLINE.
 
-Gate 1.1-4: **PASS**.
-
-## 6. Gate 1.1-5 — DB Constraint Hardening + Clean/Legacy Validation — CURRENT
+## 6. Gate 1.1-5 — DB Constraint Hardening + Clean/Legacy Validation — PASS
 
 Hardening revision:
 
@@ -134,7 +133,7 @@ Hardening revision:
 b63e4f9a1c20_gate1_harden_constraints.py
 ```
 
-Current revision chain:
+Revision chain:
 
 ```text
 5354a9ed7741
@@ -144,18 +143,7 @@ Current revision chain:
   -> b63e4f9a1c20
 ```
 
-Hardening adds only deterministic constraints, including canonical observation
-status, formal open-session uniqueness, event-based delivery identity, and
-non-null deterministic bridge facts. Unknown legacy event id/cause/session
-origin remain unknown/null.
-
-Real PostgreSQL probe:
-
-```text
-scripts/gate1_db_migration_probe.py
-```
-
-Accepted user-local DB evidence on 2026-08-19:
+Accepted real PostgreSQL evidence on 2026-08-19:
 
 ```text
 [clean] PASS -> b63e4f9a1c20
@@ -165,37 +153,58 @@ PASS: Gate 1.1-5 clean + legacy PostgreSQL migration probe
 [cleanup] dropped stageletter_gate11_legacy
 ```
 
-The probe proves:
+The probe proved deterministic backfills, no fabricated historical
+LiveObservation/event cause/session origin, hard rejection of invalid canonical
+status, duplicate open sessions, and duplicate logical deliveries. The operator
+subsequently confirmed the remaining static acceptance checks passed:
 
 ```text
-clean database migration                                     PASS
-representative legacy migration                             PASS
-deterministic backfills                                     PASS
-no fabricated LiveObservation/event cause/session origin    PASS
-invalid canonical observation status rejected               PASS
-second ended_at=NULL session rejected                       PASS
-duplicate user/event/channel delivery rejected              PASS
-temporary DB cleanup                                        PASS
+full Gate 1 contract suite                     PASS
+alembic heads == b63e4f9a1c20                 PASS
+offline SQL compilation through hardening     PASS
 ```
 
-Gate 1.1-5 is not closed yet because the hardening revision still needs explicit
-local evidence for:
+Gate 1.1-5: **PASS**.
+
+## 7. Gate 1.1-6 — Gate 0 Regression + Golden Path Comparison — CURRENT
+
+Regression assets have landed:
 
 ```text
-full Gate 1 contract suite
-alembic heads == b63e4f9a1c20
-offline SQL compilation through b63e4f9a1c20
+tests/gate1/test_gate0_regression_contract.py
+scripts/gate1_regression_probe.py
+docs/gate1/GATE_1_1_REGRESSION.md
 ```
 
-## 7. Remaining Gate 1.1 plan
-
-After 1.1-5 PASS:
+The formal parity tests compare accepted Gate 0 oracle vocabulary against Gate 1:
 
 ```text
-1.1-6 Gate 0 regression and golden-path comparison
+ObservationStatus / CanonicalStatus -> LiveStatus
+SessionOrigin                        -> SessionOrigin
+LiveEventType / Cause                -> formal event type/cause
+Channel                              -> DeliveryChannel
+GrantState                           -> GrantState
+ExecutionState                       -> DeliveryState
+HealthState                          -> RuntimeHealthState
 ```
 
-No legacy table/column is dropped in Gate 1.1.
+They also prove `stage_letter/*` does not import `experiments/*` at runtime.
+
+The regression probe runs accepted deterministic suites:
+
+```text
+Gate 0B >= 37 tests
+Gate 0C >= 65 tests
+Gate 0D >= 54 tests
+Gate 0E >= 15 tests
+Gate 1  >= 55 tests
+```
+
+This is a regression/oracle comparison only. It does not claim the later formal
+state/source/notification runtime integrations are already implemented, and it
+does not repeat real WeChat/provider sends.
+
+Gate 0A remains DEGRADED with its known deferred lifecycle evidence gap.
 
 ## 8. Stop rules
 
@@ -222,7 +231,9 @@ Gate 1.1-1  PASS / pure domain + 11/11
 Gate 1.1-2  PASS / ports + 17/17 + AST dependency audit
 Gate 1.1-3  PASS / SQLAlchemy models + 25/25 + metadata 10/10
 Gate 1.1-4  PASS / EXPAND + 35/35 + head + UTF-8 offline SQL
-Gate 1.1-5  CURRENT / real DB clean+legacy PASS; static acceptance pending
-Gate 1.1-6  NOT STARTED
+Gate 1.1-5  PASS / hardening + clean/legacy PostgreSQL validation
+Gate 1.1-6  CURRENT / regression harness landed; local evidence pending
 Gate 1.1    CURRENT
 ```
+
+Gate 1.1 may close only after Gate 1.1-6 regression evidence passes.
