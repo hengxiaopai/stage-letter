@@ -1,0 +1,36 @@
+name: Gate 0E Golden Path
+
+on:
+  push:
+    paths:
+      - "experiments/gate0e/**"
+      - "experiments/gate0b/**"
+      - "experiments/gate0c/**"
+      - "experiments/gate0d/**"
+      - ".github/workflows/gate0e-golden-path.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Syntax check
+        run: |
+          python -m py_compile \
+            experiments/gate0e/golden_path.py \
+            experiments/gate0e/test_golden_path.py
+
+      - name: Gate 0E deterministic golden path
+        run: python -m unittest discover -s experiments/gate0e -p "test_*.py" -v
