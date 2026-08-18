@@ -1,8 +1,10 @@
 # Gate 1.1 — Domain Model + PostgreSQL Schema
 
-Status: **CURRENT / 1.1-1 CODE COMPLETE, TEST EVIDENCE PENDING**
+Status: **CURRENT / 1.1-1 PASS / 1.1-2 PORTS CODE LANDED**
 
 Entry authority: Gate 1.0 PASS.
+
+Detailed ports freeze: [`GATE_1_1_PORTS_FREEZE.md`](./GATE_1_1_PORTS_FREEZE.md).
 
 ## 1. Purpose
 
@@ -23,61 +25,20 @@ Execution order is frozen:
 10. Gate 0 regression/golden-path comparison
 ```
 
-## 2. Gate 1.1-1 scope
+## 2. Gate 1.1-1 — Pure Domain — PASS
 
-This first slice introduces only infrastructure-free domain vocabulary and invariants under `stage_letter/domain/`.
-
-It MUST NOT:
+Formal domain package:
 
 ```text
-import SQLAlchemy/FastAPI/Redis/Dramatiq
-import experiments/* at runtime
-collapse UNKNOWN into OFFLINE
-collapse Creator into PlatformAccount
-collapse Follow into NotificationPreference
-replace event cause with legacy CONFIRMED_* semantics
-use session-based delivery idempotency
-infer grant exhaustion from SENT
+stage_letter/domain/
+  creators.py
+  follows.py
+  live.py
+  notifications.py
+  health.py
 ```
 
-## 3. Implemented formal domain package
-
-```text
-stage_letter/
-  __init__.py
-  domain/
-    __init__.py
-    creators.py
-    follows.py
-    live.py
-    notifications.py
-    health.py
-
-tests/
-  gate1/
-    test_domain_contracts.py
-```
-
-The package represents the frozen ten-entity vocabulary:
-
-```text
-User
-Creator
-CreatorProfile
-PlatformAccount
-Follow
-NotificationPreference
-LiveObservation
-LiveSession
-LiveEvent
-NotificationDelivery
-```
-
-Supporting types include canonical live status, session origin, event type/cause, delivery channel/state, grant state, and runtime health.
-
-## 4. Required Gate 1.1 invariants
-
-Implemented domain contracts preserve:
+Frozen invariants:
 
 ```text
 LiveObservation.status = LIVE | OFFLINE | UNKNOWN
@@ -86,80 +47,121 @@ Creator != PlatformAccount
 one Creator may own N PlatformAccounts
 Follow != NotificationPreference
 LiveEvent = event_type + cause
-LIVE_STARTED + BOOTSTRAP_LIVE is distinct from LIVE_STARTED + TRANSITION
+LIVE_STARTED + BOOTSTRAP_LIVE != LIVE_STARTED + TRANSITION
 logical delivery identity = (user_id, live_event_id, channel)
-AMBIGUOUS is a first-class delivery state
-AMBIGUOUS disallows blind retry
+AMBIGUOUS is first-class and forbids blind retry
 SENT is terminal for one logical delivery only
 runtime health = STARTING | HEALTHY | DEGRADED | UNAVAILABLE
 admin enabled/disabled is configuration, not runtime health
 ```
 
-No provider/grant semantics in the pure domain infer global grant exhaustion from `SENT`.
+### 1.1-1 acceptance evidence
 
-## 5. Formal domain contract tests
-
-`tests/gate1/test_domain_contracts.py` currently covers:
+User-local execution on 2026-08-18:
 
 ```text
-canonical live status exactly three states
-UNKNOWN != OFFLINE
-Creator / PlatformAccount separation and 1:N capability
-Follow / NotificationPreference separation
-BOOTSTRAP_LIVE vs TRANSITION distinction
-LiveObservation durable identity validation
-LiveSession time-range invariant
-event-based DeliveryKey identity
-AMBIGUOUS no-blind-retry contract
-SENT terminal-for-delivery contract
-runtime health enum excluding admin DISABLED
+python -m unittest discover -s tests/gate1 -p "test_*.py" -v
+Ran 11 tests in 0.002s
+OK
 ```
 
-These are formal Gate 1 tests, not imports of `experiments/*`.
+Pure-domain dependency audit:
 
-## 6. 1.1-1 acceptance
+```text
+grep -RniE 'sqlalchemy|fastapi|redis|dramatiq|experiments.' stage_letter/domain
+PASS: pure domain has no forbidden runtime dependency
+```
+
+Acceptance:
 
 ```text
 A. stage_letter/domain package exists                         PASS
 B. ten formal entity boundaries represented                  PASS
-C. canonical live status is exactly LIVE/OFFLINE/UNKNOWN     PASS
-D. delivery identity is event-based                          PASS
-E. delivery runtime includes AMBIGUOUS                        PASS
-F. no infrastructure imports in domain package               PASS by code boundary review
-G. formal domain contract tests added                         PASS
-H. local/CI test execution evidence                           PENDING
+C. canonical live status exactly LIVE/OFFLINE/UNKNOWN        PASS
+D. delivery identity event-based                             PASS
+E. delivery runtime includes AMBIGUOUS                       PASS
+F. no forbidden infrastructure imports                       PASS
+G. formal domain contract tests added                        PASS
+H. local test evidence                                       PASS
 ```
 
-Current decision:
+Gate 1.1-1: **PASS**.
+
+## 3. Gate 1.1-2 — Repository / Application Ports — CURRENT
+
+Formal application port package has landed:
 
 ```text
-Gate 1.1-1 CODE     PASS
-Gate 1.1-1 EVIDENCE PENDING
-Gate 1.1-1 overall  CURRENT
+stage_letter/application/
+  __init__.py
+  ports.py
 ```
 
-1.1-1 cannot be marked final PASS until the committed tests are executed successfully in the repository environment.
+Frozen ports:
 
-## 7. Required local acceptance command
-
-From repository root:
-
-```bash
-python -m unittest discover -s tests/gate1 -p "test_*.py" -v
+```text
+CreatorRepository
+FollowRepository
+LiveRepository
+NotificationRepository
+UnitOfWork
 ```
 
-Expected current suite size: **11 tests**.
+Semantic requirements:
 
-Also run an infrastructure-boundary check:
-
-```bash
-grep -RniE 'sqlalchemy|fastapi|redis|dramatiq|experiments\.' stage_letter/domain \
-  && echo "FAIL: forbidden domain dependency found" \
-  || echo "PASS: pure domain has no forbidden runtime dependency"
+```text
+Creator/Profile/PlatformAccount persistence stays distinct.
+Follow and NotificationPreference persistence stays distinct.
+LiveObservation is persisted as first-class evidence.
+Session/Event writes are behind the same live persistence boundary.
+NotificationDelivery lookup/create is keyed by DeliveryKey(user_id, live_event_id, channel).
+UnitOfWork is the formal atomic commit/rollback boundary.
+All repository I/O is async.
 ```
 
-Do not report PASS from expectation alone; record the actual command output.
+Contract tests are in `tests/gate1/test_application_ports.py`.
 
-## 8. Progression rule
+Gate 1.1-2 cannot be marked PASS until local/CI evidence confirms:
 
-After both commands PASS, Gate 1.1-1 closes and Gate 1.1-2 begins: repository/application ports are frozen before any SQLAlchemy model or Alembic migration is implemented.
+```text
+repository/application contract tests pass
+stage_letter/application has no SQLAlchemy/FastAPI/Redis/Dramatiq/experiments runtime import
+```
+
+## 4. Gate 1.1 remaining plan
+
+After 1.1-2 PASS:
+
+```text
+1.1-3 SQLAlchemy persistence models
+1.1-4 Alembic EXPAND migration + deterministic backfill rules
+1.1-5 DB constraints + clean/legacy migration tests
+1.1-6 Gate 0 regression and golden-path comparison
+```
+
+No SQLAlchemy model or migration is accepted before the port boundary is verified.
+
+## 5. Stop rules
+
+Gate 1.1 must stop with FAIL/BLOCKED if any implementation requires:
+
+```text
+UNKNOWN -> OFFLINE
+fabricated LiveObservation history
+fabricated source_started_at
+invented BOOTSTRAP vs TRANSITION cause
+session-based delivery idempotency
+blind resend from AMBIGUOUS
+SENT -> global grant exhaustion inference
+provider/notification failure -> creator live truth mutation
+```
+
+## 6. Current progression
+
+```text
+Gate 1.0    PASS
+Gate 1.1-1  PASS / pure domain + 11/11 local evidence
+Gate 1.1-2  CURRENT / repository + UnitOfWork ports landed; evidence pending
+Gate 1.1-3  NOT STARTED
+Gate 1.1    CURRENT
+```
