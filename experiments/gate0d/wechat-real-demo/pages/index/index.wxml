@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="card">
+    <view class="title">Gate 0D-4 · 微信真机验证</view>
+    <view class="hint">仅用于真实订阅授权与发送证据，不写入 AppSecret / access_token。</view>
+  </view>
+
+  <view class="card">
+    <view class="label">真实模板 ID</view>
+    <input class="input" value="{{templateId}}" bindinput="onTemplateInput" placeholder="从微信公众平台复制模板 ID" />
+    <button type="primary" bindtap="requestSubscription">请求一次订阅授权</button>
+    <view class="result" wx:if="{{subscribeResult}}">{{subscribeResult}}</view>
+  </view>
+
+  <view class="card">
+    <view class="label">登录 code</view>
+    <button bindtap="getLoginCode">获取新的 wx.login code</button>
+    <view class="code" wx:if="{{loginCode}}">{{loginCode}}</view>
+    <button wx:if="{{loginCode}}" size="mini" bindtap="copyLoginCode">复制 code</button>
+    <view class="hint">code 仅用于本轮服务端换取 openid；不要提交到 Git。</view>
+  </view>
+
+  <view class="error" wx:if="{{error}}">{{error}}</view>
+</view>
