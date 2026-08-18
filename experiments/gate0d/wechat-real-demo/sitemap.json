@@ -1,0 +1,4 @@
+{
+  "desc": "Gate 0D-4 experiment",
+  "rules": [{"action": "allow", "page": "*"}]
+}
