@@ -62,13 +62,6 @@ Logical delivery uniqueness is:
 
 An eligible logical delivery enters as `PENDING`; duplicate evaluation returns the existing delivery.
 
-Clean local acceptance evidence:
-
-```text
-Ran 16 tests in 0.003s
-OK
-```
-
 Acceptance: **PASS 16/16**.
 
 ---
@@ -81,43 +74,6 @@ Canonical implementation:
 experiments/gate0d/provider_result.py
 experiments/gate0d/test_provider_result.py
 ```
-
-Normalized outcomes remain:
-
-```text
-SENT
-USER_REJECTED
-GRANT_INVALID
-AUTH_REQUIRED
-TEMPLATE_INVALID
-RATE_LIMITED
-NETWORK_ERROR
-PROVIDER_ERROR
-```
-
-Normalized facts remain independent:
-
-```text
-success
-terminal_for_delivery
-retryable
-retry_class
-grant_effect
-provider diagnostics
-retry_after_seconds
-```
-
-### Real-provider correction
-
-The original deterministic rule treated successful send as:
-
-```text
-SENT -> CONSUME -> GrantState.EXHAUSTED
-```
-
-Gate 0D-4 then produced two consecutive real `errcode=0` sends to the same openid fingerprint, with two visible phone receipts, without an intentionally repeated subscription request between those two sends.
-
-Therefore a successful send proves only that one send entitlement was used. It does **not** prove that no additional entitlement remains when exact provider-side grant balance is unknown.
 
 Corrected semantics:
 
@@ -143,7 +99,7 @@ NETWORK_ERROR    -> TRANSIENT, KEEP
 PROVIDER_ERROR   -> TRANSIENT at this boundary, KEEP
 ```
 
-Corrected deterministic revalidation on 2026-08-18:
+Corrected deterministic revalidation:
 
 ```text
 Gate 0D complete deterministic suite: 54/54 PASS
@@ -184,8 +140,6 @@ IN_FLIGHT at restart
     -> no blind automatic resend
 ```
 
-Retry/backoff, auth/config blocking, attempt budgets, restart safety and duplicate completion replay remain unchanged.
-
 The corrected delivery invariant is:
 
 ```text
@@ -195,7 +149,7 @@ SENT
   -> does not imply global GrantState.EXHAUSTED
 ```
 
-Corrected deterministic revalidation on 2026-08-18:
+Corrected deterministic revalidation:
 
 ```text
 Gate 0D complete deterministic suite: 54/54 PASS
@@ -214,10 +168,21 @@ Canonical experiment/evidence assets:
 experiments/gate0d/REAL_WECHAT.md
 experiments/gate0d/REAL_WECHAT_20260818.md
 experiments/gate0d/real_wechat_probe.py
+experiments/gate0d/real_wechat_replay_probe.py
 experiments/gate0d/wechat-real-demo/
 ```
 
 ### Confirmed real facts
+
+Real client subscription callback:
+
+```json
+{
+  "callback": "success",
+  "errMsg": "requestSubscribeMessage:ok",
+  "templateResult": "accept"
+}
+```
 
 Two real service-side sends were observed for the same app/template/openid fingerprints:
 
@@ -226,11 +191,12 @@ send #1  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:0
 send #2  errcode=0 / errmsg=ok / normalized=SENT / phone receipt confirmed ~15:10
 ```
 
-The controlled sequence did not intentionally call `wx.requestSubscribeMessage` between the two sends.
+The controlled sequence did not intentionally call `wx.requestSubscribeMessage` between those two ordinary sends.
 
 This confirms:
 
 ```text
+A. exact client wx.requestSubscribeMessage result  PASS / accept
 B. real provider response captured                 PASS
 C. real errcode=0 send                             PASS (two sends)
 D. corresponding phone receipt                     PASS (two receipts)
@@ -241,12 +207,32 @@ H. no secret material in canonical evidence        PASS
 Still open:
 
 ```text
-A. exact client wx.requestSubscribeMessage result  OPEN
-F. exact duplicate/replay/idempotency boundary     OPEN
+F. exact duplicate/replay/idempotency boundary     CURRENT
 G. evidence-backed non-zero errcode mappings       OPEN
 ```
 
-Two successful sends are **not** evidence of provider-side request idempotency. The `AMBIGUOUS` crash rule therefore remains mandatory.
+### Exact replay experiment
+
+`real_wechat_replay_probe.py` performs exactly two provider calls in one process with:
+
+```text
+same access token
+same openid
+same template id
+same template data
+same page/miniprogram_state/lang
+same request-body fingerprint
+```
+
+Only fingerprints and sanitized provider responses are persisted. The operator must also record whether the phone receives zero, one or two corresponding notifications.
+
+Until exact replay evidence proves otherwise, the deterministic safety rule remains mandatory:
+
+```text
+IN_FLIGHT at crash/restart
+  -> AMBIGUOUS
+  -> no blind automatic resend
+```
 
 ---
 
@@ -264,10 +250,9 @@ Gate 0D    DEGRADED
 Gate 0E    NOT STARTED
 ```
 
-Next real-evidence priorities:
+Next real-evidence priority:
 
 ```text
-1. capture exact wx.requestSubscribeMessage callback result
-2. run one controlled exact-payload replay experiment
-3. preserve non-zero errcode as unmapped unless evidence supports classification
+F. run one controlled exact-payload replay and record provider responses + phone receipt count
+G. preserve any non-zero errcode as unmapped unless evidence supports classification
 ```
