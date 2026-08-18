@@ -135,6 +135,27 @@ def build_wechat_data(
     }
 
 
+def build_provider_payload(
+    *,
+    touser: str,
+    template_id: str,
+    data: dict[str, Any],
+    page: str | None,
+    miniprogram_state: str,
+    lang: str,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "touser": touser,
+        "template_id": template_id,
+        "data": data,
+        "miniprogram_state": miniprogram_state,
+        "lang": lang,
+    }
+    if page:
+        payload["page"] = page
+    return payload
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Gate 0E-2 real golden-event handoff")
     parser.add_argument("--appid", default=os.getenv("WECHAT_APP_ID"))
@@ -240,15 +261,14 @@ def main() -> int:
             field_title=args.field_title,
             field_activity=args.field_activity,
         )
-        provider_payload = {
-            "touser": "<openid>",
-            "template_id": template_id,
-            "data": data,
-            "miniprogram_state": args.miniprogram_state,
-            "lang": args.lang,
-        }
-        if args.page:
-            provider_payload["page"] = args.page
+        template_payload = build_provider_payload(
+            touser="<openid>",
+            template_id=template_id,
+            data=data,
+            page=args.page,
+            miniprogram_state=args.miniprogram_state,
+            lang=args.lang,
+        )
 
         output = Path(args.output) if args.output else evidence_path()
         evidence: dict[str, Any] = {
@@ -282,7 +302,8 @@ def main() -> int:
             "appid_fingerprint": fingerprint(appid),
             "template_id_fingerprint": fingerprint(template_id),
             "template_fields": sorted(data.keys()),
-            "payload_fingerprint": payload_fingerprint(provider_payload),
+            "payload_template_fingerprint": payload_fingerprint(template_payload),
+            "provider_payload_fingerprint": None,
             "openid_source": None,
             "openid_fingerprint": None,
             "token_acquired": False,
@@ -325,6 +346,16 @@ def main() -> int:
         else:
             evidence["openid_source"] = "configured"
         evidence["openid_fingerprint"] = fingerprint(openid)
+
+        exact_provider_payload = build_provider_payload(
+            touser=openid,
+            template_id=template_id,
+            data=data,
+            page=args.page,
+            miniprogram_state=args.miniprogram_state,
+            lang=args.lang,
+        )
+        evidence["provider_payload_fingerprint"] = payload_fingerprint(exact_provider_payload)
 
         token_response = fetch_access_token(appid, appsecret)
         access_token = str(token_response.get("access_token") or "").strip()
