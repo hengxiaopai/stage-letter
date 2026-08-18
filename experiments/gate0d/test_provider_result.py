@@ -19,14 +19,14 @@ class ProviderResultGate0D2Tests(unittest.TestCase):
     def norm(self, outcome: ProviderOutcome, **kwargs) -> NormalizedProviderResult:
         return normalize_provider_result(ProviderResult(outcome=outcome, **kwargs))
 
-    def test_01_sent_is_terminal_success_and_consumes_grant(self) -> None:
+    def test_01_sent_is_terminal_success_and_consumes_one_without_inferring_exhaustion(self) -> None:
         result = self.norm(ProviderOutcome.SENT, provider_code="0")
         self.assertTrue(result.success)
         self.assertTrue(result.terminal_for_delivery)
         self.assertFalse(result.retryable)
         self.assertEqual(result.retry_class, RetryClass.NONE)
-        self.assertEqual(result.grant_effect, GrantEffect.CONSUME)
-        self.assertEqual(apply_grant_effect(GrantState.GRANTED, result), GrantState.EXHAUSTED)
+        self.assertEqual(result.grant_effect, GrantEffect.CONSUME_ONE)
+        self.assertEqual(apply_grant_effect(GrantState.GRANTED, result), GrantState.GRANTED)
 
     def test_02_user_rejected_is_terminal_and_marks_denied(self) -> None:
         result = self.norm(ProviderOutcome.USER_REJECTED)
