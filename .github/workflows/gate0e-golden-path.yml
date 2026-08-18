@@ -30,7 +30,8 @@ jobs:
         run: |
           python -m py_compile \
             experiments/gate0e/golden_path.py \
-            experiments/gate0e/test_golden_path.py
+            experiments/gate0e/test_golden_path.py \
+            experiments/gate0e/real_golden_handoff.py
 
       - name: Gate 0E deterministic golden path
         run: python -m unittest discover -s experiments/gate0e -p "test_*.py" -v
