@@ -1,12 +1,12 @@
 # Gate 0C — Stability + Platform Health
 
-Status: **IN PROGRESS**
+Status: **PASS**
 
 ## Scope
 
 Gate 0C validates operational stability around normalized live-status probes before they reach Gate 0B canonical state handling.
 
-The non-negotiable boundary is:
+Frozen boundary:
 
 ```text
 provider/source failure
@@ -17,106 +17,36 @@ provider/source failure
 
 Gate 0B remains the owner of canonical LiveSession behavior.
 
-## Gate 0C plan
+## Final result
 
 ```text
-0C-1 Platform / Provider Health Policy     PASS
-0C-2 Poll / retry / backoff policy         PASS
-0C-3 Fault-injection recovery              PASS
-0C-4 Source-composition policy             CURRENT
+0C-1 Platform / Provider Health Policy     PASS 19/19
+0C-2 Poll / retry / backoff policy         PASS 16/16
+0C-3 Fault-injection recovery              PASS 10/10 + real soak PASS
+0C-4 Source-composition policy             PASS 20/20
 ```
 
-The initial canonical-status candidate remains the self-hosted StreamGet profile/sec_uid path proven in Gate 0A. TikHub/F2 may provide corroboration or metadata enrichment, but Gate 0C health semantics are provider-agnostic.
-
----
-
-## Gate 0C-1 — Platform / Provider Health Policy — PASS
-
-Canonical implementation:
+A clean local full-suite acceptance run on 2026-08-18 produced:
 
 ```text
-experiments/gate0c/platform_health.py
-experiments/gate0c/test_platform_health.py
+Ran 65 tests in 0.022s
+OK
 ```
 
-One `HealthTracker` represents one monitoring scope, normally one provider/account route.
+## 0C-1 — Health policy
 
-### Health state is separate from creator state
+Health is independent from creator truth:
 
 ```text
-HealthState:
-STARTING | HEALTHY | DEGRADED | UNAVAILABLE
-
-CanonicalStatus:
-LIVE | OFFLINE | UNKNOWN
+HealthState: STARTING | HEALTHY | DEGRADED | UNAVAILABLE
+CanonicalStatus: LIVE | OFFLINE | UNKNOWN
 ```
 
-A provider-health transition never rewrites a creator status.
+The suite proves hysteresis, hard AUTH/BLOCKED failure behavior, slow-response degradation without status rewriting, delayed/stale protection, restart snapshots, and conservative multi-scope aggregation.
 
-Gate acceptance defaults:
+## 0C-2 — Poll / retry / backoff
 
-```text
-degrade_after_failures          = 2
-unavailable_after_failures      = 4
-recover_after_clean_successes   = 2
-slow_latency_ms                 = 5000
-```
-
-These values are Gate test parameters, **not frozen production tuning**.
-
-Normalized failures:
-
-```text
-TIMEOUT | NETWORK | RATE_LIMIT | PARSE | AUTH | BLOCKED | EMPTY | OTHER
-```
-
-`AUTH` and `BLOCKED` are hard health failures and make the route immediately `UNAVAILABLE`. General failures use consecutive-failure hysteresis. A slow decisive response preserves creator LIVE/OFFLINE while health becomes `DEGRADED`.
-
-Health ordering uses probe `started_at`:
-
-```text
-duplicate sample_id -> DUPLICATE / no health mutation
-started_at < watermark -> STALE / no streak or health mutation
-started_at == watermark -> not automatically stale
-```
-
-`HealthSnapshot` / `HealthTracker.from_snapshot()` preserve health state, streaks, watermark, sample-id idempotency and diagnostics across a persistence boundary.
-
-Partial-platform aggregation is conservative:
-
-```text
-all HEALTHY      -> HEALTHY
-all UNAVAILABLE  -> UNAVAILABLE
-all STARTING     -> STARTING
-mixed scopes     -> DEGRADED
-```
-
-Acceptance: **PASS 19/19**.
-
-Clean CI evidence:
-
-```text
-workflow  Gate 0C Health Smoke
-run       32007232769
-head      96b8cffe917b51cd41ddaacf281bb9b58ac7fa09
-result    completed / success
-suite     19 / 19 PASS
-```
-
----
-
-## Gate 0C-2 — Poll / retry / backoff policy — PASS
-
-Canonical implementation:
-
-```text
-experiments/gate0c/poll_policy.py
-experiments/gate0c/test_poll_policy.py
-```
-
-The polling policy is pure: it receives health/failure facts and returns only next-poll timing. It performs no HTTP request, mutates no `HealthTracker`, and exposes no creator LIVE/OFFLINE output.
-
-Gate timing defaults:
+The scheduling policy is pure and emits timing facts only. Gate acceptance defaults are configurable, not production SLA values:
 
 ```text
 STARTING                 30 s
@@ -129,182 +59,68 @@ AUTH/BLOCKED minimum    900 s
 jitter                  +/-10%
 ```
 
-These are acceptance parameters, **not production provider SLA/tuning**.
+It proves exponential recovery backoff, hard ceiling, provider-safe cooldowns, deterministic jitter, and creator-state isolation.
 
-Default unavailable backoff grows:
+## 0C-3 — Fault recovery
 
-```text
-180 -> 360 -> 720 -> 1440 -> 1800(capped)
-```
+Deterministic composition proves TIMEOUT, NETWORK, PARSE, RATE_LIMIT, AUTH/BLOCKED, slow decisive responses, delayed stale failures, mixed-scope health, and that provider UNKNOWN cannot close an open Gate 0B LiveSession.
 
-Negative jitter cannot violate provider-safe minimum cooldown. Positive jitter cannot escape the generic `UNAVAILABLE` backoff ceiling; an explicitly configured provider-safety minimum cooldown may intentionally be longer than that generic cap.
-
-`PollDecision` contains operational timing facts only:
+Real StreamGet forced-network-fault evidence on X.四五六🍉 produced:
 
 ```text
-delay_s
-base_delay_s
-minimum_cooldown_s
-mode
-backoff_step
-capped
+round 1  OFFLINE -> HEALTHY
+round 2  UNKNOWN -> HEALTHY      failure 1
+round 3  UNKNOWN -> DEGRADED     failure 2
+round 4  UNKNOWN -> DEGRADED     failure 3
+round 5  UNKNOWN -> UNAVAILABLE  failure 4
+round 6  OFFLINE -> DEGRADED     recovery 1
+round 7  OFFLINE -> HEALTHY      recovery 2
 ```
 
-Acceptance: **PASS 16/16**.
+Final facts: four requested injections, four effective injections, four UNKNOWNs, zero false OFFLINEs from failures, final health HEALTHY. Canonical evidence is recorded in `experiments/gate0c/REAL_SOAK_20260817.md`.
 
-Latest strengthened CI evidence:
+## 0C-4 — Source composition
+
+Current candidate deployment mapping:
 
 ```text
-workflow  Gate 0C Health Smoke
-run       32007556548
-head      8e8e13c6c413fb17d3f709335a645e4075e01ec9
-result    completed / success
+StreamGet PROFILE -> PRIMARY_STATUS
+TikHub            -> POSITIVE_STATUS + metadata enrichment
+F2                -> POSITIVE_STATUS + metadata enrichment
 ```
 
----
-
-## Gate 0C-3 — Fault-injection recovery — PASS
-
-0C-3 combines deterministic fault composition with a real StreamGet forced-network-fault soak.
-
-### A. Deterministic fault composition — PASS 10/10
-
-Canonical harness/tests:
+Frozen rules include:
 
 ```text
-experiments/gate0c/fault_recovery.py
-experiments/gate0c/test_fault_recovery.py
+status authority != metadata authority
+null metadata != OFFLINE
+positive-only sources cannot create OFFLINE
+recent contradictory authorized claims -> CONFLICT -> UNKNOWN
+UNKNOWN / CONFLICT cannot close LiveSession
+metadata fields carry source provenance
+ordering/idempotency survive restart
 ```
 
-Validated scenarios:
+The 20/20 source-composition suite is documented in `experiments/gate0c/SOURCE_COMPOSITION.md`.
+
+## Evidence summary
 
 ```text
-01 healthy -> TIMEOUT x2 -> DEGRADED -> two clean samples -> HEALTHY       PASS
-02 NETWORK x4 -> UNAVAILABLE -> recovery probes -> HEALTHY                 PASS
-03 PARSE failures never become creator OFFLINE                             PASS
-04 RATE_LIMIT enforces cooldown while creator fact remains UNKNOWN         PASS
-05 AUTH/BLOCKED -> immediate UNAVAILABLE + long cooldown                    PASS
-06 slow decisive LIVE is preserved while health becomes DEGRADED           PASS
-07 older delayed failure after newer success -> STALE / no regression       PASS
-08 healthy + unavailable scopes aggregate to DEGRADED                       PASS
-09 provider UNKNOWN faults cannot close an open Gate 0B LiveSession         PASS
-10 clean LIVE after fault period keeps the same Gate 0B LiveSession         PASS
+Gate 0C Health Smoke run 32007232769  health model PASS
+Gate 0C Health Smoke run 32007556548  poll policy PASS
+Gate 0C Health Smoke run 32007897530  fault composition PASS
+Real StreamGet soak                    PASS
+Local full suite                       65/65 PASS
 ```
 
-### B. Real StreamGet forced-network-fault soak — PASS
+Production authorization/compliance remains unresolved and is not silently waived by Gate 0C.
 
-Evidence summary:
-
-```text
-profile: X.四五六🍉
-rounds: 7
-forced fault rounds: 2,3,4,5
-cookie: not configured
-```
-
-Observed sequence:
-
-```text
-round 1  OFFLINE raw=4    -> HEALTHY
-round 2  UNKNOWN          -> HEALTHY      failure streak 1
-round 3  UNKNOWN          -> DEGRADED     failure streak 2
-round 4  UNKNOWN          -> DEGRADED     failure streak 3
-round 5  UNKNOWN          -> UNAVAILABLE  failure streak 4
-round 6  OFFLINE raw=4    -> DEGRADED     clean recovery #1
-round 7  OFFLINE raw=4    -> HEALTHY      clean recovery #2
-```
-
-Measured latencies were 4371, 2976, 2999, 3018, 2985, 3360 and 3642 ms respectively.
-
-Final harness facts:
-
-```text
-samples                     7
-injection_requested         4
-injection_effective         4
-unknown                     4
-offline                     3
-false_offline_from_failure  0
-final_health                HEALTHY
-fault_injection_conclusive  true
-```
-
-This closes the real operational safety proof:
-
-```text
-provider/network fault -> UNKNOWN + source-health degradation
-provider/network fault != OFFLINE
-provider/network fault != LiveSession close
-clean recovery requires hysteresis before HEALTHY
-```
-
-Normalized evidence record:
-
-```text
-experiments/gate0c/REAL_SOAK_20260817.md
-```
-
-The local JSONL path reported by the harness was `experiments/gate0c/data/streamget-soak-20260817-162348.jsonl`; the raw JSONL is not committed as canonical repository evidence.
-
-Latest Gate 0C smoke before real soak evidence capture remained green:
-
-```text
-workflow  Gate 0C Health Smoke
-run       32007897530
-head      6b40374e9243a49f27c95692ee19f76ac73d8c3b
-result    completed / success
-```
-
----
-
-## Gate 0C-4 — Source-composition policy — CURRENT
-
-0C-4 freezes how multiple sources contribute truth without allowing one provider failure to corrupt canonical creator state.
-
-Current candidate composition from Gate 0A/0C evidence:
-
-```text
-PlatformAccount stable identity (uid/sec_uid/douyin_id)
-    |
-    +-- StreamGet PROFILE
-    |      primary canonical status candidate
-    |      explicit 2 -> LIVE
-    |      explicit 4 -> OFFLINE
-    |      failure/ambiguity -> UNKNOWN
-    |
-    +-- TikHub / F2 while LIVE
-           corroboration and metadata enrichment
-           room_id when available
-           never allowed to force OFFLINE merely because data is absent
-```
-
-0C-4 must freeze at least these rules:
-
-```text
-1. status authority vs metadata authority are separate concerns
-2. a source health state never directly rewrites creator LIVE/OFFLINE
-3. absent/null metadata is not an OFFLINE signal
-4. corroborating sources may strengthen confidence but cannot override a newer decisive canonical fact without an explicit arbitration rule
-5. source disagreement must degrade confidence / surface UNKNOWN or conflict state rather than silently choose the more convenient answer
-6. metadata enrichment may fail independently while canonical status remains valid
-7. room_id/title/live_url/source_started_at carry provenance
-8. bootstrap LIVE remains distinct from a proven OFFLINE -> LIVE transition
-9. no source can close a LiveSession on UNKNOWN
-10. failover/source switching must preserve observation ordering and idempotency
-```
-
-0C-4 acceptance should be deterministic and provider-agnostic. Production authorization/compliance remains outside this semantic Gate and is still unresolved.
-
-## Current progression
+## Progression
 
 ```text
 Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
-Gate 0C-1  PASS
-Gate 0C-2  PASS
-Gate 0C-3  PASS
-Gate 0C-4  CURRENT
-Gate 0C    IN PROGRESS
-Gate 0D    NOT STARTED
+Gate 0C    PASS
+Gate 0D    START
 Gate 0E    NOT STARTED
 ```
