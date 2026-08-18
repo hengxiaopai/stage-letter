@@ -10,6 +10,11 @@ in flight, the delivery becomes AMBIGUOUS and is not blindly retried. Without a
 provider-side idempotency/reconciliation guarantee, blindly retrying such an
 attempt could duplicate a user notification.
 
+Gate 0D-4 real evidence also proved that successful send must not be equated
+with global grant exhaustion when the exact provider-side remaining grant
+balance is unknown. ``SENT`` is terminal for this logical delivery, while grant
+availability for a different future delivery remains a separate provider fact.
+
 No type in this module can mutate creator LIVE/OFFLINE state or LiveSession.
 """
 
@@ -181,8 +186,6 @@ class DeliveryRetryMachine:
         machine.terminal_outcome = snapshot.terminal_outcome
         machine._validate_snapshot()
 
-        # Crash/restart safety: an unresolved external side effect is ambiguous.
-        # Never automatically convert it back to PENDING/WAITING_RETRY.
         if machine.state is ExecutionState.IN_FLIGHT:
             machine.state = ExecutionState.AMBIGUOUS
             machine.next_attempt_at = None
@@ -402,5 +405,3 @@ class DeliveryRetryMachine:
         if self.state in (ExecutionState.SENT, ExecutionState.FAILED_TERMINAL):
             if self.terminal_outcome is None:
                 raise AssertionError("terminal resolved state requires terminal_outcome")
-        if self.state is ExecutionState.SENT and self.grant_state is not GrantState.EXHAUSTED:
-            raise AssertionError("successful one-time grant must be consumed")
