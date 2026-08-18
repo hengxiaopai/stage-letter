@@ -1,6 +1,6 @@
 # Gate 1.1-5 — PostgreSQL Constraint Hardening + Clean/Legacy Validation
 
-Status: **CURRENT / CODE LANDED, REAL DB EVIDENCE PENDING**
+Status: **CURRENT / REAL DB PROBE PASS / STATIC ACCEPTANCE PENDING**
 
 ## Purpose
 
@@ -92,6 +92,41 @@ empty temporary database
 
 The probe drops both temporary databases in `finally`.
 
+## Accepted real DB evidence — 2026-08-19
+
+User-local execution completed successfully:
+
+```text
+[clean] database created
+...
+[clean] PASS -> b63e4f9a1c20
+
+[legacy] database created
+...
+[legacy] representative fixture seeded
+...
+[legacy] PASS -> b63e4f9a1c20
+
+PASS: Gate 1.1-5 clean + legacy PostgreSQL migration probe
+[cleanup] dropped stageletter_gate11_clean
+[cleanup] dropped stageletter_gate11_legacy
+```
+
+This proves the database-connected portion of Gate 1.1-5:
+
+```text
+clean database -> current head                              PASS
+representative legacy database -> current head             PASS
+deterministic creator/follow/preference/delivery backfill  PASS
+historical LiveObservation fabrication absent              PASS
+unknown legacy event id/cause/session origin preserved     PASS
+platform-proven source_started_at behavior                 PASS
+invalid canonical observation status rejected              PASS
+second ended_at=NULL session rejected                       PASS
+duplicate user/event/channel delivery rejected             PASS
+temporary database cleanup                                 PASS
+```
+
 ## Acceptance
 
 Gate 1.1-5 PASS requires all of:
@@ -100,14 +135,17 @@ Gate 1.1-5 PASS requires all of:
 A. full Gate 1 contract suite passes                         PENDING
 B. alembic heads == b63e4f9a1c20                           PENDING
 C. offline SQL compilation through hardening revision       PENDING
-D. PostgreSQL service healthy                               PENDING
-E. clean database -> head                                   PENDING
-F. representative legacy database -> head                   PENDING
-G. deterministic backfills verified                         PENDING
-H. no historical truth invented                             PENDING
-I. hard DB constraints proven by rejected invalid writes    PENDING
-J. temporary DB cleanup confirmed                           PENDING
+D. PostgreSQL service operational/reachable                 PASS
+E. clean database -> head                                   PASS
+F. representative legacy database -> head                   PASS
+G. deterministic backfills verified                         PASS
+H. no historical truth invented                             PASS
+I. hard DB constraints proven by rejected invalid writes    PASS
+J. temporary DB cleanup confirmed                           PASS
 ```
+
+The successful probe establishes D-J. A-C still require explicit local evidence
+for the hardening revision before Gate 1.1-5 may be closed.
 
 No production/normal development database is modified by the acceptance probe.
 
