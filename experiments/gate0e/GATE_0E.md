@@ -35,14 +35,14 @@ crash-after-send/before-response -> AMBIGUOUS -> no blind resend
 ## Gate plan
 
 ```text
-0E-1 Deterministic cross-gate golden path        CURRENT
-0E-2 Real provider handoff from golden event     NOT STARTED
+0E-1 Deterministic cross-gate golden path        PASS 15/15
+0E-2 Real provider handoff from golden event     CURRENT
 Gate 0E                                           IN PROGRESS
 ```
 
 ---
 
-## Gate 0E-1 — Deterministic cross-gate golden path — CURRENT
+## Gate 0E-1 — Deterministic cross-gate golden path — PASS
 
 Canonical implementation:
 
@@ -63,34 +63,33 @@ Gate 0D provider_result.py + delivery_retry.py
 ### Acceptance matrix
 
 ```text
-01 OFFLINE -> LIVE -> LIVE emits TRANSITION LIVE_STARTED           PENDING
-02 transition creates exactly one eligible logical delivery       PENDING
-03 SENT terminates delivery without inferred global exhaustion    PENDING
-04 duplicate source replay creates no second delivery             PENDING
-05 BOOTSTRAP_LIVE opens session but never notifies                PENDING
-06 UNKNOWN source failure never closes a live session             PENDING
-07 cross-source conflict -> UNKNOWN and keeps session open        PENDING
-08 two explicit OFFLINE observations close session, no new notify PENDING
-09 persistent state survives process restart                      PENDING
-10 delivery-ledger snapshot preserves logical idempotency         PENDING
-11 crash after begin/before response -> AMBIGUOUS / no blind send PENDING
-12 provider network failure never mutates creator live truth      PENDING
-13 notification context preserves title/live_url/source start     PENDING
-14 non-GRANTED target never enters delivery runtime               PENDING
-15 event/delivery identity is deterministic                       PENDING
+01 OFFLINE -> LIVE -> LIVE emits TRANSITION LIVE_STARTED           PASS
+02 transition creates exactly one eligible logical delivery       PASS
+03 SENT terminates delivery without inferred global exhaustion    PASS
+04 duplicate source replay creates no second delivery             PASS
+05 BOOTSTRAP_LIVE opens session but never notifies                PASS
+06 UNKNOWN source failure never closes a live session             PASS
+07 cross-source conflict -> UNKNOWN and keeps session open        PASS
+08 two explicit OFFLINE observations close session, no new notify PASS
+09 persistent state survives process restart                      PASS
+10 delivery-ledger snapshot preserves logical idempotency         PASS
+11 crash after begin/before response -> AMBIGUOUS / no blind send PASS
+12 provider network failure never mutates creator live truth      PASS
+13 notification context preserves title/live_url/source start     PASS
+14 non-GRANTED target never enters delivery runtime               PASS
+15 event/delivery identity is deterministic                       PASS
 ```
 
-Required acceptance:
+Local acceptance evidence on 2026-08-18:
 
 ```text
-15/15 PASS
+Ran 15 tests in 1.366s
+OK
 ```
 
-No test is allowed to manufacture a second canonical implementation of source arbitration, live state, eligibility, retry, or grant semantics merely to make the integration pass.
+Acceptance: **PASS 15/15**.
 
-### Golden happy path
-
-Expected deterministic path:
+### Frozen deterministic happy path
 
 ```text
 StreamGet OFFLINE
@@ -110,13 +109,19 @@ StreamGet LIVE #2
   -> delivery SENT
 ```
 
-The notification context must retain current composed metadata needed by V0.1, including title, live-room URL and trusted `source_started_at` when present.
+The notification context retains title, live-room URL and trusted `source_started_at` when present.
 
 ---
 
-## Gate 0E-2 — Real provider handoff from golden event — NOT STARTED
+## Gate 0E-2 — Real provider handoff from golden event — CURRENT
 
-0E-2 will not repeat Gate 0D's provider experiments for their own sake. Gate 0D already proved:
+Canonical operator harness:
+
+```text
+experiments/gate0e/real_golden_handoff.py
+```
+
+0E-2 does not repeat Gate 0D's provider experiments for their own sake. Gate 0D already proved:
 
 ```text
 real wx.requestSubscribeMessage accept
@@ -127,17 +132,96 @@ exact same provider payload can create two messages
 no payload-based provider deduplication guarantee
 ```
 
-0E-2 must instead prove one narrower integration fact:
+0E-2 proves one narrower integration fact:
 
 ```text
-an eligible LIVE_STARTED event produced by the Gate 0E pipeline
-  -> creates the exact logical delivery chosen for sending
-  -> builds the real Stage Letter message payload
-  -> crosses the already-proven WeChat provider boundary once
+controlled OFFLINE -> LIVE -> LIVE source sequence
+  -> Gate 0C composition
+  -> Gate 0B TRANSITION LIVE_STARTED
+  -> Gate 0D eligible logical NotificationDelivery
+  -> Stage Letter live-start payload built from the preserved event context
+  -> delivery runtime enters IN_FLIGHT before provider send
+  -> exactly one real WeChat provider call
+  -> provider result is applied to that exact logical delivery
   -> intended account visibly receives the corresponding notification
 ```
 
-The real send must be operator-triggered and secret-safe. It must not weaken the Gate 0D `AMBIGUOUS` crash rule or create a blind retry path.
+The source-side transition remains a controlled Gate harness rather than a claim that Gate 0A's deferred real lifecycle evidence gap has disappeared.
+
+### Safety rules
+
+```text
+provider send count = exactly 1 per operator run
+IN_FLIGHT is recorded before the external side effect
+no blind retry exists in the operator tool
+non-zero provider codes remain conservative/unmapped
+AppSecret/access_token/session_key/login-code/raw-openid are not persisted
+rerunning the operator manually is a new external send and can duplicate a message
+```
+
+### Current verified template defaults
+
+The operator defaults to the currently verified live-start template field mapping:
+
+```text
+thing1 -> 直播间名称
+thing2 -> 达人名称
+time3  -> 开播时间
+thing5 -> 直播主题
+thing6 -> 直播间活动
+```
+
+These field names are operator-overridable if the WeChat template changes.
+
+### Operator procedure
+
+1. Sync the repository.
+2. Do **not** request another subscription grant if the existing accepted grant is intentionally being used for this handoff.
+3. Obtain one fresh `wx.login` code immediately before the run.
+4. Run a dry validation first:
+
+```bash
+./.venv-gate0a-streamget/Scripts/python.exe \
+  experiments/gate0e/real_golden_handoff.py \
+  --creator-name "珩小派" \
+  --room-name "开场信 Gate 0E Golden Path" \
+  --activity "Gate 0E 真实链路验证" \
+  --title "爱播开播啦 · Gate 0E" \
+  --live-url "https://live.douyin.com/gate0e"
+```
+
+5. Then perform the single real handoff:
+
+```bash
+./.venv-gate0a-streamget/Scripts/python.exe \
+  experiments/gate0e/real_golden_handoff.py \
+  --login-code "FRESH_WX_LOGIN_CODE" \
+  --creator-name "珩小派" \
+  --room-name "开场信 Gate 0E Golden Path" \
+  --activity "Gate 0E 真实链路验证" \
+  --title "爱播开播啦 · Gate 0E" \
+  --live-url "https://live.douyin.com/gate0e" \
+  --send
+```
+
+AppID, AppSecret and template ID may come from the already-established local `WECHAT_*` environment variables. AppSecret is prompted without echo if not present in the environment.
+
+### Required 0E-2 PASS evidence
+
+```text
+A. source transition is OFFLINE -> LIVE -> LIVE
+B. emitted event is exactly LIVE_STARTED / TRANSITION
+C. exactly one eligible logical NotificationDelivery is selected
+D. payload is built from the preserved GoldenPath notification context
+E. runtime state is IN_FLIGHT before provider send
+F. provider_send_count == 1
+G. real provider result is errcode=0 / SENT
+H. runtime finishes SENT for that exact delivery
+I. intended WeChat account visibly receives the corresponding message
+J. canonical evidence contains no secret material
+```
+
+Required acceptance: **10/10 PASS**.
 
 ## Current progression
 
@@ -146,8 +230,8 @@ Gate 0A    DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 0B    PASS
 Gate 0C    PASS
 Gate 0D    PASS
-Gate 0E-1  CURRENT
-Gate 0E-2  NOT STARTED
+Gate 0E-1  PASS 15/15
+Gate 0E-2  CURRENT
 Gate 0E    IN PROGRESS
 ```
 
