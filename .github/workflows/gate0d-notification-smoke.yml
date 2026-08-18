@@ -29,7 +29,9 @@ jobs:
             experiments/gate0d/notification_truth.py \
             experiments/gate0d/test_notification_truth.py \
             experiments/gate0d/provider_result.py \
-            experiments/gate0d/test_provider_result.py
+            experiments/gate0d/test_provider_result.py \
+            experiments/gate0d/delivery_retry.py \
+            experiments/gate0d/test_delivery_retry.py
 
       - name: Gate 0D acceptance tests
         run: python -m unittest discover -s experiments/gate0d -p "test_*.py" -v
