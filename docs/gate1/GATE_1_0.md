@@ -1,10 +1,12 @@
 # Gate 1.0 — Formal Engineering Handoff
 
-Status: **CURRENT / 1.0-2 ARCHITECTURE FREEZE PASS**
+Status: **PASS**
 
 Baseline commit entering Gate 1: `c841a33d` (`chore: establish clean Stage Letter engineering baseline`).
 
-Detailed architecture/migration freeze: [`GATE_1_0_ARCHITECTURE_FREEZE.md`](./GATE_1_0_ARCHITECTURE_FREEZE.md).
+Detailed freezes:
+- [`GATE_1_0_ARCHITECTURE_FREEZE.md`](./GATE_1_0_ARCHITECTURE_FREEZE.md)
+- [`GATE_1_0_LEGACY_QUARANTINE.md`](./GATE_1_0_LEGACY_QUARANTINE.md)
 
 ## 1. Purpose
 
@@ -72,13 +74,12 @@ LiveObservation is durable evidence
 
 Supporting operational tables may exist for queues, health, telemetry, or provider bookkeeping, but must not replace or blur these ten entities.
 
-## 4. Legacy drift matrix
+## 4. Legacy drift matrix — CLOSED
 
-The clean formal baseline predates accepted Gate 0B/0C/0D/0E semantics in several places.
+The clean formal baseline predates accepted Gate 0B/0C/0D/0E semantics. Gate 1.0 identified and froze migration decisions for nine drift classes:
 
 ```text
 D1 canonical live status stale
-   legacy: ONLINE/OFFLINE + transport/provider statuses + SUSPECT states
    target: LIVE/OFFLINE/UNKNOWN canonical truth; diagnostics separate
 
 D2 durable LiveObservation missing
@@ -88,15 +89,12 @@ D3 Follow and NotificationPreference collapsed
    target: relationship truth and notification settings split
 
 D4 event semantics stale
-   legacy: SUSPECT/CONFIRMED event vocabulary
    target: LiveEvent type + cause; LIVE_STARTED/TRANSITION eligible, BOOTSTRAP not
 
 D5 NotificationDelivery identity stale
-   legacy: (user_id, live_session_id, channel)
    target: (user_id, live_event_id, channel)
 
 D6 delivery runtime too coarse
-   legacy: PENDING/SENT/FAILED
    target: PENDING/IN_FLIGHT/WAITING_RETRY/WAITING_AUTH/BLOCKED_CONFIG/
            SENT/FAILED_TERMINAL/AMBIGUOUS
 
@@ -105,7 +103,6 @@ D7 WeChat grant bookkeeping language stale
 
 D8 runtime health mixed with admin disabled
    target runtime: STARTING/HEALTHY/DEGRADED/UNAVAILABLE
-   admin enable/disable remains separate
 
 D9 adapter contract predates final source-composition boundary
    target LiveSnapshot.status: LIVE/OFFLINE/UNKNOWN only
@@ -113,9 +110,9 @@ D9 adapter contract predates final source-composition boundary
 
 Existing `core/models.py`, old state engines/workers, and old adapter enums remain legacy baseline until migrated; they are not authoritative merely because they are under formal directories.
 
-## 5. Gate 1.0-2 architecture freeze — PASS
+## 5. Formal architecture freeze — PASS
 
-Formal semantic package ownership is frozen as:
+Formal semantic package ownership:
 
 ```text
 stage_letter/
@@ -161,9 +158,9 @@ api/workers -> application -> domain
               infrastructure implements ports
 ```
 
-Domain cannot depend on FastAPI, SQLAlchemy, Redis, Dramatiq, HTTP clients, or WeChat SDK/provider code.
+Domain cannot depend on FastAPI, SQLAlchemy, Redis, Dramatiq, HTTP clients, or WeChat provider code.
 
-## 6. PostgreSQL migration strategy — FROZEN
+## 6. PostgreSQL migration strategy — PASS
 
 Existing committed Alembic history remains immutable:
 
@@ -178,8 +175,6 @@ Gate 1.1 uses forward-only:
 ```text
 EXPAND -> BACKFILL -> VERIFY -> CONTRACT(later gate only)
 ```
-
-Gate 1.1 is additive. It may add formal domain tables/columns/indexes and safe deterministic backfills; it must not destructively rewrite old migrations or drop legacy data.
 
 Forbidden historical invention:
 
@@ -200,7 +195,7 @@ stable unique LiveObservation identity
 unique(user_id, live_event_id, channel) for NotificationDelivery
 ```
 
-## 7. Experiment -> formal reuse map — FROZEN
+## 7. Experiment -> formal reuse map — PASS
 
 ```text
 Gate 0B state_engine.py
@@ -244,13 +239,23 @@ Gate 0E golden_path.py + test_golden_path.py
 
 Formal runtime must not import from `experiments/*`.
 
-## 8. No-copy-forward semantic list
+## 8. Legacy quarantine — PASS
 
-The following must not enter new Gate 1 modules:
+Detailed classification and no-copy rules are frozen in `GATE_1_0_LEGACY_QUARANTINE.md`.
+
+Core rule:
+
+```text
+legacy location != semantic authority
+formal-looking file != accepted truth
+Gate 0 accepted behavior > old V0.x docs/code
+```
+
+Quarantined semantics include:
 
 ```text
 provider error statuses as canonical live truth
-SUSPECT_* as persisted canonical creator truth
+SUSPECT_* as canonical creator truth
 CONFIRMED_ONLINE replacing LIVE_STARTED + cause
 session-based NotificationDelivery idempotency
 PENDING/SENT/FAILED-only delivery runtime
@@ -264,15 +269,15 @@ runtime imports from experiments/*
 raw provider credentials persisted as evidence
 ```
 
-## 9. Gate 1.1 executable plan
+## 9. Gate 1.1 executable entry plan — PASS
 
-Gate 1.1 is **Domain Model + PostgreSQL Schema** and will execute in this order:
+Gate 1.1 is **Domain Model + PostgreSQL Schema** and must execute in this order:
 
 ```text
 1. create pure stage_letter/domain types/invariants
-2. port Gate 0B/0D semantic tests to formal domain tests
+2. port accepted Gate 0B/0D semantic tests to formal domain tests
 3. freeze repository/application ports
-4. implement new SQLAlchemy persistence models
+4. implement SQLAlchemy persistence models
 5. add forward-only Alembic expand migration
 6. perform deterministic legacy backfill only where truth is derivable
 7. add DB constraints for open session and delivery identity
@@ -281,9 +286,27 @@ Gate 1.1 is **Domain Model + PostgreSQL Schema** and will execute in this order:
 10. run Gate 0B/0C/0D/0E regression oracles against formal boundaries
 ```
 
+Minimum required proof includes:
+
+```text
+UNKNOWN never closes open session
+duplicate/stale observations are safe
+BOOTSTRAP_LIVE does not notify
+TRANSITION LIVE_STARTED occurs exactly once
+one open session/account DB invariant
+event-based delivery uniqueness
+IN_FLIGHT durable before send
+restored unresolved IN_FLIGHT -> AMBIGUOUS
+AMBIGUOUS no blind resend
+SENT no global exhaustion inference
+notification/provider failure cannot mutate live truth
+clean DB and legacy DB both migrate to head
+formal golden path remains equivalent to Gate 0E
+```
+
 Gate 1.1 must stop with FAIL/BLOCKED if migration requires invented historical truth or changes an accepted Gate 0 invariant.
 
-## 10. Gate 1.0 acceptance matrix
+## 10. Gate 1.0 acceptance matrix — 8/8 PASS
 
 ```text
 1. Gate 0B/0C/0D/0E truths recorded as formal invariants          PASS
@@ -292,13 +315,11 @@ Gate 1.1 must stop with FAIL/BLOCKED if migration requires invented historical t
 4. formal module ownership frozen                                 PASS
 5. PostgreSQL migration strategy frozen                           PASS
 6. experiment-to-formal reuse map frozen                          PASS
-7. legacy quarantine / no-copy list frozen                        CURRENT
-8. Gate 1.1 implementation entry acceptance                       CURRENT
+7. legacy quarantine / no-copy list frozen                        PASS
+8. Gate 1.1 implementation entry acceptance                       PASS
 ```
 
-Gate 1.0 remains **CURRENT** until 1.0-3 performs the final quarantine/entry review and closes items 7-8.
-
-## 11. Current progression
+## 11. Final progression
 
 ```text
 Gate 0A    DEGRADED / inherited known lifecycle evidence gap
@@ -308,11 +329,11 @@ Gate 0D    PASS
 Gate 0E    PASS
 Git baseline c841a33d PASS
 
-Gate 1.0-1  PASS / handoff + drift audit
-Gate 1.0-2  PASS / architecture + migration + reuse freeze
-Gate 1.0-3  NEXT / legacy quarantine + Gate 1.1 entry freeze
-Gate 1.0    CURRENT
-Gate 1.1    NOT STARTED
+Gate 1.0-1  PASS
+Gate 1.0-2  PASS
+Gate 1.0-3  PASS
+Gate 1.0    PASS
+Gate 1.1    READY / NOT STARTED
 ```
 
 Gate 0A's deferred real lifecycle evidence gap remains visible and is not upgraded to PASS.
