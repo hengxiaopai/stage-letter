@@ -10,6 +10,15 @@ Raw WeChat errcode mapping belongs to the real-provider evidence boundary and
 must be based on current official documentation / observed responses rather
 than guessed in this Gate experiment.
 
+Important real-provider correction (Gate 0D-4, 2026-08-18): a successful
+subscription-message send was followed by another successful real send for the
+same account without an intervening subscription request in the controlled
+sequence. Therefore ``SENT`` proves that one send unit was consumed, but does
+*not* prove that no additional send entitlement remains. This experiment does
+not maintain an exact provider-side grant balance, so successful send must not
+silently rewrite ``GRANTED`` to ``EXHAUSTED``. Only explicit exhaustion evidence
+may do that.
+
 No type in this module can mutate creator LIVE/OFFLINE state or LiveSession.
 """
 
@@ -42,7 +51,7 @@ class RetryClass(str, Enum):
 
 class GrantEffect(str, Enum):
     KEEP = "KEEP"
-    CONSUME = "CONSUME"
+    CONSUME_ONE = "CONSUME_ONE"
     MARK_DENIED = "MARK_DENIED"
     MARK_EXHAUSTED = "MARK_EXHAUSTED"
 
@@ -81,7 +90,7 @@ _OUTCOME_POLICY: dict[
         True,
         False,
         RetryClass.NONE,
-        GrantEffect.CONSUME,
+        GrantEffect.CONSUME_ONE,
     ),
     ProviderOutcome.USER_REJECTED: (
         False,
@@ -165,13 +174,20 @@ def apply_grant_effect(
     current: GrantState,
     normalized: NormalizedProviderResult,
 ) -> GrantState:
-    """Apply provider/grant truth without touching Follow or creator state."""
+    """Apply provider/grant truth without inventing an exact grant balance.
+
+    ``CONSUME_ONE`` records that one provider-side send entitlement was used.
+    The current experiment has no authoritative remaining-balance counter, so a
+    successful send does not by itself prove ``EXHAUSTED``. Explicit provider
+    evidence classified as ``GRANT_INVALID`` remains the boundary that can mark
+    the locally modeled grant state exhausted.
+    """
 
     effect = normalized.grant_effect
-    if effect is GrantEffect.KEEP:
+    if effect in (GrantEffect.KEEP, GrantEffect.CONSUME_ONE):
         return current
     if effect is GrantEffect.MARK_DENIED:
         return GrantState.DENIED
-    if effect in (GrantEffect.CONSUME, GrantEffect.MARK_EXHAUSTED):
+    if effect is GrantEffect.MARK_EXHAUSTED:
         return GrantState.EXHAUSTED
     raise AssertionError(f"unhandled grant effect: {effect}")
