@@ -13,6 +13,8 @@ __pycache__/
 # Gate 0 evidence
 experiments/gate0a/data/*.jsonl
 experiments/gate0a/data/*.json
+experiments/gate0d/data/*.jsonl
+experiments/gate0d/data/*.json
 
 # OS/editor
 .DS_Store
