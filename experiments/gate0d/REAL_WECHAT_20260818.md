@@ -1,10 +1,10 @@
 # Gate 0D-4 — Real WeChat Evidence — 2026-08-18
 
-Status: **PARTIAL PASS / CLIENT ACCEPT + TWO REAL SENDS + TWO PHONE RECEIPTS CONFIRMED**
+Status: **PASS / REAL ACCEPTANCE COMPLETE**
 
 This sanitized record captures only non-secret facts from the real WeChat subscription-message experiment. Raw local JSON evidence remains under `experiments/gate0d/data/` and is gitignored.
 
-## Real client subscription result
+## A. Real client subscription result — PASS
 
 Observed from the real mini-program `wx.requestSubscribeMessage` callback:
 
@@ -18,11 +18,9 @@ Observed from the real mini-program `wx.requestSubscribeMessage` callback:
 
 This is direct client evidence that the request completed through the success callback and the tested template result was `accept`.
 
-Gate item A: **PASS**.
+## B/C/D. Real provider send + phone receipt — PASS
 
-## Real provider send #1
-
-Observed service-side result:
+### Send #1
 
 ```text
 send_requested            true
@@ -38,24 +36,11 @@ provider_mapping_status    CONFIRMED_SENT
 secrets_persisted          false
 ```
 
-The intended WeChat account visibly received the corresponding service notification at approximately 15:02 local time.
+The intended WeChat account visibly received the corresponding notification at approximately 15:02 local time.
 
-Visible message facts included:
+### Send #2
 
-```text
-notification title   直播开播通知
-开播时间             2026-08-18 14:30
-直播间活动           无
-直播主题             开播啦
-达人名称             X.四五六🍉
-直播间名称           重生之我在传媒当歌手
-```
-
-## Real provider send #2
-
-The controlled follow-up sequence did not intentionally call `wx.requestSubscribeMessage` between send #1 and send #2. A fresh `wx.login` code was obtained and the same configured app/template/openid path was used again.
-
-Observed service-side result:
+A second ordinary send used the same app/template/openid path without an intentionally repeated `wx.requestSubscribeMessage` call between send #1 and send #2.
 
 ```text
 captured_at             2026-08-18T07:10:12+00:00
@@ -72,32 +57,13 @@ provider_mapping_status  CONFIRMED_SENT
 secrets_persisted        false
 ```
 
-The same intended WeChat account visibly received the second corresponding notification at approximately 15:10 local time.
+The intended WeChat account visibly received the second notification at approximately 15:10 local time.
 
-Visible message facts included:
+## E. Post-send grant behavior — PASS
 
-```text
-notification title   直播开播通知
-开播时间             2026-08-18 05:20
-直播间活动           发1000W福袋
-直播主题             君子如珩，取予有节
-达人名称             珩小派
-直播间名称           我在创作开场信小程序
-```
+The two real successful sends disproved the earlier deterministic assumption that one successful send proves global grant exhaustion.
 
-## Important semantic finding
-
-The second provider `errcode=0` send and second phone receipt are evidence that a successful send does **not** by itself prove that no further provider-side send entitlement remains for that user/template/account state.
-
-The experiment does not know how many prior subscription grants may have been accumulated, so it cannot infer an exact remaining balance from these two sends. The earlier deterministic rule:
-
-```text
-SENT -> local GrantState.EXHAUSTED
-```
-
-is therefore too strong and has been superseded.
-
-The corrected rule is:
+Corrected semantic rule:
 
 ```text
 SENT
@@ -109,40 +75,91 @@ explicit grant-invalid/exhaustion evidence
   -> may mark local grant state EXHAUSTED
 ```
 
-The corrected deterministic 54-test suite was rerun successfully after this finding.
+The corrected deterministic Gate 0D suite was rerun successfully: **54/54 PASS**.
 
-## Gate items confirmed
+## F. Exact replay / provider idempotency boundary — PASS
+
+A dedicated controlled replay experiment used:
 
 ```text
-A. exact client wx.requestSubscribeMessage result       PASS / accept
-B. real send provider response captured                PASS
-C. at least one real errcode=0 provider send           PASS (two observed)
-D. corresponding message visibly received              PASS (two observed)
-E. post-send grant behavior observed                    PASS / SENT != proven EXHAUSTED
-H. no secret material persisted in canonical evidence  PASS
+same process
+same access token
+same openid
+same template id
+same template data
+same page/miniprogram_state/lang
+same request-body fingerprint
 ```
 
-## Gate items still open
+Observed replay evidence:
 
 ```text
-F. exact duplicate/replay/provider-idempotency boundary  CURRENT
-G. non-zero raw errcode mappings                         OPEN / only map when evidenced
+experiment                    EXACT_PAYLOAD_REPLAY
+replay_count                  2
+same_access_token_for_both    true
+openid_fingerprint            cbdafe5eb1a0ea94
+request_payload_fingerprint   9e040003c7649066
+
+action #1
+  errcode                     0
+  errmsg                      ok
+  normalized                  SENT
+  msgid                       4654832376731369477
+
+action #2
+  errcode                     0
+  errmsg                      ok
+  normalized                  SENT
+  msgid                       4654832384247562248
 ```
 
-A dedicated controlled operator tool now exists:
+The provider returned two distinct `msgid` values, and the intended phone/account visibly received **two corresponding identical notifications**.
+
+Therefore, under the tested conditions, exact same-payload replay was accepted as two independent sends; no automatic provider deduplication was observed.
+
+This is sufficient to freeze the production safety rule:
 
 ```text
-experiments/gate0d/real_wechat_replay_probe.py
-```
-
-It performs exactly two service-side calls in one process using the same access token and the same request body, while persisting only a request-payload fingerprint and sanitized provider responses.
-
-The deterministic Gate 0D-3 crash safety rule remains unchanged:
-
-```text
-IN_FLIGHT at crash/restart
+IN_FLIGHT at process crash
   -> AMBIGUOUS
   -> no blind automatic resend
 ```
 
-Two successful ordinary sends do not prove provider-side request idempotency or reconciliation. Exact replay evidence is still required for item F.
+Stage Letter must not claim provider-backed exactly-once delivery for this operation. Logical delivery idempotency remains a Stage Letter responsibility; an unresolved external side effect cannot be safely retried without reconciliation evidence.
+
+## G. Non-zero raw provider mapping discipline — PASS
+
+The real probe intentionally maps only:
+
+```text
+errcode == 0                -> SENT
+transport failure           -> NETWORK_ERROR
+other non-zero provider     -> UNMAPPED_PROVIDER_ERROR
+```
+
+A real pre-send credential failure was also observed earlier at `code2session` (`errcode=40125`, provider message reporting an invalid AppSecret). It was correctly kept outside user grant / notification-delivery outcomes and was not misclassified as `USER_REJECTED`, `GRANT_INVALID`, `RATE_LIMITED`, or similar.
+
+Gate acceptance does not require manufacturing arbitrary provider failures. The frozen rule is that a non-zero raw WeChat code may enter a more specific Stage Letter outcome only when current provider documentation and/or direct observed evidence supports that exact mapping. Unknown codes remain conservative/unmapped.
+
+## H. Secret handling — PASS
+
+Canonical evidence persists no AppSecret, access token, session key, fresh login code, or raw openid. Raw local evidence is gitignored. Only fingerprints and sanitized provider facts are promoted here.
+
+## Final Gate 0D-4 decision
+
+```text
+A client subscription result                         PASS
+B real provider response                            PASS
+C real errcode=0 send                               PASS
+D intended account visibly received                 PASS
+E post-send grant behavior                          PASS
+F exact replay / idempotency boundary               PASS
+G non-zero mapping discipline                       PASS
+H no secret material persisted                      PASS
+--------------------------------------------------------
+Gate 0D-4                                            PASS
+```
+
+### Permanent limitation captured by the Gate
+
+The experiment does **not** prove that WeChat exposes no reconciliation facility anywhere in its platform. It proves the narrower production-relevant fact required by Stage Letter: sending the exact same subscription-message payload twice in the tested path produced two accepted provider responses, two distinct message IDs, and two phone receipts. Therefore Stage Letter cannot rely on payload equality for provider deduplication and must preserve `AMBIGUOUS` after crash-before-response.
