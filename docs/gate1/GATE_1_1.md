@@ -1,6 +1,6 @@
 # Gate 1.1 — Domain Model + PostgreSQL Schema
 
-Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 PASS / 1.1-5 CURRENT**
+Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 PASS / 1.1-5 DB PROBE PASS, STATIC ACCEPTANCE PENDING**
 
 Entry authority: Gate 1.0 PASS.
 
@@ -128,7 +128,7 @@ Gate 1.1-4: **PASS**.
 
 ## 6. Gate 1.1-5 — DB Constraint Hardening + Clean/Legacy Validation — CURRENT
 
-Hardening revision has landed:
+Hardening revision:
 
 ```text
 b63e4f9a1c20_gate1_harden_constraints.py
@@ -144,42 +144,48 @@ Current revision chain:
   -> b63e4f9a1c20
 ```
 
-Hardening adds only constraints that are deterministic after EXPAND, including:
+Hardening adds only deterministic constraints, including canonical observation
+status, formal open-session uniqueness, event-based delivery identity, and
+non-null deterministic bridge facts. Unknown legacy event id/cause/session
+origin remain unknown/null.
 
-```text
-canonical LiveObservation status CHECK
-creator_id NOT NULL after deterministic anchor mapping
-nullable-but-enumerated session origin / event cause
-unique open session by ended_at IS NULL
-unique formal event_id when present
-occurred_at NOT NULL after detected_at backfill
-event-based NotificationDelivery live_event_id NOT NULL
-legacy 'wechat' -> WECHAT_SUBSCRIBE deterministic normalization
-unique(user_id, live_event_id, channel)
-non-null delivery updated_at bookkeeping
-```
-
-Unknown legacy event id/cause/session origin remain unknown/null. Legacy FAILED
-delivery state is not reclassified.
-
-Real DB probe:
+Real PostgreSQL probe:
 
 ```text
 scripts/gate1_db_migration_probe.py
 ```
 
-It creates two isolated temporary databases on the repository PostgreSQL service:
+Accepted user-local DB evidence on 2026-08-19:
 
 ```text
-CLEAN:  empty DB -> head -> schema/constraint verification
-LEGACY: pre-Gate-1 head -> representative legacy fixture -> head
-        -> deterministic backfill + negative constraint tests
+[clean] PASS -> b63e4f9a1c20
+[legacy] PASS -> b63e4f9a1c20
+PASS: Gate 1.1-5 clean + legacy PostgreSQL migration probe
+[cleanup] dropped stageletter_gate11_clean
+[cleanup] dropped stageletter_gate11_legacy
 ```
 
-It never modifies the normal `stageletter` database and cleans up both temporary
-databases in `finally`.
+The probe proves:
 
-Gate 1.1-5 remains CURRENT until real PostgreSQL evidence passes.
+```text
+clean database migration                                     PASS
+representative legacy migration                             PASS
+deterministic backfills                                     PASS
+no fabricated LiveObservation/event cause/session origin    PASS
+invalid canonical observation status rejected               PASS
+second ended_at=NULL session rejected                       PASS
+duplicate user/event/channel delivery rejected              PASS
+temporary DB cleanup                                        PASS
+```
+
+Gate 1.1-5 is not closed yet because the hardening revision still needs explicit
+local evidence for:
+
+```text
+full Gate 1 contract suite
+alembic heads == b63e4f9a1c20
+offline SQL compilation through b63e4f9a1c20
+```
 
 ## 7. Remaining Gate 1.1 plan
 
@@ -216,7 +222,7 @@ Gate 1.1-1  PASS / pure domain + 11/11
 Gate 1.1-2  PASS / ports + 17/17 + AST dependency audit
 Gate 1.1-3  PASS / SQLAlchemy models + 25/25 + metadata 10/10
 Gate 1.1-4  PASS / EXPAND + 35/35 + head + UTF-8 offline SQL
-Gate 1.1-5  CURRENT / hardening + real PostgreSQL clean/legacy validation
+Gate 1.1-5  CURRENT / real DB clean+legacy PASS; static acceptance pending
 Gate 1.1-6  NOT STARTED
 Gate 1.1    CURRENT
 ```
