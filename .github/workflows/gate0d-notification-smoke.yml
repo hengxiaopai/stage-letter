@@ -1,0 +1,33 @@
+name: Gate 0D Notification Smoke
+
+on:
+  push:
+    paths:
+      - "experiments/gate0d/**"
+      - ".github/workflows/gate0d-notification-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Syntax check
+        run: |
+          python -m py_compile \
+            experiments/gate0d/notification_truth.py \
+            experiments/gate0d/test_notification_truth.py
+
+      - name: Gate 0D acceptance tests
+        run: python -m unittest discover -s experiments/gate0d -p "test_*.py" -v
