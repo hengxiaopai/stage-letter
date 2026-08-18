@@ -54,7 +54,7 @@ class DeliveryRetryGate0D3Tests(unittest.TestCase):
         self.assertEqual(m.attempt_count, 1)
         self.assertIsNone(m.attempts[0].completed_at)
 
-    def test_02_sent_is_terminal_and_consumes_grant(self) -> None:
+    def test_02_sent_is_terminal_for_delivery_without_inferring_global_grant_exhaustion(self) -> None:
         m = machine()
         m.begin_attempt(attempt_id="a1", started_at=BASE)
         done = m.complete_attempt(
@@ -63,7 +63,7 @@ class DeliveryRetryGate0D3Tests(unittest.TestCase):
             completed_at=BASE + timedelta(seconds=1),
         )
         self.assertEqual(done.state, ExecutionState.SENT)
-        self.assertEqual(m.grant_state, GrantState.EXHAUSTED)
+        self.assertEqual(m.grant_state, GrantState.GRANTED)
         self.assertTrue(m.is_terminal)
 
     def test_03_sent_delivery_cannot_send_again(self) -> None:
