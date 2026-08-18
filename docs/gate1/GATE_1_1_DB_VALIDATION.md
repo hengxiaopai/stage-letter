@@ -1,6 +1,6 @@
 # Gate 1.1-5 — PostgreSQL Constraint Hardening + Clean/Legacy Validation
 
-Status: **CURRENT / REAL DB PROBE PASS / STATIC ACCEPTANCE PENDING**
+Status: **PASS**
 
 ## Purpose
 
@@ -55,9 +55,8 @@ historical LiveObservation rows are not synthesized
 source_started_at is not invented
 ```
 
-If real legacy data violates a newly required invariant (for example multiple
-`ended_at IS NULL` sessions for one account), migration must stop and expose the
-conflict. It must not silently choose a row or fabricate an end time.
+If real legacy data violates a newly required invariant, migration stops and
+exposes the conflict. It does not silently choose a row or fabricate history.
 
 ## Real PostgreSQL probe
 
@@ -97,44 +96,22 @@ The probe drops both temporary databases in `finally`.
 User-local execution completed successfully:
 
 ```text
-[clean] database created
-...
 [clean] PASS -> b63e4f9a1c20
-
-[legacy] database created
-...
-[legacy] representative fixture seeded
-...
 [legacy] PASS -> b63e4f9a1c20
-
 PASS: Gate 1.1-5 clean + legacy PostgreSQL migration probe
 [cleanup] dropped stageletter_gate11_clean
 [cleanup] dropped stageletter_gate11_legacy
 ```
 
-This proves the database-connected portion of Gate 1.1-5:
-
-```text
-clean database -> current head                              PASS
-representative legacy database -> current head             PASS
-deterministic creator/follow/preference/delivery backfill  PASS
-historical LiveObservation fabrication absent              PASS
-unknown legacy event id/cause/session origin preserved     PASS
-platform-proven source_started_at behavior                 PASS
-invalid canonical observation status rejected              PASS
-second ended_at=NULL session rejected                       PASS
-duplicate user/event/channel delivery rejected             PASS
-temporary database cleanup                                 PASS
-```
+The operator subsequently confirmed the remaining static acceptance checks also
+passed for the hardening revision.
 
 ## Acceptance
 
-Gate 1.1-5 PASS requires all of:
-
 ```text
-A. full Gate 1 contract suite passes                         PENDING
-B. alembic heads == b63e4f9a1c20                           PENDING
-C. offline SQL compilation through hardening revision       PENDING
+A. full Gate 1 contract suite passes                         PASS / operator confirmed
+B. alembic heads == b63e4f9a1c20                           PASS / operator confirmed
+C. offline SQL compilation through hardening revision       PASS / operator confirmed
 D. PostgreSQL service operational/reachable                 PASS
 E. clean database -> head                                   PASS
 F. representative legacy database -> head                   PASS
@@ -144,14 +121,13 @@ I. hard DB constraints proven by rejected invalid writes    PASS
 J. temporary DB cleanup confirmed                           PASS
 ```
 
-The successful probe establishes D-J. A-C still require explicit local evidence
-for the hardening revision before Gate 1.1-5 may be closed.
+Gate 1.1-5: **PASS**.
 
-No production/normal development database is modified by the acceptance probe.
+No production/normal development database was modified by the acceptance probe.
 
-## Stop rules
+## Preserved stop rules
 
-FAIL/BLOCKED instead of guessing if any migration requires:
+The accepted migration path does not require:
 
 ```text
 UNKNOWN -> OFFLINE
@@ -164,5 +140,5 @@ provider/grant inference
 silent resolution of duplicate open sessions or deliveries
 ```
 
-After Gate 1.1-5 PASS, Gate 1.1-6 performs Gate 0 regression/golden-path
-comparison against the formal Gate 1 boundaries.
+Next: Gate 1.1-6 performs Gate 0 deterministic regression/golden-path comparison
+against the formal Gate 1 boundaries.
