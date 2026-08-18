@@ -1,6 +1,6 @@
 # Gate 1.1-3 — SQLAlchemy Persistence Models
 
-Status: **CURRENT / CODE LANDED, TEST EVIDENCE PENDING**
+Status: **PASS**
 
 ## Purpose
 
@@ -77,14 +77,55 @@ NotificationDelivery event-based idempotency
 Delivery runtime storage capacity for accepted Gate 0D states
 ```
 
-Gate 1.1-3 remains CURRENT until local execution evidence passes both the existing Gate 1 suite and the persistence-model contracts.
+## Accepted local evidence
+
+User-local project environment:
+
+```text
+Python      3.13.14
+SQLAlchemy  2.0.52
+Alembic     1.19.1
+PASS: Gate 1 DB dependencies available
+```
+
+Full Gate 1 suite after SQLAlchemy models landed:
+
+```text
+Ran 25 tests in 0.004s
+OK
+```
+
+Formal metadata load:
+
+```text
+creator_profiles
+creators
+follows
+live_events
+live_observations
+live_sessions
+notification_deliveries
+notification_preferences
+platform_accounts
+users
+count: 10
+PASS: formal persistence metadata loaded
+```
+
+Acceptance:
+
+```text
+formal metadata exactly ten domain tables                 PASS
+persistence contract tests                                PASS
+existing domain/application tests remain green            PASS
+project DB dependencies available                         PASS
+metadata imports successfully                             PASS
+```
+
+Gate 1.1-3: **PASS**.
 
 ## Next gate
 
-After 1.1-3 PASS:
+Gate 1.1-4 — Alembic EXPAND Migration is now active.
 
-```text
-Gate 1.1-4 — Alembic EXPAND Migration
-```
-
-The migration must be forward-only from the existing head and may not drop legacy data.
+The migration remains forward-only and may not drop legacy data.
