@@ -1,8 +1,8 @@
-"""One-account monitoring probe orchestration for Gate 1.4-2.
+"""One-account monitoring probe orchestration for Gate 1.4.
 
 This service bridges an already-formal LivePlatformAdapter snapshot into one
 durable LiveObservation. Provider I/O happens outside database transactions.
-Scheduler cadence/concurrency/backoff remain Gate 1.4-3 concerns.
+Scheduler cadence/concurrency/backoff remain worker concerns.
 """
 from __future__ import annotations
 
@@ -19,15 +19,16 @@ from stage_letter.domain.live import LiveObservation
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
 AdapterLookup = Callable[[str], LivePlatformAdapter]
+MONITOR_PROBE_PREFIX = "monitor:"
 
 
 @dataclass(frozen=True)
 class MonitoringProbeRequest:
-    """One logical probe request for one formal platform account.
+    """One scheduler-owned logical probe for one formal platform account.
 
-    A scheduler/retry mechanism must reuse the same probe_id when retrying the
-    same logical request. Gate 1.4 stores that probe_id directly as the durable
-    observation_id, scoped by account.
+    Formal production monitoring ids are namespaced with ``monitor:`` so the
+    Gate 1.4 partial database uniqueness can protect account+probe identity
+    without rewriting historical observation semantics.
     """
 
     probe_id: str
@@ -36,6 +37,8 @@ class MonitoringProbeRequest:
     def __post_init__(self) -> None:
         if not self.probe_id.strip():
             raise ValueError("probe_id is required")
+        if not self.probe_id.startswith(MONITOR_PROBE_PREFIX):
+            raise ValueError("monitoring probe_id must start with 'monitor:'")
         if len(self.probe_id) > 255:
             raise ValueError("probe_id must fit live_observations.observation_id")
         if not self.account_id.strip():
@@ -99,9 +102,6 @@ class MonitoringProbeApplicationService:
             source_started_at=snapshot.source_started_at,
         )
 
-        # Re-check after provider I/O so a sequential retry, or another worker that
-        # completed while this provider call was in flight, can reuse durable work.
-        # Gate 1.4-3 owns concurrent single-flight/lease semantics.
         async with self._uow_factory() as uow:
             existing = await uow.live.get_observation(
                 request.account_id,
@@ -123,10 +123,23 @@ class MonitoringProbeApplicationService:
                     "platform account identity changed while probe was in flight"
                 )
 
-            await uow.live.append_observation(observation)
-            await uow.commit()
+            inserted = await uow.live.append_observation(observation)
+            if inserted:
+                await uow.commit()
+                return MonitoringProbeResult(observation, reused_existing=False)
 
-        return MonitoringProbeResult(observation, reused_existing=False)
+            # A separate transaction/process won the durable unique race after our
+            # pre-insert check. PostgreSQL ON CONFLICT waited for that transaction,
+            # so its committed row must now be readable in this transaction.
+            winner = await uow.live.get_observation(
+                request.account_id,
+                request.probe_id,
+            )
+            if winner is None:
+                raise ApplicationInvariantError(
+                    "monitoring observation insert lost a durable race but no winner is readable"
+                )
+            return MonitoringProbeResult(winner, reused_existing=True)
 
     @staticmethod
     def _validate_snapshot_identity(
