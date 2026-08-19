@@ -54,14 +54,14 @@ Gate 1.2-1: **PASS**.
 
 ## 4. Gate 1.2-2 — CURRENT
 
-Identity contract evidence has now passed:
+Identity contract evidence:
 
 ```text
 Repository identity tests: 7 / 7 PASS
 Full Gate 1 suite:          69 / 69 PASS
 ```
 
-Implementation assets now landed:
+Implementation assets landed:
 
 ```text
 migrations/versions/c91e8d2f4a10_gate12_relax_legacy_write_bridges.py
@@ -85,16 +85,30 @@ session-keyed delivery uniqueness because canonical delivery idempotency is
 already event-keyed.
 
 The four repository implementations satisfy the formal ports structurally and
-do not own transaction commits. The LiveRepository observation lookup was
-narrowed to the already accepted durable identity:
+do not own transaction commits. The LiveRepository observation lookup is aligned
+with the already accepted durable identity:
 
 ```text
 (account_id, source, observation_id)
 ```
 
-Gate 1.2-2 is not PASS yet. Local evidence is still required for the new
-repository contracts, Alembic head/offline SQL, and the isolated PostgreSQL
-repository probe.
+Real PostgreSQL repository evidence now passes:
+
+```text
+[gate12] seeded at Gate 1.1 head -> b63e4f9a1c20
+[gate12] bridge migration PASS -> c91e8d2f4a10
+PASS: Gate 1.2-2 SQLAlchemy repositories + legacy write bridge
+[cleanup] dropped stageletter_gate12_repo
+```
+
+This proves the bridge migration and four repository implementations work
+against isolated PostgreSQL without fabricating legacy bridge facts. The first
+probe attempt was blocked only by direct-script Python import bootstrap and was
+fixed before the successful run.
+
+Gate 1.2-2 is not closed yet. Remaining acceptance evidence is the post-change
+full Gate 1 suite/boundary contracts, the Alembic head check, and UTF-8 offline
+SQL compilation through `c91e8d2f4a10`.
 
 ## 5. Preserved inherited status
 
@@ -136,7 +150,7 @@ UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS / 62-test full suite incl. 7 boundary contracts
-Gate 1.2-2  CURRENT / repositories + bridge landed; local/PostgreSQL evidence pending
+Gate 1.2-2  CURRENT / PostgreSQL probe PASS; static acceptance pending
 Gate 1.2-3  NOT STARTED
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
