@@ -1,15 +1,12 @@
 # Gate 1.3-3 — Douyin Formal Adapter Migration
 
-Status: **CURRENT / FORMAL ADAPTER CORE PASS / STREAMGET GATEWAY LANDED / PROVIDER LIVE+OFFLINE EVIDENCE PASS / FINAL LOCAL SUITE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.3-2 PASS / CLOSED.
 
-## 1. Evidence authority
+## 1. Accepted evidence authority
 
-Gate 1.3-3 migrates only Douyin semantics already established by Gate 0A evidence.
-It does not infer new provider truth from the legacy top-level adapter.
-
-Accepted Gate 0A StreamGet PROFILE/sec_uid evidence established:
+Gate 1.3-3 migrated only Douyin semantics already established by Gate 0A evidence:
 
 ```text
 raw_room_status = 2 -> LIVE
@@ -21,56 +18,23 @@ initial multi-creator validation           PASS 6/6
 failure safety                             PASS
 ```
 
-Gate 0A also established that stale room titles and historical live-room URLs are
-not canonical state or identity evidence. Stable profile/sec_uid identity remains
-the monitoring key.
+Stable profile/sec_uid identity remains the monitoring key. Historical room URLs,
+stale titles, missing metadata, and provider failures are not canonical state
+truth.
 
-The inherited Gate 0A lifecycle gap remains **DEGRADED / DEFERRED**. Gate 1.3-3
-must not reinterpret this migration as proof of a real same-creator
-OFFLINE -> LIVE -> OFFLINE lifecycle.
+Gate 0A remains **DEGRADED / DEFERRED** for the separate same-creator
+`OFFLINE -> LIVE -> OFFLINE` lifecycle gap.
 
-## 2. Formal adapter core — accepted local evidence
-
-Landed:
+## 2. Formal runtime accepted
 
 ```text
 stage_letter/infrastructure/platforms/douyin.py
-tests/gate1/test_douyin_formal_adapter.py
-```
-
-Accepted user-local evidence:
-
-```text
-Dedicated Douyin formal-adapter contracts: 12 / 12 PASS
-Complete Gate 1 suite:                    144 / 144 PASS
-```
-
-`DouyinFormalAdapter` implements the application-owned `LivePlatformAdapter`
-contract and consumes provider transport through an injected
-`DouyinProviderGateway` protocol.
-
-The formal package does not import:
-
-```text
-platform_adapters/*
-experiments/*
-core/*
-api/*
-workers/*
-```
-
-## 3. Formal StreamGet gateway — landed
-
-Formal provider transport:
-
-```text
 stage_letter/infrastructure/platforms/douyin_streamget.py
-tests/gate1/test_douyin_streamget_gateway.py
 scripts/gate13_douyin_provider_probe.py
 requirements-provider-douyin.txt
 ```
 
-The runtime chain is:
+Runtime chain:
 
 ```text
 StreamGetDouyinGateway
@@ -79,77 +43,19 @@ StreamGetDouyinGateway
           -> LiveSnapshot
 ```
 
-`StreamGetDouyinGateway` uses only stable PROFILE/sec_uid reads through
-StreamGet `fetch_app_stream_data()` and does not import the legacy
-`platform_adapters/*` package or Gate 0 experiments.
+The formal runtime does not import legacy `platform_adapters/*`, Gate 0
+`experiments/*`, `core/*`, `api/*`, or `workers/*` inward.
 
-StreamGet is imported lazily only when a real provider call occurs. Importing the
-formal platform package therefore does not itself require the optional provider
-library to be installed.
-
-The optional provider runtime is pinned to the accepted Gate 0A baseline and
-includes SOCKS transport support needed by proxied development environments:
+The provider runtime baseline is:
 
 ```text
 streamget==4.0.10
 httpx[socks]>=0.27
 ```
 
-## 4. Provider transport rules
+## 3. Accepted provider-backed evidence
 
-Stable identity input accepted by the gateway:
-
-```text
-raw sec_uid
-https://www.douyin.com/user/<sec_uid>
-```
-
-Historical live-room URLs are deliberately rejected as identity inputs. The
-gateway canonicalizes monitoring identity to the stable profile/sec_uid path.
-
-Canonical status normalization remains owned by `DouyinFormalAdapter`:
-
-```text
-raw integer 2 -> LIVE
-raw integer 4 -> OFFLINE
-all other values -> UNKNOWN
-```
-
-String lookalikes such as `"2"` / `"4"` remain UNKNOWN until separately proven.
-
-## 5. Failure and identity safety
-
-Gateway transport exceptions are normalized to `ProviderOperationError` with the
-Gate 1.3-2 diagnostic vocabulary. The formal adapter then maps live-read failures
-to UNKNOWN, never OFFLINE.
-
-```text
-TimeoutError              -> TIMEOUT diagnostic -> UNKNOWN
-ConnectionError           -> NETWORK diagnostic -> UNKNOWN
-generic wrapper error     -> UNKNOWN diagnostic -> UNKNOWN
-non-dict payload          -> SCHEMA_DRIFT diagnostic -> UNKNOWN
-explicit sec_uid mismatch -> AMBIGUOUS diagnostic -> UNKNOWN
-missing provider runtime  -> UNKNOWN diagnostic -> UNKNOWN
-```
-
-Earlier operator runs correctly surfaced two harness/runtime defects without
-inventing live truth:
-
-```text
-Markdown-rendered copied URL -> strict input rejection / UNKNOWN
-missing StreamGet runtime    -> ModuleNotFoundError diagnostic / UNKNOWN
-missing SOCKS support        -> Node runtime install failure
-```
-
-Those were repaired without weakening the formal gateway contract.
-
-## 6. Decisive provider-backed evidence — PASS
-
-After the provider runtime was installed successfully, the operator executed the
-formal provider chain against two creators whose current state had been
-independently checked at probe time.
-
-### LIVE control
+LIVE control:
 
 ```text
 creator             大坤坤
@@ -162,9 +68,7 @@ production_approved  false
 observed_at UTC      2026-08-19T05:35:44.743960+00:00
 ```
 
-Result: **PASS / decisive LIVE provider evidence**.
-
-### OFFLINE control
+OFFLINE control:
 
 ```text
 creator             陈泽-
@@ -177,77 +81,63 @@ production_approved  false
 observed_at UTC      2026-08-19T05:35:59.172957+00:00
 ```
 
-Result: **PASS / decisive OFFLINE provider evidence**.
+Both are decisive technical transport evidence through the formal chain. Neither
+upgrades production authorization or the separate Gate 0A lifecycle status.
 
-Both runs exercised the formal chain:
+## 4. Accepted local regression
+
+Final user-local evidence:
 
 ```text
-StreamGetDouyinGateway -> DouyinFormalAdapter -> LiveSnapshot
+Douyin formal-adapter contracts:          12 / 12 PASS
+StreamGet gateway contracts:              10 / 10 PASS
+Provider-probe CLI normalization:          3 / 3 PASS
+Complete Gate 1 suite after provider work: 157 / 157 PASS
 ```
 
-No legacy adapter or Gate 0 experiment was imported inward. The runs required no
-Douyin cookie and retained `gate0a_status = DEGRADED` and
-`production_approved = false`.
+Earlier harness/runtime failures were also verified to fail conservatively:
 
-These two probes close the Gate 1.3-3 provider transport evidence requirement.
-They do **not** close the separate Gate 0A same-creator lifecycle gap.
+```text
+Markdown-rendered copied URL -> UNKNOWN/input rejection
+missing StreamGet runtime    -> UNKNOWN/ModuleNotFoundError diagnostic
+missing SOCKS support        -> provider runtime install failure
+```
 
-## 7. Metadata observations from accepted probes
+None produced false OFFLINE truth.
 
-Both decisive probes returned `room_id = null` and `source_started_at = null`.
-Those fields therefore remain optional provider metadata; their absence does not
-invalidate the decisive explicit state result and must not be fabricated.
-
-The OFFLINE probe also returned title metadata while status was OFFLINE, further
-preserving the Gate 0A rule that title presence is not canonical live-state
-truth.
-
-## 8. Gateway and probe contracts
-
-`tests/gate1/test_douyin_streamget_gateway.py` adds ten gateway contracts and
-`tests/gate1/test_douyin_provider_probe_cli.py` adds three CLI-input contracts.
-
-Starting from the accepted 144-test baseline, the expected complete Gate 1 suite
-is 157 tests.
-
-## 9. Acceptance
-
-Current Gate 1.3-3 acceptance state:
+## 5. Acceptance result
 
 ```text
 A. Gate 1.3-2 PASS / CLOSED                         PASS
-B. formal Douyin adapter core landed                PASS
-C. dedicated formal adapter contracts               PASS / 12
-D. complete pre-gateway Gate 1 suite                 PASS / 144
-E. evidence-backed 2/4 mapping frozen               PASS
-F. stable identity rules frozen                     PASS
-G. failure -> UNKNOWN preserved                     PASS
-H. no legacy runtime import                         PASS / CONTRACT
-I. formal StreamGet gateway landed                  PASS / CODE
-J. optional provider runtime dependency             PASS / INSTALLED
-K. provider-backed decisive LIVE probe              PASS
-L. provider-backed decisive OFFLINE probe           PASS
-M. gateway contract tests                           PENDING / 10
-N. provider-probe CLI normalization contracts       PENDING / 3
-O. complete Gate 1 suite after gateway/probe CLI    PENDING / expected 157
+B. formal Douyin adapter core                       PASS
+C. evidence-backed integer 2/4 mapping              PASS
+D. stable profile/sec_uid identity rules            PASS
+E. failure -> UNKNOWN                               PASS
+F. no legacy runtime import                         PASS
+G. StreamGet formal gateway                         PASS
+H. decisive LIVE provider probe                     PASS
+I. decisive OFFLINE provider probe                  PASS
+J. adapter contracts                                PASS / 12
+K. gateway contracts                                PASS / 10
+L. provider-probe CLI contracts                     PASS / 3
+M. complete Gate 1 suite                            PASS / 157
 ```
 
-Gate 1.3-3 remains **CURRENT** until M-O pass.
+Gate 1.3-3: **PASS / CLOSED**.
 
-If M-O pass, Gate 1.3-3 may close **PASS / CLOSED** without adding another real
-provider requirement. Gate 0A remains DEGRADED independently.
+Next: Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration.
 
-## 10. Stop rules
+## 6. Preserved stop rules
 
-Stop with FAIL/BLOCKED if progress requires:
+The accepted Douyin behavior must not later be weakened by:
 
 ```text
 legacy platform_adapters imported into stage_letter runtime
 experiments imported into formal runtime
 raw status other than accepted integer 2/4 guessed as decisive truth
 request/parse/auth/dependency failure -> OFFLINE
-room URL treated as canonical creator identity
-stale title treated as live-state evidence
+historical room URL replacing stable creator identity
+stale metadata overriding explicit provider status
 provider identity mismatch silently accepted
 adapter/gateway opening or closing LiveSession or creating LiveEvent
 printing provider cookies/secrets in probe output
