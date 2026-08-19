@@ -1,7 +1,9 @@
 """Formal worker composition root for Stage Letter.
 
-The current legacy probe/notify workers are intentionally not rewritten here;
-this module provides the concrete dependency seam later Gate 1 workers must use.
+This module is the worker-side composition boundary. It wires formal application
+services, the accepted four-platform AdapterRegistry, one-account monitoring
+probe orchestration, and the bounded monitoring scheduler without performing
+provider or database I/O during construction.
 """
 from __future__ import annotations
 
@@ -14,9 +16,15 @@ from stage_letter.application.services import (
     CreatorApplicationService,
     FollowApplicationService,
     LiveObservationApplicationService,
+    MonitoringProbeApplicationService,
     MonitoringTargetApplicationService,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
+from stage_letter.infrastructure.platforms import (
+    AdapterRegistry,
+    build_formal_adapter_registry,
+)
+from workers.monitoring import MonitoringScheduler, MonitoringSchedulerPolicy
 
 
 SessionFactory = Callable[[], AsyncSession]
@@ -28,17 +36,50 @@ class WorkerServiceBundle:
     follows: FollowApplicationService
     live_observations: LiveObservationApplicationService
     monitoring_targets: MonitoringTargetApplicationService
+    adapter_registry: AdapterRegistry
+    monitoring_probe: MonitoringProbeApplicationService
+    monitoring_scheduler: MonitoringScheduler
 
 
-def build_worker_services(session_factory: SessionFactory) -> WorkerServiceBundle:
-    """Wire worker-side application services to the formal SQLAlchemy UoW."""
+def build_worker_services(
+    session_factory: SessionFactory,
+    *,
+    douyin_cookie: str | None = None,
+    scheduler_policy: MonitoringSchedulerPolicy | None = None,
+) -> WorkerServiceBundle:
+    """Build the formal four-platform worker runtime without opening I/O.
+
+    The SQLAlchemy UnitOfWork is still created lazily when an application service
+    enters a use-case. The adapter registry only constructs provider gateways;
+    concrete provider requests happen later inside adapter operations. StreamGet
+    likewise remains lazily imported by the Douyin gateway.
+    """
 
     def uow_factory() -> SQLAlchemyUnitOfWork:
         return SQLAlchemyUnitOfWork(session_factory)
 
+    creators = CreatorApplicationService(uow_factory)
+    follows = FollowApplicationService(uow_factory)
+    live_observations = LiveObservationApplicationService(uow_factory)
+    monitoring_targets = MonitoringTargetApplicationService(uow_factory)
+
+    adapter_registry = build_formal_adapter_registry(douyin_cookie=douyin_cookie)
+    monitoring_probe = MonitoringProbeApplicationService(
+        uow_factory,
+        adapter_registry.get,
+    )
+    monitoring_scheduler = MonitoringScheduler(
+        monitoring_targets,
+        monitoring_probe,
+        policy=scheduler_policy,
+    )
+
     return WorkerServiceBundle(
-        creators=CreatorApplicationService(uow_factory),
-        follows=FollowApplicationService(uow_factory),
-        live_observations=LiveObservationApplicationService(uow_factory),
-        monitoring_targets=MonitoringTargetApplicationService(uow_factory),
+        creators=creators,
+        follows=follows,
+        live_observations=live_observations,
+        monitoring_targets=monitoring_targets,
+        adapter_registry=adapter_registry,
+        monitoring_probe=monitoring_probe,
+        monitoring_scheduler=monitoring_scheduler,
     )
