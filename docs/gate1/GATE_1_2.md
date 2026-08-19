@@ -27,25 +27,7 @@ api/workers composition roots
 Infrastructure may depend on application ports and domain. Application may not
 depend on infrastructure. Domain depends only inward on itself/stdlib.
 
-## 2. Current repository facts
-
-The formal runtime currently exists under:
-
-```text
-stage_letter/domain/
-stage_letter/application/
-stage_letter/infrastructure/db/
-```
-
-`stage_letter/application/ports.py` defines the repository and UnitOfWork ports
-accepted in Gate 1.1.
-
-Inherited pre-formal implementation still exists under top-level legacy paths,
-including `api/services/*`, `workers/*`, `core/*`, and `platform_adapters/*`.
-Those modules remain migration debt and are not allowed to become dependencies
-of formal `stage_letter/*` runtime code.
-
-## 3. Gate 1.2 slices
+## 2. Gate 1.2 slices
 
 ```text
 Gate 1.2-1  Boundary Freeze + AST Contracts
@@ -56,14 +38,7 @@ Gate 1.2-5  API/Worker Composition Roots + legacy cutover
 Gate 1.2-6  Boundary Regression / acceptance
 ```
 
-## 4. Gate 1.2-1 — PASS
-
-Landed assets:
-
-```text
-docs/gate1/GATE_1_2_BOUNDARY_FREEZE.md
-tests/gate1/test_service_boundaries.py
-```
+## 3. Gate 1.2-1 — PASS
 
 Accepted user-local evidence:
 
@@ -73,57 +48,55 @@ OK
 ```
 
 The full suite includes the seven AST/service-boundary contracts and preserves
-all earlier Gate 1 tests. The dependency freeze is therefore accepted.
+all earlier Gate 1 tests.
 
 Gate 1.2-1: **PASS**.
 
-## 5. Gate 1.2-2 — SQLAlchemy Repository Implementations — CURRENT
+## 4. Gate 1.2-2 — CURRENT
 
-Target package:
+Identity contract evidence has now passed:
 
 ```text
+Repository identity tests: 7 / 7 PASS
+Full Gate 1 suite:          69 / 69 PASS
+```
+
+Implementation assets now landed:
+
+```text
+migrations/versions/c91e8d2f4a10_gate12_relax_legacy_write_bridges.py
+
 stage_letter/infrastructure/db/repositories/
+  common.py
+  identity.py
   creator.py
   follow.py
   live.py
   notification.py
+
+tests/gate1/test_repository_implementations.py
+scripts/gate12_repository_probe.py
 ```
 
-Implementations must satisfy the Gate 1.1 ports:
+The compatibility revision follows `b63e4f9a1c20` and lets new formal rows leave
+obsolete legacy bridge fields NULL instead of fabricating anchors, notification
+jobs, stale status, confidence, or provenance facts. It also removes the old
+session-keyed delivery uniqueness because canonical delivery idempotency is
+already event-keyed.
+
+The four repository implementations satisfy the formal ports structurally and
+do not own transaction commits. The LiveRepository observation lookup was
+narrowed to the already accepted durable identity:
 
 ```text
-CreatorRepository
-FollowRepository
-LiveRepository
-NotificationRepository
+(account_id, source, observation_id)
 ```
 
-Repository responsibilities are limited to persistence translation and query /
-write behavior. They must not commit independently, own business transitions,
-call providers, or reinterpret canonical truth.
+Gate 1.2-2 is not PASS yet. Local evidence is still required for the new
+repository contracts, Alembic head/offline SQL, and the isolated PostgreSQL
+repository probe.
 
-The first repository contract has landed:
-
-```text
-stage_letter/infrastructure/db/repositories/identity.py
-tests/gate1/test_repository_identity.py
-docs/gate1/GATE_1_2_REPOSITORIES.md
-```
-
-It makes the existing Gate 1 schema/domain identity boundary explicit: domain
-ids backed only by PostgreSQL BIGINT keys use canonical positive decimal strings;
-formal observation/event evidence ids remain native strings. Lossy or implicit
-conversion is forbidden.
-
-Repository inspection also exposed transitional legacy NOT NULL bridge columns
-such as `platform_accounts.anchor_id` and
-`notification_deliveries.notification_job_id`. Gate 1.2-2 will not fabricate
-legacy anchors/jobs merely to satisfy those columns. A forward-only compatible
-write-bridge resolution must be proven before repository write acceptance.
-
-Current local evidence for the new identity tests is pending.
-
-## 6. Preserved inherited status
+## 5. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -139,7 +112,7 @@ Gate 1.2   CURRENT
 Gate 1.2 does not alter the Gate 0A status and does not rewrite historical
 migrations or fabricate historical truth.
 
-## 7. Stop rules
+## 6. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires any of:
 
@@ -154,15 +127,16 @@ provider/network calls hidden inside repository transactions
 implicit or lossy identity conversion
 fabricated persistence IDs or historical identities
 fake legacy anchor/job bridge rows
+session-based notification idempotency
 UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
 
-## 8. Current progression
+## 7. Current progression
 
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS / 62-test full suite incl. 7 boundary contracts
-Gate 1.2-2  CURRENT / identity + bridge contract; local evidence pending
+Gate 1.2-2  CURRENT / repositories + bridge landed; local/PostgreSQL evidence pending
 Gate 1.2-3  NOT STARTED
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
