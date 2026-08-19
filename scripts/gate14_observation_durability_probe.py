@@ -1,12 +1,26 @@
+#!/usr/bin/env python3
+"""Gate 1.4-5 real PostgreSQL observation durability probe.
+
+This script is intentionally runnable directly from the repository root with
+``python scripts/gate14_observation_durability_probe.py``. It validates the
+formal monitor-probe durable identity across independent DB sessions and an
+engine restart boundary. It does not claim provider exactly-once execution.
+"""
 from __future__ import annotations
 
 import asyncio
 import json
 import os
 import secrets
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import delete, select, text
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from stage_letter.domain.live import LiveObservation, LiveStatus
@@ -97,7 +111,9 @@ async def _main() -> int:
 
         async with engine.connect() as connection:
             row_count = await connection.scalar(
-                select(text("count(*)")).select_from(LiveObservationModel).where(
+                select(func.count())
+                .select_from(LiveObservationModel)
+                .where(
                     LiveObservationModel.platform_account_id == account_id,
                     LiveObservationModel.observation_id == probe_id,
                 )
