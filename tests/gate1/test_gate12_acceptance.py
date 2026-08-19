@@ -35,7 +35,7 @@ class Gate12AcceptanceContractTests(unittest.TestCase):
 
     def test_gate12_regression_probe_pins_current_schema_head_and_offline_sql(self) -> None:
         source = REGRESSION_PROBE.read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_HEAD = "c91e8d2f4a10"', source)
+        self.assertIn('EXPECTED_HEAD = "d14e7c9a5b30"', source)
         self.assertIn('[sys.executable, "-m", "alembic", "heads"]', source)
         self.assertIn('[sys.executable, "-m", "alembic", "upgrade", "head", "--sql"]', source)
 
