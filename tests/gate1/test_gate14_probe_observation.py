@@ -28,6 +28,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SERVICE_PATH = ROOT / "stage_letter" / "application" / "services" / "monitoring_probe.py"
 
 
+def _probe(name: str) -> str:
+    return f"monitor:{name}"
+
+
 def _account(*, enabled: bool = True) -> PlatformAccount:
     return PlatformAccount(
         account_id="101",
@@ -77,6 +81,7 @@ class _Live:
         self.rows: dict[tuple[str, str], LiveObservation] = {}
         self.get_calls = 0
         self.append_calls = 0
+        self.insert_result = True
 
     async def get_observation(
         self,
@@ -86,9 +91,11 @@ class _Live:
         self.get_calls += 1
         return self.rows.get((account_id, observation_id))
 
-    async def append_observation(self, observation: LiveObservation) -> None:
+    async def append_observation(self, observation: LiveObservation) -> bool:
         self.append_calls += 1
-        self.rows[(observation.account_id, observation.observation_id)] = observation
+        if self.insert_result:
+            self.rows[(observation.account_id, observation.observation_id)] = observation
+        return self.insert_result
 
 
 class _Uow:
@@ -174,22 +181,25 @@ class Gate14ProbeObservationContractTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             MonitoringProbeRequest(probe_id=" ", account_id="101")
         with self.assertRaises(ValueError):
-            MonitoringProbeRequest(probe_id="x" * 256, account_id="101")
+            MonitoringProbeRequest(probe_id="probe-1", account_id="101")
         with self.assertRaises(ValueError):
-            MonitoringProbeRequest(probe_id="probe-1", account_id=" ")
+            MonitoringProbeRequest(probe_id="monitor:" + "x" * 248, account_id="101")
+        with self.assertRaises(ValueError):
+            MonitoringProbeRequest(probe_id=_probe("probe-1"), account_id=" ")
 
     async def test_existing_probe_is_reused_without_provider_or_commit(self) -> None:
         service, adapter, uow, live = self._service()
+        probe_id = _probe("probe-1")
         existing = LiveObservation(
-            observation_id="probe-1",
+            observation_id=probe_id,
             account_id="101",
             status=LiveStatus.OFFLINE,
             observed_at=datetime(2026, 8, 19, 7, 20, tzinfo=timezone.utc),
             source="old.source",
         )
-        live.rows[("101", "probe-1")] = existing
+        live.rows[("101", probe_id)] = existing
 
-        result = await service.execute(MonitoringProbeRequest("probe-1", "101"))
+        result = await service.execute(MonitoringProbeRequest(probe_id, "101"))
 
         self.assertTrue(result.reused_existing)
         self.assertIs(existing, result.observation)
@@ -207,27 +217,28 @@ class Gate14ProbeObservationContractTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with self.assertRaises(ApplicationNotFoundError):
-            await service.execute(MonitoringProbeRequest("probe-1", "101"))
+            await service.execute(MonitoringProbeRequest(_probe("probe-1"), "101"))
         self.assertEqual(0, adapter.live_calls)
         self.assertEqual(0, live.append_calls)
 
     async def test_disabled_account_fails_before_provider_call(self) -> None:
         service, adapter, _, live = self._service(account=_account(enabled=False))
         with self.assertRaises(ApplicationInvariantError):
-            await service.execute(MonitoringProbeRequest("probe-1", "101"))
+            await service.execute(MonitoringProbeRequest(_probe("probe-1"), "101"))
         self.assertEqual(0, adapter.live_calls)
         self.assertEqual(0, live.append_calls)
 
     async def test_live_snapshot_is_persisted_as_one_observation_outside_uow(self) -> None:
         service, adapter, uow, live = self._service(snapshot=_snapshot())
+        probe_id = _probe("probe-1")
 
-        result = await service.execute(MonitoringProbeRequest("probe-1", "101"))
+        result = await service.execute(MonitoringProbeRequest(probe_id, "101"))
 
         self.assertFalse(result.reused_existing)
         self.assertEqual(1, adapter.live_calls)
         self.assertEqual(1, live.append_calls)
         self.assertEqual(1, uow.commit_count)
-        self.assertEqual("probe-1", result.observation.observation_id)
+        self.assertEqual(probe_id, result.observation.observation_id)
         self.assertEqual("101", result.observation.account_id)
         self.assertIs(LiveStatus.LIVE, result.observation.status)
         self.assertEqual("provider.control", result.observation.source)
@@ -235,14 +246,14 @@ class Gate14ProbeObservationContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_snapshot_is_persisted_as_unknown_not_offline(self) -> None:
         service, _, _, _ = self._service(snapshot=_snapshot(status=LiveStatus.UNKNOWN))
-        result = await service.execute(MonitoringProbeRequest("probe-unknown", "101"))
+        result = await service.execute(MonitoringProbeRequest(_probe("unknown"), "101"))
         self.assertIs(LiveStatus.UNKNOWN, result.observation.status)
         self.assertIsNone(result.observation.source_started_at)
 
     async def test_snapshot_platform_mismatch_is_rejected_before_persistence(self) -> None:
         service, _, uow, live = self._service(snapshot=_snapshot(platform="huya"))
         with self.assertRaises(ApplicationInvariantError):
-            await service.execute(MonitoringProbeRequest("probe-1", "101"))
+            await service.execute(MonitoringProbeRequest(_probe("probe-1"), "101"))
         self.assertEqual(0, live.append_calls)
         self.assertEqual(0, uow.commit_count)
 
@@ -251,14 +262,15 @@ class Gate14ProbeObservationContractTests(unittest.IsolatedAsyncioTestCase):
             snapshot=_snapshot(platform_user_id="different")
         )
         with self.assertRaises(ApplicationInvariantError):
-            await service.execute(MonitoringProbeRequest("probe-1", "101"))
+            await service.execute(MonitoringProbeRequest(_probe("probe-1"), "101"))
         self.assertEqual(0, live.append_calls)
         self.assertEqual(0, uow.commit_count)
 
     async def test_post_provider_recheck_reuses_work_completed_in_flight(self) -> None:
         service, adapter, uow, live = self._service()
+        probe_id = _probe("race")
         existing = LiveObservation(
-            observation_id="probe-race",
+            observation_id=probe_id,
             account_id="101",
             status=LiveStatus.LIVE,
             observed_at=datetime(2026, 8, 19, 7, 29, tzinfo=timezone.utc),
@@ -266,10 +278,10 @@ class Gate14ProbeObservationContractTests(unittest.IsolatedAsyncioTestCase):
         )
 
         def complete_elsewhere() -> None:
-            live.rows[("101", "probe-race")] = existing
+            live.rows[("101", probe_id)] = existing
 
         adapter.on_live = complete_elsewhere
-        result = await service.execute(MonitoringProbeRequest("probe-race", "101"))
+        result = await service.execute(MonitoringProbeRequest(probe_id, "101"))
 
         self.assertTrue(result.reused_existing)
         self.assertIs(existing, result.observation)
