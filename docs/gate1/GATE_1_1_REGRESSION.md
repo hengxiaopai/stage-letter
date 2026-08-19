@@ -1,6 +1,6 @@
 # Gate 1.1-6 — Gate 0 Regression + Golden Path Comparison
 
-Status: **CURRENT / REGRESSION HARNESS LANDED, LOCAL EVIDENCE PENDING**
+Status: **PASS**
 
 ## Purpose
 
@@ -87,11 +87,31 @@ Gate 0E >= 15
 Gate 1  >= 55
 ```
 
-The Gate 1 minimum includes the ten new Gate 0 parity/runtime-boundary tests.
+The Gate 1 minimum includes the Gate 0 parity/runtime-boundary tests.
+
+## Accepted evidence
+
+The operator confirmed on 2026-08-19 that the Gate 1.1-6 regression evidence
+passed and progression to Gate 1.2 was authorized. No exact test counts are
+invented here beyond the minimums encoded by the checked-in probe.
+
+Accepted conclusions:
+
+```text
+A. Gate 0B deterministic oracle remains green                 PASS
+B. Gate 0C deterministic oracle remains green                 PASS
+C. Gate 0D deterministic oracle remains green                 PASS
+D. Gate 0E golden-path oracle remains green                   PASS
+E. Gate 1 formal contract suite remains green                 PASS
+F. Gate 0 -> Gate 1 enum/semantic parity tests pass           PASS
+G. formal stage_letter runtime has no experiments imports     PASS
+H. Gate 0A DEGRADED inherited gap remains explicitly recorded PASS
+I. no new real-provider exactly-once claim is introduced      PASS
+```
 
 ## Preserved non-regression boundaries
 
-Gate 1.1 must remain compatible with these accepted conclusions:
+Gate 1.1 remains compatible with these accepted conclusions:
 
 ```text
 UNKNOWN != OFFLINE
@@ -107,8 +127,6 @@ SENT does not prove global grant exhaustion
 notification/provider failure does not mutate creator live truth
 ```
 
-Database work completed in Gate 1.1-3/4/5 must not weaken those boundaries.
-
 ## Gate 0A inherited status
 
 Gate 0A remains:
@@ -120,27 +138,10 @@ DEGRADED / progression allowed with known lifecycle evidence gap
 Gate 1.1-6 does not rerun or fabricate the deferred real OFFLINE -> LIVE ->
 OFFLINE lifecycle evidence and does not convert Gate 0A to PASS.
 
-## Real-provider evidence policy
-
-Gate 0D and Gate 0E already contain accepted real WeChat/provider evidence.
-Gate 1.1-6 does not send another real notification merely to re-prove persistence
-schema work. Real provider re-validation belongs to the later formal notification
-integration gate after the runtime implementation is migrated.
-
-## Acceptance
-
-Gate 1.1-6 PASS requires:
+## Result
 
 ```text
-A. Gate 0B deterministic oracle remains green                 PENDING
-B. Gate 0C deterministic oracle remains green                 PENDING
-C. Gate 0D deterministic oracle remains green                 PENDING
-D. Gate 0E golden-path oracle remains green                   PENDING
-E. Gate 1 formal contract suite remains green                 PENDING
-F. Gate 0 -> Gate 1 enum/semantic parity tests pass           PENDING
-G. formal stage_letter runtime has no experiments imports     PENDING
-H. Gate 0A DEGRADED inherited gap remains explicitly recorded PASS
-I. no new real-provider exactly-once claim is introduced      PASS
+Gate 1.1-6  PASS
+Gate 1.1    eligible to close PASS
+Gate 1.2    progression allowed
 ```
-
-After A-G pass, Gate 1.1 may close as PASS and progression may move to Gate 1.2.
