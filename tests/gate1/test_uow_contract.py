@@ -71,12 +71,12 @@ class UnitOfWorkContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, session.rollback_calls)
         self.assertEqual(1, session.close_calls)
 
-    async def test_explicit_rollback_delegates_and_exit_remains_safe(self) -> None:
+    async def test_explicit_rollback_delegates_once_and_exit_does_not_repeat_it(self) -> None:
         uow, session = self._build()
         async with uow:
             await uow.rollback()
         self.assertEqual(0, session.commit_calls)
-        self.assertEqual(2, session.rollback_calls)
+        self.assertEqual(1, session.rollback_calls)
         self.assertEqual(1, session.close_calls)
 
     async def test_commit_and_rollback_require_active_context(self) -> None:
