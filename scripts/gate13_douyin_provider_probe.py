@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,31 @@ from stage_letter.domain.creators import PlatformAccount
 from stage_letter.infrastructure.platforms.douyin import DouyinFormalAdapter
 from stage_letter.infrastructure.platforms.douyin_streamget import StreamGetDouyinGateway
 from stage_letter.infrastructure.platforms.failures import ProviderOperationError
+
+
+_MARKDOWN_LINK_RE = re.compile(r"^\[(https?://[^\]]+)\]\((https?://[^)]+)\)$")
+
+
+def _normalize_cli_identity(value: str) -> tuple[str, bool]:
+    """Normalize shell-pasted identity without weakening the formal gateway.
+
+    Chat clients can copy a displayed URL as Markdown text:
+
+        [https://www.douyin.com/user/<sec_uid>](https://www.douyin.com/user/<sec_uid>)
+
+    The provider gateway intentionally rejects that wrapper because it is not a
+    canonical provider identity. The probe may safely unwrap it only when the
+    visible URL and target URL are byte-for-byte identical.
+    """
+
+    text = value.strip()
+    match = _MARKDOWN_LINK_RE.fullmatch(text)
+    if match is None:
+        return text, False
+    visible, target = match.groups()
+    if visible != target:
+        raise ValueError("markdown link label and target differ")
+    return target, True
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -47,11 +73,30 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _run(identity: str, expected: str) -> tuple[int, dict[str, object]]:
     cookie = os.environ.get("DOUYIN_COOKIE", "").strip() or None
+
+    try:
+        normalized_identity, input_normalized = _normalize_cli_identity(identity)
+    except ValueError as exc:
+        return 2, {
+            "gate": "1.3-3",
+            "platform": "douyin",
+            "status": "UNKNOWN",
+            "provider_failure_kind": "UNKNOWN",
+            "provider_source": "probe.input",
+            "provider_failure_detail": str(exc),
+            "expectation": expected,
+            "expectation_match": False,
+            "input_normalized": False,
+            "cookie_configured": bool(cookie),
+            "gate0a_status": "DEGRADED",
+            "production_approved": False,
+        }
+
     gateway = StreamGetDouyinGateway(cookie=cookie)
     adapter = DouyinFormalAdapter(gateway)
 
     try:
-        resolved = await adapter.resolve_creator(identity)
+        resolved = await adapter.resolve_creator(normalized_identity)
         account = PlatformAccount(
             account_id="probe-account",
             creator_id="probe-creator",
@@ -69,6 +114,10 @@ async def _run(identity: str, expected: str) -> tuple[int, dict[str, object]]:
             "status": "UNKNOWN",
             "provider_failure_kind": exc.failure.kind.value,
             "provider_source": exc.failure.source,
+            "provider_failure_detail": exc.failure.detail,
+            "expectation": expected,
+            "expectation_match": False,
+            "input_normalized": input_normalized,
             "cookie_configured": bool(cookie),
             "gate0a_status": "DEGRADED",
             "production_approved": False,
@@ -80,6 +129,9 @@ async def _run(identity: str, expected: str) -> tuple[int, dict[str, object]]:
             "platform": "douyin",
             "status": "UNKNOWN",
             "unexpected_error": type(exc).__name__,
+            "expectation": expected,
+            "expectation_match": False,
+            "input_normalized": input_normalized,
             "cookie_configured": bool(cookie),
             "gate0a_status": "DEGRADED",
             "production_approved": False,
@@ -101,18 +153,16 @@ async def _run(identity: str, expected: str) -> tuple[int, dict[str, object]]:
         "source_started_at": (
             snapshot.source_started_at.isoformat() if snapshot.source_started_at else None
         ),
+        "expectation": expected,
+        "expectation_match": expected == "ANY" or status == expected,
+        "input_normalized": input_normalized,
         "cookie_configured": bool(cookie),
         "gate0a_status": "DEGRADED",
         "production_approved": False,
     }
 
     if expected != "ANY" and status != expected:
-        result["expectation"] = expected
-        result["expectation_match"] = False
         return 3, result
-
-    result["expectation"] = expected
-    result["expectation_match"] = expected == "ANY" or status == expected
     if status not in ("LIVE", "OFFLINE"):
         return 4, result
     return 0, result
