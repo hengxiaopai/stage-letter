@@ -1,6 +1,6 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 PASS / 1.2-5 CURRENT**
+Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 PASS / 1.2-5 PASS / 1.2-6 CURRENT**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -11,10 +11,11 @@ Primary freezes:
 - [`GATE_1_2_UOW.md`](./GATE_1_2_UOW.md)
 - [`GATE_1_2_SERVICES.md`](./GATE_1_2_SERVICES.md)
 - [`GATE_1_2_COMPOSITION.md`](./GATE_1_2_COMPOSITION.md)
+- [`GATE_1_2_ACCEPTANCE.md`](./GATE_1_2_ACCEPTANCE.md)
 
 ## 1. Goal
 
-Gate 1.2 turns the formal Gate 1.1 domain and PostgreSQL schema into an explicit
+Gate 1.2 turns the Gate 1.1 formal domain/persistence contracts into an explicit
 runtime architecture where business semantics flow through application ports and
 services rather than legacy API/worker modules or direct ORM access.
 
@@ -46,43 +47,61 @@ Gate 1.2-1  PASS / boundary contracts
 Gate 1.2-2  PASS / repositories + PostgreSQL + migration evidence
 Gate 1.2-3  PASS / 9 UoW tests + 88 full tests + PostgreSQL probe
 Gate 1.2-4  PASS / 10 service tests + 98 full tests
+Gate 1.2-5  PASS / 7 composition-root tests + 105 full tests
 ```
 
-Gate 1.2-4 preserves the intended separation: Creator, Follow, Notification
-Preference, and raw LiveObservation orchestration are formal application
-services, while provider/state/session/event/notification-runtime semantics stay
-in their later gates.
+The accepted slices preserve the intended separation: domain truth is formal,
+repositories translate persistence only, UnitOfWork owns transactions,
+application services own use-case orchestration, and API/workers are outer
+composition roots.
 
-## 4. Gate 1.2-5 — CURRENT
+## 4. Gate 1.2-6 — CURRENT
 
-Landed assets:
+Final regression assets now landed:
 
 ```text
-api/composition.py
-workers/composition.py
-tests/gate1/test_composition_roots.py
-docs/gate1/GATE_1_2_COMPOSITION.md
+tests/gate1/test_gate12_acceptance.py
+scripts/gate12_regression_probe.py
+docs/gate1/GATE_1_2_ACCEPTANCE.md
 ```
 
-`api/main.py` now exposes the formal application-service bundle at:
+The final acceptance contracts add six checks. With the accepted 105-test Gate 1
+baseline, the full formal suite should therefore contain 111 tests.
+
+The deterministic final probe verifies:
 
 ```text
-app.state.stage_letter_services
+Gate 0B oracle >= 37
+Gate 0C oracle >= 65
+Gate 0D oracle >= 54
+Gate 0E oracle >= 15
+Gate 1 formal contracts >= 111
+Alembic head == c91e8d2f4a10
+UTF-8 offline SQL compilation PASS
 ```
 
-The new composition roots wire application services to `SQLAlchemyUnitOfWork`
-using a supplied session factory. They do not import domain rules, provider
-adapters, experiments, or legacy core behavior.
+It does not repeat real provider/network calls or WeChat sends and does not
+fabricate the deferred Gate 0A lifecycle evidence.
 
-Legacy modules such as `api/routers/subscriptions.py` and
-`workers/probe/worker.py` remain operational debt during staged migration. They
-are not considered formally cut over merely because the new composition seam
-exists. Their semantic replacement belongs to Gates 1.3-1.7 as appropriate.
+Gate 1.2-6 remains CURRENT until the dedicated six acceptance contracts, the
+111-test Gate 1 suite, and the deterministic regression probe all pass locally.
 
-Gate 1.2-5 remains CURRENT until its dedicated composition-root tests and the
-full Gate 1 suite pass locally.
+## 5. Legacy debt remains explicit
 
-## 5. Preserved inherited status
+Inherited modules such as `api/routers/*`, `api/services/*`,
+`workers/probe/worker.py`, `workers/notify/*`, `core/*`, and
+`platform_adapters/*` remain staged migration debt. Gate 1.2 does not falsely
+claim they are already semantically replaced.
+
+The enforced boundary is:
+
+```text
+formal stage_letter runtime never imports those legacy outer packages
+new orchestration enters through formal services/ports
+later gates own provider/scheduler/state/notification/API semantic cutover
+```
+
+## 6. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -95,36 +114,37 @@ Gate 1.1   PASS
 Gate 1.2   CURRENT
 ```
 
-Gate 1.2 does not alter Gate 0A, rewrite historical migrations, or fabricate
-historical truth.
+Gate 1.2 does not alter Gate 0A, rewrite accepted historical migrations, or
+fabricate historical truth.
 
-## 6. Stop rules
+## 7. Stop rules
 
-Stop with FAIL/BLOCKED if implementation pressure requires any of:
+Stop with FAIL/BLOCKED if acceptance pressure requires any of:
 
 ```text
 domain importing ORM/framework/provider code
 application importing concrete infrastructure
 formal stage_letter runtime importing api/workers/core/platform_adapters/experiments
 API/worker composition root becoming a domain-rule owner
-repository-owned commit or multiple unrelated UoW sessions
+repository-owned commit or unrelated sessions inside one UnitOfWork
 provider/network calls inside application DB transactions
 implicit/lossy identity conversion or fabricated ids
 Follow and NotificationPreference collapsing
 raw observation being treated as canonical composed state
 UNKNOWN -> OFFLINE semantic drift
-premature copying of legacy probe/state logic into formal services
+lowering accepted regression minimums to hide failures
+fabricating Gate 0A lifecycle evidence
 ```
 
-## 7. Current progression
+## 8. Current progression
 
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS
 Gate 1.2-2  PASS
 Gate 1.2-3  PASS
-Gate 1.2-4  PASS / 10 dedicated + 98 full Gate 1 tests
-Gate 1.2-5  CURRENT / formal API+worker roots landed; local evidence pending
-Gate 1.2-6  NOT STARTED
+Gate 1.2-4  PASS
+Gate 1.2-5  PASS / 7 dedicated + 105 full Gate 1 tests
+Gate 1.2-6  CURRENT / final acceptance assets landed; local evidence pending
 Gate 1.2    CURRENT
 ```
