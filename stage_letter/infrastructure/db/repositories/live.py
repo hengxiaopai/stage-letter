@@ -1,7 +1,7 @@
 """SQLAlchemy implementation of the formal LiveRepository port."""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,13 +50,7 @@ class SQLAlchemyLiveRepository:
         account_id: str,
         observation_id: str,
     ) -> LiveObservation | None:
-        """Resolve one logical probe observation across provider source values.
-
-        Gate 1.4's formal monitor ids are additionally protected by a partial
-        database unique index over account+observation_id. Legacy/non-monitor ids
-        retain historical source-scoped semantics. Multiple rows are surfaced as
-        mapping ambiguity rather than silently selecting one.
-        """
+        """Resolve one logical probe observation across provider source values."""
 
         account_pk = parse_persistence_id(account_id, field="account_id")
         rows = (
@@ -152,6 +146,43 @@ class SQLAlchemyLiveRepository:
         )
         return None if row is None else self._to_session(row)
 
+    async def create_session(
+        self,
+        account_id: str,
+        *,
+        opened_at,
+        origin: SessionOrigin,
+        source_started_at=None,
+    ) -> LiveSession:
+        """Let PostgreSQL allocate the BIGINT session id; never derive it in app code."""
+
+        account_pk = parse_persistence_id(account_id, field="account_id")
+        await self.session.flush()
+        statement = (
+            insert(LiveSessionModel.__table__)
+            .values(
+                platform_account_id=account_pk,
+                anchor_id=None,
+                platform=None,
+                started_at=opened_at,
+                ended_at=None,
+                origin=origin.value,
+                source_started_at=source_started_at,
+                started_at_source=None,
+                state=None,
+            )
+            .returning(LiveSessionModel.id)
+        )
+        result = await self.session.execute(statement)
+        session_pk = result.scalar_one()
+        return LiveSession(
+            session_id=serialize_persistence_id(session_pk, field="session_id"),
+            account_id=account_id,
+            opened_at=opened_at,
+            origin=origin,
+            source_started_at=source_started_at,
+        )
+
     async def save_session(self, session: LiveSession) -> None:
         session_pk = parse_persistence_id(session.session_id, field="session_id")
         account_pk = parse_persistence_id(session.account_id, field="account_id")
@@ -178,7 +209,7 @@ class SQLAlchemyLiveRepository:
         row.origin = session.origin.value
         row.source_started_at = session.source_started_at
 
-    async def append_event(self, event: LiveEvent) -> None:
+    async def append_event(self, event: LiveEvent) -> bool:
         account_pk = parse_persistence_id(event.account_id, field="account_id")
         session_pk = parse_persistence_id(event.session_id, field="session_id")
         await self.session.flush()
@@ -193,8 +224,10 @@ class SQLAlchemyLiveRepository:
                 occurred_at=event.occurred_at,
             )
             .on_conflict_do_nothing(constraint="uq_g11_live_event_id")
+            .returning(LiveEventModel.id)
         )
-        await self.session.execute(statement)
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none() is not None
 
     async def get_event(self, event_id: str) -> LiveEvent | None:
         row = await self.session.scalar(
