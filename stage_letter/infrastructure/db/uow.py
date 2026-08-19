@@ -29,7 +29,8 @@ class SQLAlchemyUnitOfWork:
     - one AsyncSession is created per entered context;
     - all repositories share that exact session;
     - commit is explicit;
-    - an exception, or a normal exit without commit, rolls back;
+    - an exception, or a normal exit without commit/rollback, rolls back;
+    - explicit rollback is not repeated on context exit;
     - the session is always closed on exit;
     - external provider/network work does not belong in this boundary.
     """
@@ -42,6 +43,7 @@ class SQLAlchemyUnitOfWork:
         self.live: SQLAlchemyLiveRepository | None = None
         self.notifications: SQLAlchemyNotificationRepository | None = None
         self._committed = False
+        self._rolled_back = False
 
     async def __aenter__(self) -> "SQLAlchemyUnitOfWork":
         if self.session is not None:
@@ -54,6 +56,7 @@ class SQLAlchemyUnitOfWork:
         self.live = SQLAlchemyLiveRepository(session)
         self.notifications = SQLAlchemyNotificationRepository(session)
         self._committed = False
+        self._rolled_back = False
         return self
 
     async def __aexit__(
@@ -64,7 +67,10 @@ class SQLAlchemyUnitOfWork:
     ) -> bool:
         session = self._require_session()
         try:
-            if exc_type is not None or not self._committed:
+            if exc_type is not None:
+                if not self._rolled_back and not self._committed:
+                    await session.rollback()
+            elif not self._committed and not self._rolled_back:
                 await session.rollback()
         finally:
             await session.close()
@@ -74,17 +80,20 @@ class SQLAlchemyUnitOfWork:
             self.live = None
             self.notifications = None
             self._committed = False
+            self._rolled_back = False
         return False
 
     async def commit(self) -> None:
         session = self._require_session()
         await session.commit()
         self._committed = True
+        self._rolled_back = False
 
     async def rollback(self) -> None:
         session = self._require_session()
         await session.rollback()
         self._committed = False
+        self._rolled_back = True
 
     def _require_session(self) -> AsyncSession:
         if self.session is None:
