@@ -1,8 +1,9 @@
 # Gate 1.4 — Monitoring Scheduler + Observation Pipeline
 
-Status: **CURRENT / 1.4-1 PASS / 1.4-2 PASS / 1.4-3 PASS / 1.4-4 PASS / CLOSED / 1.4-5 POSTGRES DURABILITY PASS / DETERMINISTIC EVIDENCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.3 PASS / CLOSED.
+Exit: Gate 1.5 CURRENT.
 
 ## 1. Goal
 
@@ -16,71 +17,46 @@ explicitly enabled PlatformAccount
   -> LivePlatformAdapter.get_live_snapshot()
   -> normalized LiveSnapshot
   -> durable LiveObservation
-  -> later Gate 1.5 state/session/event persistence
+  -> Gate 1.5 state/session/event persistence
 ```
 
 Gate 1.4 owns target discovery, scheduling/probe orchestration, worker composition, and observation ingestion only. It does not create/close LiveSession, emit LiveEvent, or decide notification eligibility.
 
-## 2. Internal slices
+## 2. Closed slices
 
 ```text
 Gate 1.4-1  Monitoring Target Discovery + Paging Contract        PASS / CLOSED
 Gate 1.4-2  Probe Request + LiveSnapshot -> LiveObservation      PASS / CLOSED
 Gate 1.4-3  Scheduler Cadence / Concurrency / Backoff            PASS / CLOSED
 Gate 1.4-4  Worker Composition + Four-platform Runtime Wiring    PASS / CLOSED
-Gate 1.4-5  Observation Durability / Restart Acceptance          CURRENT
+Gate 1.4-5  Observation Durability / Restart Acceptance          PASS / CLOSED
 ```
 
-## 3. Accepted slices
+Accepted deterministic evidence:
 
 ```text
-1.4-1  8 / 8 dedicated + 243 / 243 complete Gate 1 PASS
-1.4-2 10 / 10 dedicated + 253 / 253 complete Gate 1 PASS
-1.4-3 10 / 10 dedicated + 263 / 263 complete Gate 1 PASS
-1.4-4 10 / 10 dedicated + 273 / 273 complete Gate 1 PASS
+1.4-1   8 / 8 dedicated + 243 / 243 complete Gate 1 PASS
+1.4-2  10 / 10 dedicated + 253 / 253 complete Gate 1 PASS
+1.4-3  10 / 10 dedicated + 263 / 263 complete Gate 1 PASS
+1.4-4  10 / 10 dedicated + 273 / 273 complete Gate 1 PASS
+1.4-5  10 / 10 dedicated + 283 / 283 complete Gate 1 PASS
 ```
 
-Gate 1.4-4 therefore closes with the formal four-platform registry, target service, probe service, and scheduler wired through one side-effect-free worker composition root. Construction opens no DB session, performs no provider request, and keeps StreamGet lazy.
+## 3. Durable logical probe identity
 
-## 4. Gate 1.4-5 — CURRENT
-
-### 4.1 Remaining risk entering this slice
-
-The historical `live_observations` uniqueness is:
+The historical observation identity remains valid for legacy/provider evidence:
 
 ```text
 (platform_account_id, source, observation_id)
 ```
 
-That remains valid legacy/provider evidence identity, but it is insufficient for one scheduler logical probe when two independent processes race and provider `source` differs. Same-process scheduler single-flight cannot close that cross-process persistence race.
-
-Gate 1.4-5 therefore hardens **formal scheduler-generated observations only**. It does not rewrite legacy rows or claim provider exactly-once execution.
-
-### 4.2 Formal monitoring probe namespace
-
-Production monitoring requests are now required to use:
+Formal scheduler-generated observations additionally use the namespace:
 
 ```text
 monitor:<logical-id>
 ```
 
-`make_probe_id(cycle_id, account_id)` emits this namespace. `MonitoringProbeRequest` rejects non-`monitor:` ids so the application cannot accidentally bypass the durable scheduler-probe identity contract.
-
-### 4.3 Forward-only migration
-
-Landed:
-
-```text
-migrations/versions/d14e7c9a5b30_gate14_monitor_probe_identity.py
-```
-
-Current Alembic head:
-
-```text
-d14e7c9a5b30
-```
-
-The migration adds a partial unique index:
+and migration `d14e7c9a5b30_gate14_monitor_probe_identity.py` adds:
 
 ```text
 uq_g14_monitor_probe_identity
@@ -88,38 +64,15 @@ uq_g14_monitor_probe_identity
   WHERE observation_id LIKE 'monitor:%'
 ```
 
-Before creating the index the migration checks for already-existing duplicate `monitor:*` rows. If any exist, migration stops explicitly. It does **not** delete, merge, update, or invent historical evidence.
+The migration refuses pre-existing duplicate `monitor:*` evidence rather than deleting, merging, or rewriting it. Legacy/non-monitor rows retain the historical source-scoped identity.
 
-Legacy/non-monitor observation ids keep the historical source-scoped uniqueness semantics.
+`LiveRepository.append_observation()` reports whether the transaction inserted the durable row. A losing concurrent writer re-reads the durable winner and returns it as reused existing work. This closes duplicate durable observation rows for one formal scheduler probe.
 
-Accepted user-local PostgreSQL evidence now confirms the local database was upgraded to `d14e7c9a5b30`; the durability probe itself verified that same migration head before running.
+## 4. Accepted PostgreSQL durability evidence
 
-### 4.4 Race-aware repository/application contract
-
-`LiveRepository.append_observation()` returns:
+User-local PostgreSQL evidence:
 
 ```text
-True  -> this transaction inserted the durable row
-False -> another/idempotent write already owns the durable identity
-```
-
-The SQLAlchemy repository uses PostgreSQL `ON CONFLICT DO NOTHING` without a single named conflict target and `RETURNING id`. This allows both the historical source-scoped constraint and the new formal monitor-probe partial unique index to protect the same insert path.
-
-If a probe process loses the insert race, `MonitoringProbeApplicationService` re-reads `(account_id, observation_id)` and returns the durable winner with `reused_existing=True`. It does not commit a phantom local observation. If the database reports a conflict but no durable winner is readable, that is an explicit application invariant failure.
-
-### 4.5 Restart / independent-session evidence — PASS
-
-Landed:
-
-```text
-scripts/gate14_observation_durability_probe.py
-```
-
-Accepted user-local PostgreSQL result:
-
-```text
-gate                                  1.4-5
-status                                PASS
 migration_head                        d14e7c9a5b30
 independent_session_insert_results    one True + one False
 row_count_after_race                  1
@@ -130,46 +83,23 @@ provider_exactly_once_claimed         false
 production_approved                   false
 ```
 
-This is decisive evidence that two independent SQLAlchemy sessions competing for one formal monitor-probe identity persist exactly one observation row, and that the single durable winner remains after disposal/recreation of the database engine.
+This proves one durable observation row survives independent-session contention and a database-engine restart boundary. It does **not** prove exactly-once provider execution; two OS processes may both perform provider I/O before one loses the database insert race.
 
-The probe identifier is randomized and non-semantic evidence; acceptance depends on the formal `monitor:` namespace contract plus the migration/race/restart outcomes above.
-
-This proves durable **observation identity**, not exactly-once provider execution. Two OS processes may both perform provider I/O before one loses the DB insert race; Gate 1.4 makes no stronger claim.
-
-### 4.6 Landed deterministic contracts
+## 5. Frozen Gate 1.4 boundaries
 
 ```text
-tests/gate1/test_gate14_durability.py  10 tests
+UNKNOWN remains UNKNOWN
+provider I/O stays outside UnitOfWork
+scheduler retry reuses one logical probe id
+worker construction performs no DB/provider I/O
+StreamGet remains lazy
+four-platform registry is bilibili/douyin/douyu/huya only
+Gate 1.4 does not create LiveSession or LiveEvent
+Gate 1.4 does not decide notification eligibility
+formal runtime does not import platform_adapters or experiments
 ```
 
-The contracts cover migration lineage/predicate/preflight, ORM parity, repository insert-result semantics, conflict handling, mandatory `monitor:` namespace, race-loser winner reuse, impossible-conflict failure, scheduler id compatibility, restart-probe shape, and explicit no-provider-exactly-once claim.
-
-Accepted entering baseline is 273 tests. Ten new tests raise the expected complete Gate 1 suite to:
-
-```text
-283 / 283
-```
-
-### 4.7 Acceptance — Gate 1.4-5
-
-```text
-A. Gate 1.4-4 PASS / CLOSED                              PASS
-B. formal monitor-probe partial unique migration         PASS / CODE
-C. migration refuses duplicate evidence rewrite          PASS / CONTRACT
-D. repository insert winner/loser signal                 PASS / CODE
-E. insert-race loser reloads durable winner              PASS / CONTRACT
-F. scheduler-generated probe ids covered by DB predicate PASS / CONTRACT
-G. dedicated Gate 1.4-5 contracts                        PENDING / 10
-H. complete Gate 1 suite                                 PENDING / expected 283
-I. Alembic upgrade to d14e7c9a5b30                      PASS / LOCAL POSTGRES
-J. independent-session race + engine-restart probe       PASS / LOCAL POSTGRES
-```
-
-Gate 1.4 remains CURRENT only because G-H have not yet been reported as passing.
-
-## 5. Gate 1.4 exit condition
-
-If the remaining deterministic tests pass:
+## 6. Exit
 
 ```text
 Gate 1.4-5  PASS / CLOSED
@@ -177,28 +107,8 @@ Gate 1.4    PASS / CLOSED
 Gate 1.5    CURRENT
 ```
 
-Gate 1.5 then owns canonical state/session/event persistence. Gate 1.4 must not create those outputs itself.
-
-## 6. Stop rules
-
-Stop with FAIL/BLOCKED if progress requires:
-
-```text
-legacy/null eligibility guessed as enabled
-follow or notification preference used as monitoring eligibility truth
-provider failure converted to OFFLINE
-provider I/O inside DB transaction
-migration deleting/merging ambiguous historical observation evidence
-scheduler retry generating a new logical observation id
-formal monitor request bypassing the monitor: durable namespace
-UNKNOWN treated as failure merely because status is UNKNOWN
-provider exactly-once claimed from a DB uniqueness guarantee
-provider metadata overriding LiveSnapshot.status
-Gate 1.4 creating LiveSession / LiveEvent
-Gate 1.4 deciding notification eligibility
-formal runtime importing legacy platform_adapters or experiments
-```
+Gate 1.5 owns canonical state reduction plus atomic LiveSession/LiveEvent persistence from already-durable LiveObservation evidence.
 
 ## 7. Inherited caveat
 
-Gate 0A remains **DEGRADED** for the deferred same-creator OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Gate 1.4 must preserve that status rather than fabricate historical lifecycle evidence.
+Gate 0A remains **DEGRADED** for the deferred same-creator OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Gate 1.4 closes without fabricating that missing historical lifecycle evidence.
