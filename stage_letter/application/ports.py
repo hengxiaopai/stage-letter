@@ -8,12 +8,18 @@ and imports from experiments/*.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from types import TracebackType
 from typing import Protocol, runtime_checkable
 
 from stage_letter.domain.creators import Creator, CreatorProfile, PlatformAccount
 from stage_letter.domain.follows import Follow, NotificationPreference
-from stage_letter.domain.live import LiveEvent, LiveObservation, LiveSession
+from stage_letter.domain.live import (
+    LiveEvent,
+    LiveObservation,
+    LiveSession,
+    SessionOrigin,
+)
 from stage_letter.domain.notifications import DeliveryKey, NotificationDelivery
 
 
@@ -135,9 +141,26 @@ class LiveRepository(Protocol):
 
     async def get_open_session(self, account_id: str) -> LiveSession | None: ...
 
+    async def create_session(
+        self,
+        account_id: str,
+        *,
+        opened_at: datetime,
+        origin: SessionOrigin,
+        source_started_at: datetime | None = None,
+    ) -> LiveSession:
+        """Allocate a persistence-owned BIGINT session identity and return it.
+
+        The application/domain layers never derive a numeric session id from an
+        observation, provider identity, hash, or timestamp.
+        """
+        ...
+
     async def save_session(self, session: LiveSession) -> None: ...
 
-    async def append_event(self, event: LiveEvent) -> None: ...
+    async def append_event(self, event: LiveEvent) -> bool:
+        """Insert a canonical event iff its deterministic event_id is absent."""
+        ...
 
     async def get_event(self, event_id: str) -> LiveEvent | None: ...
 
