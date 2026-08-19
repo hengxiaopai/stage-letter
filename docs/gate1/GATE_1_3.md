@@ -1,6 +1,6 @@
 # Gate 1.3 — Platform Adapter Framework
 
-Status: **CURRENT / 1.3-1 PASS / 1.3-2 CURRENT**
+Status: **CURRENT / 1.3-1 PASS / 1.3-2 PASS / 1.3-3 CURRENT**
 
 Entry authority: Gate 1.2 PASS / CLOSED.
 
@@ -8,6 +8,7 @@ Primary freezes:
 
 - [`GATE_1_3_ADAPTER_CONTRACT.md`](./GATE_1_3_ADAPTER_CONTRACT.md)
 - [`GATE_1_3_FAILURE_NORMALIZATION.md`](./GATE_1_3_FAILURE_NORMALIZATION.md)
+- [`GATE_1_3_DOUYIN.md`](./GATE_1_3_DOUYIN.md)
 
 ## 1. Goal
 
@@ -38,19 +39,14 @@ Gate 1.3-5  Adapter Regression / Acceptance
 
 ## 3. Gate 1.3-1 — PASS
 
-Accepted local evidence:
+Accepted evidence:
 
 ```text
-Gate 1.2 historical acceptance contracts: 6 / 6 PASS
-Complete Gate 1 suite:                  121 / 121 PASS
-Gate 1.3-1 adapter contracts:           10 / 10 PASS (included in full suite)
+Gate 1.3-1 adapter contracts: 10 / 10 PASS
+Complete Gate 1 suite:        121 / 121 PASS
 ```
 
-The earlier single full-suite failure was a stale Gate 1.2 documentation
-assertion after Gate 1.2 had correctly moved from CURRENT to PASS/CLOSED. The
-assertion was corrected and the full suite then passed.
-
-Accepted formal contract:
+The accepted contract remains:
 
 ```text
 LivePlatformAdapter
@@ -59,49 +55,21 @@ LivePlatformAdapter
   get_live_snapshot(account)
 ```
 
-Formal live status remains exactly:
-
-```text
-LIVE
-OFFLINE
-UNKNOWN
-```
-
-`resolve_creator()` returns external/provider identity only and does not invent
-Stage Letter persistence ids. `AdapterRegistry` remains explicit wiring only.
+with formal live truth exactly `LIVE / OFFLINE / UNKNOWN` and explicit registry
+wiring only.
 
 Gate 1.3-1: **PASS / CLOSED**.
 
-## 4. Gate 1.3-2 — CURRENT
+## 4. Gate 1.3-2 — PASS
 
-Landed assets:
-
-```text
-stage_letter/infrastructure/platforms/failures.py
-tests/gate1/test_provider_failure_normalization.py
-docs/gate1/GATE_1_3_FAILURE_NORMALIZATION.md
-```
-
-Normalized diagnostic failure categories now cover:
+Accepted user-local evidence:
 
 ```text
-TIMEOUT
-NETWORK
-FORBIDDEN
-RATE_LIMITED
-AUTH_REQUIRED
-CAPTCHA_REQUIRED
-PARSE_ERROR
-SCHEMA_DRIFT
-AMBIGUOUS
-NOT_FOUND
-UPSTREAM_ERROR
-UNKNOWN
+Provider failure normalization contracts: 11 / 11 PASS
+Complete Gate 1 suite:                132 / 132 PASS
 ```
 
-These are infrastructure diagnostics, not new canonical live states.
-
-The frozen truth rule is:
+The frozen rule is:
 
 ```text
 provider failure / ambiguity -> UNKNOWN
@@ -111,22 +79,50 @@ including timeout, network errors, 401/403/404/429, captcha/auth challenges,
 parse errors, schema drift, ambiguous results, and upstream failures. None may be
 silently coerced to OFFLINE.
 
-Only evidence-backed provider-specific values supplied by later concrete adapters
-may map explicitly to LIVE or OFFLINE. Unrecognized/missing values remain
-UNKNOWN.
+Gate 1.3-2: **PASS / CLOSED**.
 
-Gate 1.3-2 adds eleven dedicated contracts; with the accepted 121-test baseline,
-the current complete Gate 1 target is 132 tests.
+## 5. Gate 1.3-3 — CURRENT
 
-## 5. Legacy treatment
+Landed assets:
+
+```text
+stage_letter/infrastructure/platforms/douyin.py
+tests/gate1/test_douyin_formal_adapter.py
+docs/gate1/GATE_1_3_DOUYIN.md
+```
+
+The formal Douyin adapter migrates only Gate 0A evidence-backed semantics:
+
+```text
+raw status 2 -> LIVE
+raw status 4 -> OFFLINE
+anything else -> UNKNOWN
+```
+
+Stable profile/sec_uid identity remains authoritative over historical room URLs.
+Stale title/room metadata does not override explicit state. Provider failures or
+identity mismatch remain UNKNOWN for live reads.
+
+The adapter consumes provider transport through an injected
+`DouyinProviderGateway`; it does not import the legacy top-level
+`platform_adapters/*` package or Gate 0 experiments inward.
+
+Twelve dedicated contracts are now landed. Starting from the accepted 132-test
+baseline, the expected full Gate 1 count is 144 tests.
+
+Gate 1.3-3 remains CURRENT after the static/local contracts; provider-backed
+transport/probe evidence is still required before this slice closes PASS.
+
+## 6. Legacy treatment
 
 The existing top-level `platform_adapters/*` package remains legacy migration
 debt. Formal `stage_letter/*` does not import it.
 
-Gate 1.3-3 and 1.3-4 will migrate provider implementations explicitly rather than
-wrapping or importing the legacy package inward as an authoritative dependency.
+Concrete provider migrations copy only evidence-backed semantics into the formal
+boundary; legacy runtime code is not wrapped inward as an authoritative
+dependency.
 
-## 6. Preserved inherited status
+## 7. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / deferred lifecycle evidence gap
@@ -137,28 +133,29 @@ Gate 1.2   PASS / CLOSED
 Gate 1.3   CURRENT
 ```
 
-## 7. Current progression
+## 8. Current progression
 
 ```text
 Gate 1.3-1  PASS / 10 dedicated + 121 full Gate 1 evidence
-Gate 1.3-2  CURRENT / failure normalization + 11 contracts landed; local evidence pending
-Gate 1.3-3  NOT STARTED
+Gate 1.3-2  PASS / 11 dedicated + 132 full Gate 1 evidence
+Gate 1.3-3  CURRENT / formal Douyin adapter + 12 contracts landed; local evidence pending
 Gate 1.3-4  NOT STARTED
 Gate 1.3-5  NOT STARTED
 Gate 1.3    CURRENT
 ```
 
-## 8. Stop rules
+## 9. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires:
 
 ```text
-adding provider-specific statuses to formal LiveStatus
-converting failure/ambiguity to OFFLINE by default
+provider-specific statuses added to formal LiveStatus
+failure/ambiguity converted to OFFLINE by default
 adapter mutating canonical session/event state
 adapter generating Stage Letter persistence ids
 formal application importing provider/infrastructure code
 formal infrastructure importing legacy platform_adapters as runtime dependency
-hidden provider fallback that obscures source provenance
-failure normalization inventing live start/title facts
+historical room URL replacing stable creator identity
+stale metadata overriding explicit provider status
+fabricating Gate 0A lifecycle evidence
 ```
