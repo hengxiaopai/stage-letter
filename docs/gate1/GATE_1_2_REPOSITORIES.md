@@ -1,6 +1,6 @@
 # Gate 1.2-2 — SQLAlchemy Repository Implementations
 
-Status: **CURRENT / IDENTITY CONTRACT LANDED / WRITE-BRIDGE DESIGN REQUIRED**
+Status: **CURRENT / IMPLEMENTATIONS + BRIDGE LANDED / LOCAL + POSTGRES EVIDENCE PENDING**
 
 Entry authority: Gate 1.2-1 PASS.
 
@@ -25,13 +25,13 @@ Repositories translate persistence rows to/from formal domain objects. They do
 not own live-state transitions, notification eligibility, provider behavior, or
 transaction commits.
 
-## 2. Identity contract
+## 2. Identity contract — PASS
 
 Formal domain/application identifiers are strings, while the PostgreSQL schema
 retains BIGINT primary keys for users, creators, platform accounts, and live
 sessions.
 
-Gate 1.2 therefore makes the translation explicit at the repository boundary:
+Gate 1.2 makes the translation explicit at the repository boundary:
 
 ```text
 User.user_id                 <-> users.id BIGINT
@@ -50,6 +50,13 @@ Implemented helper:
 stage_letter/infrastructure/db/repositories/identity.py
 ```
 
+Accepted local evidence:
+
+```text
+Repository identity tests: 7 / 7 PASS
+Full Gate 1 suite:          69 / 69 PASS
+```
+
 Formal evidence identities remain native strings and are persisted verbatim:
 
 ```text
@@ -59,53 +66,126 @@ DeliveryKey.live_event_id       -> LiveEvent.event_id semantic identity
 ```
 
 `DeliveryKey.live_event_id` is therefore not the numeric foreign-key value in
-`notification_deliveries.live_event_id`; NotificationRepository must resolve the
+`notification_deliveries.live_event_id`; NotificationRepository resolves the
 formal event id to the event row before writing/querying a delivery.
 
-## 3. Legacy bridge constraints discovered before implementation
+## 3. Source-scoped observation identity correction
 
-Gate 1.1 deliberately retained legacy columns during EXPAND/hardening. Current
-formal ORM models still map several old NOT NULL bridge columns:
+Repository implementation exposed one ambiguity in the original Gate 1.1 port:
+`LiveObservation` persistence identity is source-scoped in PostgreSQL, but the
+old `has_observation(observation_id)` signature was not.
+
+The formal port is corrected to:
+
+```text
+has_observation(account_id, source, observation_id)
+```
+
+This aligns the repository API with the already accepted database uniqueness:
+
+```text
+(platform_account_id, source, observation_id)
+```
+
+The correction narrows ambiguity; it does not change Gate 0 live-state
+semantics.
+
+## 4. Legacy write bridge — CODE LANDED
+
+Forward-only revision:
+
+```text
+c91e8d2f4a10_gate12_relax_legacy_write_bridges.py
+```
+
+Revision chain:
+
+```text
+...
+-> b63e4f9a1c20
+-> c91e8d2f4a10
+```
+
+The migration permits new formal writes to leave obsolete legacy-only facts
+unknown instead of fabricating them.
+
+Relaxed legacy requirements include:
 
 ```text
 platform_accounts.anchor_id
+platform_accounts.last_status
+platform_accounts.polling_tier
+platform_accounts.canonical_url  # optional in formal domain
+
 live_sessions.anchor_id
 live_sessions.platform
+live_sessions.state
+live_sessions.started_at_source
+
 live_events.anchor_id
+live_events.confidence
+live_events.detected_at
+
 notification_deliveries.notification_job_id
 ```
 
-These columns create an important write-path constraint:
+Existing rows are not rewritten. Canonical Gate 1 constraints remain intact.
 
-- A new formal PlatformAccount cannot safely invent a legacy `anchor_id` row.
-- A new formal NotificationDelivery cannot safely invent a legacy
-  `notification_job_id` merely to satisfy the old schema.
-- Session/event legacy fields may be derived only when the source account already
-  carries explicit persisted legacy facts; they must never be fabricated.
+The obsolete legacy uniqueness:
 
-Therefore Gate 1.2-2 MUST NOT implement writes using sentinel ids (`0`, `-1`),
-generated fake legacy rows, copied unrelated rows, or guessed historical facts.
+```text
+(user_id, live_session_id, channel)
+```
 
-## 4. Required bridge resolution
+is removed because the accepted canonical delivery identity is:
 
-Before the four repository implementations can be accepted, the repository
-write path needs one explicit forward-compatible strategy.
+```text
+(user_id, live_event_id, channel)
+```
 
-Preferred direction for Gate 1.2 is a forward-only compatibility relaxation:
-legacy bridge columns that are no longer canonical may become nullable for new
-formal writes, while existing legacy rows and tables remain untouched. Canonical
-foreign keys (`creator_id`, `platform_account_id`, `live_event_id`) remain the
-formal truth.
+The Gate 1.1 event-keyed unique constraint remains the idempotency authority.
 
-Any such migration must be additive/non-destructive and re-run clean + legacy
-migration validation. No historical migration is edited.
+## 5. Repository implementations — CODE LANDED
 
-Until that bridge is proven, Gate 1.2-2 remains CURRENT rather than pretending
-that repository writes are production-ready.
+Current implementation files:
 
-## 5. Repository behavior freeze
+```text
+stage_letter/infrastructure/db/repositories/common.py
+stage_letter/infrastructure/db/repositories/creator.py
+stage_letter/infrastructure/db/repositories/follow.py
+stage_letter/infrastructure/db/repositories/live.py
+stage_letter/infrastructure/db/repositories/notification.py
+```
 
-All four implementations must obey:
+Implemented behavior:
+
+```text
+SQLAlchemyCreatorRepository
+  creator/profile/account read + save
+  preserves existing legacy bridge evidence
+  new formal account may leave legacy anchor/status/tier unknown
+
+SQLAlchemyFollowRepository
+  Follow and NotificationPreference remain separate
+  read/save/delete through supplied AsyncSession
+
+SQLAlchemyLiveRepository
+  source-scoped durable observation identity
+  observation append is DB-idempotent
+  open-session lookup uses ended_at IS NULL
+  session/event writes preserve formal origin/cause
+  missing legacy origin/cause is never invented
+
+SQLAlchemyNotificationRepository
+  resolves formal LiveEvent.event_id to persisted event row
+  logical identity = user/event/channel
+  create_delivery is race-safe via PostgreSQL ON CONFLICT
+  new delivery does not fabricate notification_job_id
+```
+
+## 6. Repository behavior freeze
+
+All four implementations obey:
 
 ```text
 read/write only through the supplied SQLAlchemy AsyncSession
@@ -115,62 +195,80 @@ no state-machine decisions
 no notification eligibility decisions
 no UNKNOWN -> OFFLINE transformation
 no imports from api/workers/core/platform_adapters/experiments
-DB uniqueness/constraint violations are not silently reclassified as success
+DB uniqueness/constraint violations are not silently reclassified as truth
 ```
 
-Expected mapping behavior:
+If a persisted legacy row lacks a fact required by the formal domain (for
+example a provable session origin), the repository raises a mapping error rather
+than inventing a value.
+
+## 7. PostgreSQL acceptance probe
+
+New probe:
 
 ```text
-CreatorRepository
-  DB creator/profile/account rows <-> Creator/CreatorProfile/PlatformAccount
-
-FollowRepository
-  follows/preferences rows <-> Follow/NotificationPreference
-
-LiveRepository
-  observations/sessions/events rows <-> LiveObservation/LiveSession/LiveEvent
-  get_open_session uses ended_at IS NULL formal truth
-  event lookup uses formal event_id
-
-NotificationRepository
-  logical key = (user_id, formal live_event_id, channel)
-  create_delivery returns False only when that exact logical row already exists
-  AMBIGUOUS and all Gate 0D delivery states are preserved verbatim
+scripts/gate12_repository_probe.py
 ```
 
-## 6. Current evidence assets
+It creates only the isolated temporary database:
 
 ```text
-stage_letter/infrastructure/db/repositories/__init__.py
-stage_letter/infrastructure/db/repositories/identity.py
+stageletter_gate12_repo
+```
+
+Flow:
+
+```text
+empty DB
+-> migrate to accepted Gate 1.1 head b63e4f9a1c20
+-> seed representative legacy bridge facts
+-> migrate to c91e8d2f4a10
+-> prove legacy facts preserved
+-> use all four formal repositories for new canonical writes
+-> prove obsolete bridge fields remain NULL, not fake
+-> prove source-scoped observation idempotency
+-> prove duplicate logical delivery is suppressed by event-key identity
+-> read formal objects back through repositories
+-> cleanup temporary DB
+```
+
+The historical Gate 1.1 DB probe is now pinned to `b63e4f9a1c20` so later Gate 1
+migrations cannot invalidate reproducibility of accepted Gate 1.1 evidence.
+
+## 8. Current evidence assets
+
+```text
+migrations/versions/c91e8d2f4a10_gate12_relax_legacy_write_bridges.py
+stage_letter/infrastructure/db/repositories/*
 tests/gate1/test_repository_identity.py
+tests/gate1/test_repository_implementations.py
+scripts/gate12_repository_probe.py
 ```
 
-The identity tests prove canonical BIGINT/string round-trip and reject lossy or
-ambiguous conversions.
-
-## 7. Acceptance plan
+## 9. Acceptance plan
 
 Gate 1.2-2 PASS requires:
 
 ```text
 A. Gate 1.2-1 remains PASS                                  PASS
 B. persistence identity contract frozen                     PASS
-C. identity contract tests pass                             PENDING LOCAL EVIDENCE
-D. legacy write-bridge strategy implemented safely          PENDING
-E. CreatorRepository implements port                        PENDING
-F. FollowRepository implements port                         PENDING
-G. LiveRepository implements port                           PENDING
-H. NotificationRepository implements event-key identity     PENDING
-I. repositories never commit independently                  PENDING
-J. repository tests against PostgreSQL pass                 PENDING
-K. full Gate 1 suite remains green                          PENDING
-L. formal boundary AST tests remain green                   PENDING
+C. identity contract tests pass                             PASS / 7/7
+D. legacy write-bridge strategy implemented safely          CODE LANDED
+E. CreatorRepository implements port                        CODE LANDED
+F. FollowRepository implements port                         CODE LANDED
+G. LiveRepository implements port                           CODE LANDED
+H. NotificationRepository implements event-key identity     CODE LANDED
+I. repositories never commit independently                  CONTRACT LANDED
+J. repository tests against PostgreSQL pass                 PENDING LOCAL EVIDENCE
+K. full Gate 1 suite remains green                          PENDING NEW LOCAL EVIDENCE
+L. formal boundary AST tests remain green                   PENDING NEW LOCAL EVIDENCE
+M. Alembic head == c91e8d2f4a10                            PENDING LOCAL EVIDENCE
+N. UTF-8 offline SQL compilation through new head           PENDING LOCAL EVIDENCE
 ```
 
-Gate 1.2-2 remains **CURRENT** until all items pass.
+Gate 1.2-2 remains **CURRENT** until J-N pass.
 
-## 8. Stop rules
+## 10. Stop rules
 
 Stop with FAIL/BLOCKED if repository implementation would require:
 
