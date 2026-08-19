@@ -1,6 +1,6 @@
 # Gate 1.2-1 — Repository / Service Boundary Freeze
 
-Status: **CURRENT / CODE + CONTRACT TESTS LANDED / LOCAL EVIDENCE PENDING**
+Status: **PASS**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -277,6 +277,17 @@ No Gate 1.2 slice may bypass Gate 1.1 database constraints or import
 
 ## 10. Acceptance for Gate 1.2-1
 
+Accepted user-local evidence:
+
+```text
+Ran 62 tests in 0.189s
+OK
+```
+
+This full Gate 1 suite includes the seven Gate 1.2 boundary contract tests and
+therefore establishes both the boundary-specific AST checks and full-suite
+non-regression.
+
 ```text
 A. Gate 1.1 is closed PASS                                  PASS
 B. dependency graph documented                              PASS
@@ -285,9 +296,11 @@ D. UnitOfWork transaction boundary frozen                   PASS
 E. application service role frozen                          PASS
 F. composition-root target frozen                           PASS
 G. legacy API/worker/service debt explicitly quarantined    PASS
-H. AST boundary contract tests pass                         PENDING LOCAL EVIDENCE
-I. full Gate 1 contract suite remains green                 PENDING LOCAL EVIDENCE
+H. AST boundary contract tests pass                         PASS / included in 62-test suite
+I. full Gate 1 contract suite remains green                 PASS / 62 tests
 ```
 
-Gate 1.2-1 becomes PASS only after H-I have local execution evidence.
-Gate 1.2 overall remains CURRENT until all later slices pass.
+Gate 1.2-1: **PASS**.
+
+Next: Gate 1.2-2 implements the four SQLAlchemy repository ports without
+independent commits or business-rule ownership.
