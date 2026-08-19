@@ -30,6 +30,15 @@ class CreatorRepository(Protocol):
         platform_user_id: str,
     ) -> PlatformAccount | None: ...
 
+    async def list_enabled_accounts(
+        self,
+        *,
+        after_account_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[PlatformAccount, ...]:
+        """Return explicitly enabled accounts in stable account-id order."""
+        ...
+
     async def save_creator(self, creator: Creator) -> None: ...
 
     async def save_profile(self, profile: CreatorProfile) -> None: ...
