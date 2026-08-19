@@ -1,6 +1,6 @@
 # Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration
 
-Status: **CURRENT / 1.3-4A PASS / 1.3-4B PASS / 1.3-4C DOUYU CURRENT**
+Status: **CURRENT / 1.3-4A PASS / 1.3-4B PASS / 1.3-4C DOUYU PROVIDER CONTROLS PASS / LOCAL REGRESSION PENDING**
 
 Entry authority: Gate 1.3-3 PASS / CLOSED.
 
@@ -141,6 +141,36 @@ present and disagree, the result is AMBIGUOUS/UNKNOWN rather than choosing one.
 not create canonical LIVE/OFFLINE truth. Transport failures, missing fields,
 HTML/schema drift, timeout and rate limiting remain provider failures.
 
+### Current provider controls — PASS
+
+On 2026-08-19 the operator independently checked one current LIVE room and one
+current OFFLINE room, then exercised the formal provider chain:
+
+```text
+room 74751
+expected            LIVE
+observed            LIVE
+expectation_match   true
+source              douyu.desktop_html
+
+room 6512
+expected            OFFLINE
+observed            OFFLINE
+expectation_match   true
+source              douyu.desktop_html
+```
+
+Result:
+
+```text
+provider-backed Douyu LIVE control     PASS
+provider-backed Douyu OFFLINE control  PASS
+```
+
+The OFFLINE control still carried page/title metadata. As with Huya, metadata is
+non-canonical and must not influence live-state truth or be rendered as a current
+live title for an OFFLINE account.
+
 ### Deterministic contracts
 
 Landed:
@@ -156,29 +186,30 @@ suite after the 20 Douyu contracts is 217 tests.
 ### Acceptance — Gate 1.3-4C
 
 ```text
-A. Gate 1.3-4B Huya PASS / CLOSED             PASS
-B. formal Douyu adapter core                   PASS / CODE
-C. Douyu desktop HTML gateway                  PASS / CODE
-D. show_status 1 -> LIVE / 2 -> OFFLINE       PASS / CODE
-E. 0 / 3 / 4 / unsupported -> UNKNOWN         PASS / CODE
-F. videoLoop alone not creator-live truth      PASS / CONTRACT
-G. failure / conflicting fields -> UNKNOWN    PASS / CONTRACT
-H. no legacy runtime import                    PASS / CONTRACT
-I. dedicated formal-adapter contracts          PENDING / 10
-J. dedicated HTTP-gateway contracts            PENDING / 10
-K. complete Gate 1 suite                       PENDING / expected 217
-L. current provider-backed Douyu LIVE control  PENDING
-M. current provider-backed Douyu OFFLINE control PENDING
+A. Gate 1.3-4B Huya PASS / CLOSED               PASS
+B. formal Douyu adapter core                     PASS / CODE
+C. Douyu desktop HTML gateway                    PASS / CODE
+D. show_status 1 -> LIVE / 2 -> OFFLINE         PASS / CODE
+E. 0 / 3 / 4 / unsupported -> UNKNOWN           PASS / CODE
+F. videoLoop alone not creator-live truth        PASS / CONTRACT
+G. failure / conflicting fields -> UNKNOWN      PASS / CONTRACT
+H. no legacy runtime import                      PASS / CONTRACT
+I. current provider-backed Douyu LIVE control    PASS
+J. current provider-backed Douyu OFFLINE control PASS
+K. dedicated formal-adapter contracts            PENDING / 10
+L. dedicated HTTP-gateway contracts              PENDING / 10
+M. complete Gate 1 suite                         PENDING / expected 217
 ```
 
-Gate 1.3-4C remains CURRENT until I-M pass.
+Gate 1.3-4C remains CURRENT until K-M pass. No additional real Douyu provider
+control is required for this slice if deterministic regression remains green.
 
 ## 5. Current progression
 
 ```text
 Gate 1.3-4A  PASS / CLOSED
 Gate 1.3-4B  PASS / CLOSED
-Gate 1.3-4C  CURRENT / Douyu core+HTTP gateway+probe landed; local/provider evidence pending
+Gate 1.3-4C  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+217 local regression pending
 Gate 1.3-4D  NOT STARTED
 ```
 
