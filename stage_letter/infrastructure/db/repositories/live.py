@@ -44,6 +44,40 @@ class SQLAlchemyLiveRepository:
         )
         return row_id is not None
 
+    async def get_observation(
+        self,
+        account_id: str,
+        observation_id: str,
+    ) -> LiveObservation | None:
+        """Resolve one logical probe observation across provider source values.
+
+        The historical schema uniqueness key is source-scoped. Gate 1.4 therefore
+        reads by account+observation_id before and after provider I/O so a retry
+        can reuse durable work even if the provider source vocabulary changes.
+        Multiple rows for one logical id are surfaced as mapping ambiguity rather
+        than silently choosing one.
+        """
+
+        account_pk = parse_persistence_id(account_id, field="account_id")
+        rows = (
+            await self.session.scalars(
+                select(LiveObservationModel)
+                .where(
+                    LiveObservationModel.platform_account_id == account_pk,
+                    LiveObservationModel.observation_id == observation_id,
+                )
+                .order_by(LiveObservationModel.id.asc())
+                .limit(2)
+            )
+        ).all()
+        if not rows:
+            return None
+        if len(rows) > 1:
+            raise RepositoryMappingError(
+                "multiple durable observations share one logical probe identity"
+            )
+        return self._to_observation(rows[0])
+
     async def append_observation(self, observation: LiveObservation) -> None:
         account_pk = parse_persistence_id(observation.account_id, field="account_id")
         # This write uses a PostgreSQL Core INSERT for conflict-safe idempotency.
@@ -75,16 +109,7 @@ class SQLAlchemyLiveRepository:
             .order_by(LiveObservationModel.observed_at.desc(), LiveObservationModel.id.desc())
             .limit(1)
         )
-        if row is None:
-            return None
-        return LiveObservation(
-            observation_id=row.observation_id,
-            account_id=serialize_persistence_id(row.platform_account_id, field="account_id"),
-            status=LiveStatus(row.status),
-            observed_at=row.observed_at,
-            source=row.source,
-            source_started_at=row.source_started_at,
-        )
+        return None if row is None else self._to_observation(row)
 
     async def get_open_session(self, account_id: str) -> LiveSession | None:
         account_pk = parse_persistence_id(account_id, field="account_id")
@@ -165,6 +190,17 @@ class SQLAlchemyLiveRepository:
             event_type=LiveEventType(row.event_type),
             cause=LiveEventCause(row.cause),
             occurred_at=row.occurred_at,
+        )
+
+    @staticmethod
+    def _to_observation(row: LiveObservationModel) -> LiveObservation:
+        return LiveObservation(
+            observation_id=row.observation_id,
+            account_id=serialize_persistence_id(row.platform_account_id, field="account_id"),
+            status=LiveStatus(row.status),
+            observed_at=row.observed_at,
+            source=row.source,
+            source_started_at=row.source_started_at,
         )
 
     @staticmethod
