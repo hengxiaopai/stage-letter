@@ -1,6 +1,6 @@
 # Gate 1.4 — Monitoring Scheduler + Observation Pipeline
 
-Status: **CURRENT / 1.4-1 PASS / CLOSED / 1.4-2 PROBE->OBSERVATION LANDED / LOCAL EVIDENCE PENDING**
+Status: **CURRENT / 1.4-1 PASS / 1.4-2 PASS / CLOSED / 1.4-3 SCHEDULER POLICY LANDED / LOCAL EVIDENCE PENDING**
 
 Entry authority: Gate 1.3 PASS / CLOSED.
 
@@ -27,8 +27,8 @@ Gate 1.4 owns target discovery, scheduling/probe orchestration, and observation 
 
 ```text
 Gate 1.4-1  Monitoring Target Discovery + Paging Contract        PASS / CLOSED
-Gate 1.4-2  Probe Request + LiveSnapshot -> LiveObservation      CURRENT
-Gate 1.4-3  Scheduler Cadence / Concurrency / Backoff            NOT STARTED
+Gate 1.4-2  Probe Request + LiveSnapshot -> LiveObservation      PASS / CLOSED
+Gate 1.4-3  Scheduler Cadence / Concurrency / Backoff            CURRENT
 Gate 1.4-4  Worker Composition + Four-platform Runtime Wiring    NOT STARTED
 Gate 1.4-5  Observation Durability / Restart Acceptance          NOT STARTED
 ```
@@ -54,109 +54,149 @@ Target discovery remains keyset-paged by canonical account id, read-only, provid
 
 Result: **Gate 1.4-1 PASS / CLOSED**.
 
-## 4. Gate 1.4-2 — CURRENT
+## 4. Gate 1.4-2 — PASS / CLOSED
+
+Accepted user-local evidence:
+
+```text
+probe -> observation contracts   10 / 10 PASS
+complete Gate 1 suite           253 / 253 PASS
+```
+
+Accepted probe identity and persistence contract:
+
+```text
+one logical probe request = probe_id + account_id
+retry of same logical probe reuses same probe_id
+LiveObservation.observation_id <- probe_id
+```
+
+The probe application performs durable re-use checks by `(account_id, observation_id)` before and after provider I/O. Provider work remains outside the UnitOfWork. Disabled/missing accounts fail before provider I/O; identity changes while a request is in flight prevent stale persistence.
+
+Only formal normalized facts are copied from LiveSnapshot into LiveObservation:
+
+```text
+status
+observed_at
+source
+source_started_at
+```
+
+`UNKNOWN` remains `UNKNOWN`. Room/title/page metadata does not override state. Adapter identity mismatch is an invariant failure rather than a fabricated observation.
+
+The historical database uniqueness key is still source-scoped. Logical cross-source lookup detects ambiguous duplicate durable rows rather than silently selecting one. True concurrent scheduling mechanics are handled in 1.4-3/1.4-5; 1.4-2 itself does not claim distributed single-flight.
+
+Result: **Gate 1.4-2 PASS / CLOSED**.
+
+## 5. Gate 1.4-3 — CURRENT
 
 ### Landed runtime
 
 ```text
-stage_letter/application/services/monitoring_probe.py
-stage_letter/application/ports.py
-stage_letter/infrastructure/db/repositories/live.py
-stage_letter/application/services/__init__.py
+workers/monitoring/__init__.py
+workers/monitoring/scheduler.py
 ```
 
 Landed deterministic contracts:
 
 ```text
-tests/gate1/test_gate14_probe_observation.py  10 tests
+tests/gate1/test_gate14_scheduler.py  10 tests
 ```
 
-### Probe identity contract
+### Scheduler policy
 
-One `MonitoringProbeRequest` targets exactly one formal `PlatformAccount`:
+The current formal defaults are configurable worker mechanics, not live-state truth or a production SLA:
 
 ```text
-probe_id + account_id
+cadence_seconds            30
+max_concurrency            16
+per_platform_concurrency    4
+max_attempts                3
+base_backoff_seconds        1
+max_backoff_seconds         8
+page_size                 100
 ```
 
-`probe_id` is a scheduler-owned logical request id. A retry of the same logical probe **must reuse the same probe_id**. Gate 1.4-2 stores that value directly as `LiveObservation.observation_id`.
+Policy rejects invalid/non-positive limits before scheduling work. Backoff is deterministic capped exponential (`1s -> 2s -> 4s`, capped by configuration) so tests and retries remain reproducible.
 
-The application validates that `probe_id` is non-empty and fits the existing 255-character observation-id column. It does not invent provider ids or derive canonical state from the probe id.
+### Stable logical probe identity
 
-### Sequential retry/idempotency contract
-
-Before provider I/O the service reads durable observation state by:
+For each `(cycle_id, account_id)`, the scheduler derives one bounded deterministic probe id using SHA-256:
 
 ```text
-(account_id, observation_id)
+monitor:<64 hex chars>
 ```
 
-without requiring the provider source to match. If the observation already exists, the service returns it and does not call the provider or commit a new row.
+Every retry reuses the exact same MonitoringProbeRequest and therefore the same durable observation identity. A new monitoring cycle receives a different logical probe id.
 
-After provider I/O it performs the same logical lookup again before append/commit. This closes the common retry case where another worker completed while the provider request was in flight.
+### Bounded concurrency
 
-The historical DB uniqueness constraint remains source-scoped. Therefore **true concurrent same-probe races with differing provider-source values are not yet claimed solved by 1.4-2**. Gate 1.4-3 owns scheduler concurrency/single-flight semantics and must close that race before production scheduling is accepted.
-
-If the repository detects more than one durable row for the same `(account_id, observation_id)` across sources, it raises explicit mapping ambiguity rather than silently selecting one.
-
-### Provider / transaction boundary
-
-Flow is intentionally split:
+The scheduler enforces both:
 
 ```text
-read UoW: existing observation + account eligibility
-  -> close DB transaction
-  -> adapter lookup + get_live_snapshot(account)
-  -> validate snapshot platform/provider identity
-  -> write UoW: re-check existing observation + persist + commit
+global concurrency limit
+per-platform concurrency limit
 ```
 
-Provider network work is never performed inside the UnitOfWork transaction.
+No platform can consume more than the configured platform semaphore even if global capacity remains available.
 
-A disabled account is rejected before provider I/O. A missing account is rejected before provider I/O. If the platform or provider identity changes while a probe is in flight, the old snapshot is not persisted under the new identity.
+### Single-flight scope
 
-### Snapshot -> observation truth
+Concurrent calls inside one formal scheduler process for the same `(account_id, probe_id)` share one in-flight task, so the same logical probe is not executed twice inside that process.
 
-Only normalized formal facts are copied:
+This is deliberately **not** described as distributed exactly-once provider execution. A second OS process could still issue the same provider request. Durable duplicate behavior across process/restart boundaries remains an explicit Gate 1.4-5 acceptance concern. Gate 1.4 must not claim stronger semantics than the evidence supports.
+
+### Retry semantics
+
+Scheduler retries apply only to escaped transient orchestration exceptions:
 
 ```text
-observation_id   <- probe_id
-account_id       <- PlatformAccount.account_id
-status           <- LiveSnapshot.status
-observed_at      <- LiveSnapshot.observed_at
-source           <- LiveSnapshot.source
-source_started_at<- LiveSnapshot.source_started_at
+TimeoutError
+ConnectionError
 ```
 
-`UNKNOWN` remains `UNKNOWN`; it is never converted to OFFLINE. Provider room/title/page metadata is not allowed to override status and is not promoted into the canonical LiveObservation state record in this slice.
+Retries preserve the same logical probe id and release concurrency slots before sleeping. Other application/invariant failures are not retried.
 
-Unexpected adapter-contract identity mismatch is an application invariant failure, not a fabricated UNKNOWN/OFFLINE observation.
+A successfully normalized `UNKNOWN` observation is a valid monitoring fact and is **not** retried merely because its status is UNKNOWN. This preserves the accepted adapter rule that provider ambiguity/failure can legitimately normalize to UNKNOWN.
 
-### Acceptance — Gate 1.4-2
+If all scheduler-level retries are exhausted, the scheduler returns an explicit failed outcome and does not fabricate an OFFLINE or UNKNOWN observation on its own. Canonical observation truth remains owned by the formal adapter/probe pipeline.
 
-Accepted entering baseline is 243 tests. Ten new contracts raise the expected complete Gate 1 suite to 253.
+### Paging / cycle behavior
+
+`run_cycle(cycle_id)` consumes all explicitly enabled targets through the accepted keyset paging service and schedules one logical probe per account. Empty/invalid cycle ids fail before target discovery.
+
+### Boundary ownership
+
+The scheduler imports application services/domain account identity only. It does not import SQLAlchemy, provider SDKs, legacy `platform_adapters`, Gate 0 experiments, sessions/events/notifications, room/title metadata, or provider-specific status constants.
+
+### Acceptance — Gate 1.4-3
+
+Accepted entering baseline is 253 tests. Ten new scheduler contracts raise the expected complete Gate 1 suite to 263.
 
 ```text
-A. Gate 1.4-1 PASS / CLOSED                         PASS
-B. MonitoringProbeRequest contract                 PASS / CODE
-C. provider I/O outside UnitOfWork                 PASS / CODE
-D. stable probe_id -> observation_id               PASS / CONTRACT
-E. existing logical probe reused before provider   PASS / CONTRACT
-F. post-provider durable re-check                  PASS / CONTRACT
-G. LiveSnapshot identity validated                 PASS / CONTRACT
-H. UNKNOWN preserved as UNKNOWN                    PASS / CONTRACT
-I. no LiveSession/LiveEvent/notification ownership PASS / CONTRACT
-J. dedicated Gate 1.4-2 contracts                  PENDING / 10
-K. complete Gate 1 suite                           PENDING / expected 253
+A. Gate 1.4-2 PASS / CLOSED                         PASS
+B. deterministic cadence/backoff policy             PASS / CODE
+C. stable cycle/account -> probe_id                  PASS / CONTRACT
+D. same-process same-probe single-flight             PASS / CODE
+E. global bounded concurrency                        PASS / CODE
+F. per-platform bounded concurrency                  PASS / CODE
+G. retry reuses exact logical probe                  PASS / CONTRACT
+H. successful UNKNOWN is not retried                 PASS / CONTRACT
+I. retry exhaustion fabricates no observation        PASS / CONTRACT
+J. no live-state/session/event/notification ownership PASS / CONTRACT
+K. dedicated Gate 1.4-3 contracts                   PENDING / 10
+L. complete Gate 1 suite                            PENDING / expected 263
 ```
 
-Gate 1.4-2 remains CURRENT until J-K pass.
+Gate 1.4-3 remains CURRENT until K-L pass.
 
-## 5. Next slices
+## 6. Next slices
 
-Gate 1.4-3 will add scheduler cadence, bounded concurrency, retry/backoff, and one-logical-probe single-flight behavior. Gate 1.4-4 will then wire the accepted four-platform registry into the worker composition root. Gate 1.4-5 will validate durable observation behavior across restart/crash boundaries before Gate 1.4 closes.
+Gate 1.4-4 will wire the accepted four-platform `AdapterRegistry`, monitoring target service, probe service, and scheduler into the formal worker composition root without triggering provider I/O at construction time.
 
-## 6. Stop rules
+Gate 1.4-5 will then validate durable observation behavior across restart/crash/concurrent-process boundaries and close any remaining logical-probe duplicate risk before Gate 1.4 can be accepted for production scheduling.
+
+## 7. Stop rules
 
 Stop with FAIL/BLOCKED if progress requires:
 
@@ -165,8 +205,10 @@ legacy/null eligibility guessed as enabled
 follow or notification preference used as monitoring eligibility truth
 provider failure converted to OFFLINE
 provider I/O inside DB transaction
-scheduler retry generating a new logical observation for the same probe_id
-concurrent duplicate-probe risk ignored at Gate 1.4 exit
+scheduler retry generating a new logical observation id
+UNKNOWN treated as scheduler failure merely because status is UNKNOWN
+same-process duplicate logical probe executed twice
+cross-process exactly-once claimed without evidence
 provider metadata used to override explicit LiveSnapshot.status
 snapshot identity mismatch persisted under another account
 Gate 1.4 creating LiveSession / LiveEvent
@@ -174,6 +216,6 @@ Gate 1.4 deciding notification eligibility
 formal runtime importing legacy platform_adapters or experiments
 ```
 
-## 7. Inherited caveat
+## 8. Inherited caveat
 
 Gate 0A remains **DEGRADED** for the deferred same-creator OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Gate 1.4 must preserve that status rather than fabricating historical lifecycle evidence.
