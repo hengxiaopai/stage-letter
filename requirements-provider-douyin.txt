@@ -1,0 +1,6 @@
+# Optional provider runtime for Gate 1.3 Douyin transport.
+# Kept separate from the core Gate 1 requirements because the formal platform
+# package lazily imports StreamGet only when Douyin provider access is exercised.
+#
+# Gate 0A evidence baseline: StreamGet 4.0.10.
+streamget==4.0.10
