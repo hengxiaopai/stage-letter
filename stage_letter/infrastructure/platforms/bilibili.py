@@ -174,11 +174,16 @@ class BilibiliFormalAdapter:
                 failure=failure,
             )
 
-        status = normalize_explicit_status(
-            record.raw_live_status,
-            live_values=BILIBILI_LIVE_VALUES,
-            offline_values=BILIBILI_OFFLINE_VALUES,
-        )
+        # bool is a subclass of int in Python. Treat it as provider type drift
+        # rather than accidentally accepting True as 1 or False as 0.
+        if isinstance(record.raw_live_status, bool):
+            status = LiveStatus.UNKNOWN
+        else:
+            status = normalize_explicit_status(
+                record.raw_live_status,
+                live_values=BILIBILI_LIVE_VALUES,
+                offline_values=BILIBILI_OFFLINE_VALUES,
+            )
 
         return LiveSnapshot(
             platform=BILIBILI_PLATFORM,
