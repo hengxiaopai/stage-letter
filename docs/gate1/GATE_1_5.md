@@ -47,7 +47,7 @@ Result: **Gate 1.5-2 PASS / CLOSED**.
 
 `LiveSession.session_id` remains a string in the formal domain boundary, but PostgreSQL owns its canonical BIGINT allocation.
 
-The `LiveRepository` port now exposes:
+The `LiveRepository` port exposes:
 
 ```text
 create_session(account_id, opened_at, origin, source_started_at) -> LiveSession
@@ -129,7 +129,7 @@ no NotificationDelivery creation
 
 ### 4.5 Repository event contract
 
-`LiveRepository.append_event()` now returns:
+`LiveRepository.append_event()` returns:
 
 ```text
 True  -> this transaction inserted the deterministic event id
@@ -159,20 +159,33 @@ provider_called = false
 notification_created = false
 ```
 
-Probe rows are removed afterward. This is non-production evidence only.
+Two acceptance-script defects were exposed during local execution before PostgreSQL evidence could be accepted: first, the probe referenced physical database column names as Python ORM attributes; second, SQLAlchemy result-row keys followed the underlying mapped column names rather than the intended domain attribute names. Both are probe-only defects, not runtime/schema failures.
+
+The probe now selects mapped session fields with explicit stable labels:
+
+```text
+id                -> session_id
+opened_at         -> opened_at
+closed_at         -> closed_at
+origin            -> origin
+source_started_at -> source_started_at
+```
+
+This prevents ORM attribute names and physical column names (`started_at` / `ended_at`) from leaking into result-row access. Probe rows are removed afterward. This remains non-production evidence only.
 
 ### 4.7 Landed deterministic contracts
 
 ```text
-tests/gate1/test_gate15_transition_persistence.py  12 tests
+tests/gate1/test_gate15_transition_persistence.py       12 tests
+tests/gate1/test_gate15_transition_probe_contract.py     1 test
 ```
 
-Contracts cover deterministic event identity, persistence-owned session allocation, atomic OPEN, bootstrap provenance, atomic CLOSE, event reuse, missing/mismatched durable evidence, monitor/status gates, missing open-session failure, no partial commit after event collision, and application boundary purity.
+The contracts cover deterministic event identity, persistence-owned session allocation, atomic OPEN, bootstrap provenance, atomic CLOSE, event reuse, missing/mismatched durable evidence, monitor/status gates, missing open-session failure, no partial commit after event collision, application boundary purity, and explicit result labels in the PostgreSQL acceptance probe.
 
-Accepted entering baseline is 308 tests. Twelve new tests raise the expected complete Gate 1 suite to:
+Accepted entering baseline is 308 tests. Thirteen new tests raise the expected complete Gate 1 suite to:
 
 ```text
-320 / 320
+321 / 321
 ```
 
 ### 4.8 Acceptance — Gate 1.5-3
@@ -186,8 +199,8 @@ E. OPEN session + LIVE_STARTED one-UoW atomicity    PASS / CONTRACT
 F. CLOSE session + LIVE_ENDED one-UoW atomicity     PASS / CONTRACT
 G. existing event reuse without duplicate commit    PASS / CONTRACT
 H. UNKNOWN/provider/notification boundaries         PASS / CONTRACT
-I. dedicated Gate 1.5-3 contracts                   PENDING / 12
-J. complete Gate 1 suite                            PENDING / expected 320
+I. dedicated Gate 1.5-3 contracts                   PENDING / 13
+J. complete Gate 1 suite                            PENDING / expected 321
 K. real PostgreSQL transition persistence probe     PENDING / LOCAL POSTGRES
 ```
 
