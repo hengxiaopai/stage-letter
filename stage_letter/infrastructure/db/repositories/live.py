@@ -51,11 +51,10 @@ class SQLAlchemyLiveRepository:
     ) -> LiveObservation | None:
         """Resolve one logical probe observation across provider source values.
 
-        The historical schema uniqueness key is source-scoped. Gate 1.4 therefore
-        reads by account+observation_id before and after provider I/O so a retry
-        can reuse durable work even if the provider source vocabulary changes.
-        Multiple rows for one logical id are surfaced as mapping ambiguity rather
-        than silently choosing one.
+        Gate 1.4's formal monitor ids are additionally protected by a partial
+        database unique index over account+observation_id. Legacy/non-monitor ids
+        retain historical source-scoped semantics. Multiple rows are surfaced as
+        mapping ambiguity rather than silently selecting one.
         """
 
         account_pk = parse_persistence_id(account_id, field="account_id")
@@ -78,12 +77,10 @@ class SQLAlchemyLiveRepository:
             )
         return self._to_observation(rows[0])
 
-    async def append_observation(self, observation: LiveObservation) -> None:
+    async def append_observation(self, observation: LiveObservation) -> bool:
         account_pk = parse_persistence_id(observation.account_id, field="account_id")
-        # This write uses a PostgreSQL Core INSERT for conflict-safe idempotency.
-        # Core DML does not guarantee that unrelated pending ORM rows are flushed
-        # first. Flush the shared UoW session so a newly-added PlatformAccount is
-        # visible to the FK without committing the transaction.
+        # Core DML does not guarantee unrelated pending ORM parents are flushed.
+        # Flush keeps the shared UoW transaction open while satisfying FKs.
         await self.session.flush()
         statement = (
             pg_insert(LiveObservationModel.__table__)
@@ -95,11 +92,15 @@ class SQLAlchemyLiveRepository:
                 source=observation.source,
                 source_started_at=observation.source_started_at,
             )
-            .on_conflict_do_nothing(
-                constraint="uq_live_observation_identity",
-            )
+            # No explicit conflict target is intentional. It preserves historical
+            # source-scoped idempotency and also catches Gate 1.4's partial unique
+            # monitor-probe identity when two independent workers race with
+            # different source strings.
+            .on_conflict_do_nothing()
+            .returning(LiveObservationModel.id)
         )
-        await self.session.execute(statement)
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none() is not None
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None:
         account_pk = parse_persistence_id(account_id, field="account_id")
@@ -150,10 +151,6 @@ class SQLAlchemyLiveRepository:
     async def append_event(self, event: LiveEvent) -> None:
         account_pk = parse_persistence_id(event.account_id, field="account_id")
         session_pk = parse_persistence_id(event.session_id, field="session_id")
-        # save_session() may have placed the parent LiveSession in the ORM pending
-        # queue. The event write below is PostgreSQL Core DML, so explicitly flush
-        # pending ORM parents before the FK-constrained INSERT. flush() preserves
-        # the enclosing UnitOfWork transaction and is not a commit boundary.
         await self.session.flush()
         statement = (
             pg_insert(LiveEventModel.__table__)
