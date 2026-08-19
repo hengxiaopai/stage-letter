@@ -89,7 +89,13 @@ class LiveRepository(Protocol):
         """
         ...
 
-    async def append_observation(self, observation: LiveObservation) -> None: ...
+    async def append_observation(self, observation: LiveObservation) -> bool:
+        """Insert the observation if permitted by durable identity constraints.
+
+        Return True when this transaction inserted the row and False when a
+        concurrent/idempotent write already owns the same durable identity.
+        """
+        ...
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None: ...
 
