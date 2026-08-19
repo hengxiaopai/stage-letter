@@ -1,6 +1,6 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 CURRENT**
+Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 PASS / 1.2-5 CURRENT**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -10,14 +10,13 @@ Primary freezes:
 - [`GATE_1_2_REPOSITORIES.md`](./GATE_1_2_REPOSITORIES.md)
 - [`GATE_1_2_UOW.md`](./GATE_1_2_UOW.md)
 - [`GATE_1_2_SERVICES.md`](./GATE_1_2_SERVICES.md)
+- [`GATE_1_2_COMPOSITION.md`](./GATE_1_2_COMPOSITION.md)
 
 ## 1. Goal
 
 Gate 1.2 turns the formal Gate 1.1 domain and PostgreSQL schema into an explicit
 runtime architecture where business semantics flow through application ports and
 services rather than legacy API/worker modules or direct ORM access.
-
-Canonical dependency direction:
 
 ```text
 api/workers composition roots
@@ -27,7 +26,7 @@ api/workers composition roots
 ```
 
 Infrastructure may depend on application ports and domain. Application may not
-depend on infrastructure. Domain depends only inward on itself/stdlib.
+depend on infrastructure. Domain depends only on itself/stdlib.
 
 ## 2. Gate 1.2 slices
 
@@ -40,91 +39,50 @@ Gate 1.2-5  API/Worker Composition Roots + legacy cutover
 Gate 1.2-6  Boundary Regression / acceptance
 ```
 
-## 3. Gate 1.2-1 — PASS
-
-Accepted user-local evidence:
+## 3. Accepted slices
 
 ```text
-Ran 62 tests in 0.189s
-OK
+Gate 1.2-1  PASS / boundary contracts
+Gate 1.2-2  PASS / repositories + PostgreSQL + migration evidence
+Gate 1.2-3  PASS / 9 UoW tests + 88 full tests + PostgreSQL probe
+Gate 1.2-4  PASS / 10 service tests + 98 full tests
 ```
 
-The full suite includes the seven AST/service-boundary contracts and preserves
-all earlier Gate 1 tests.
+Gate 1.2-4 preserves the intended separation: Creator, Follow, Notification
+Preference, and raw LiveObservation orchestration are formal application
+services, while provider/state/session/event/notification-runtime semantics stay
+in their later gates.
 
-## 4. Gate 1.2-2 — PASS
-
-Accepted evidence includes:
-
-```text
-Repository identity tests: 7 / 7 PASS
-Full Gate 1 suite:          69 / 69 PASS
-PostgreSQL repository probe PASS
-Full post-implementation suite: 78 / 78 PASS
-Alembic head: c91e8d2f4a10
-Offline SQL compilation PASS
-```
-
-The four formal repositories operate against PostgreSQL without fabricating
-legacy bridge facts, and repository methods do not own transaction commits.
-
-## 5. Gate 1.2-3 — PASS
-
-Accepted user-local evidence after correcting the mixed ORM/Core flush-order
-defect:
-
-```text
-Dedicated UnitOfWork contracts: 9 tests PASS
-Full Gate 1 suite:              88 tests PASS
-PostgreSQL UnitOfWork probe:    PASS
-```
-
-The real probe proves one shared AsyncSession across all four repositories,
-explicit atomic commit, normal uncommitted rollback, exceptional rollback +
-propagation, and safe FK ordering through explicit flush without early commit.
-
-Gate 1.2-3 is therefore **PASS / CLOSED**.
-
-## 6. Gate 1.2-4 — Application Services — CURRENT
+## 4. Gate 1.2-5 — CURRENT
 
 Landed assets:
 
 ```text
-stage_letter/application/errors.py
-stage_letter/application/services/
-  __init__.py
-  creator.py
-  follow.py
-  live.py
-
-tests/gate1/test_application_services.py
-docs/gate1/GATE_1_2_SERVICES.md
+api/composition.py
+workers/composition.py
+tests/gate1/test_composition_roots.py
+docs/gate1/GATE_1_2_COMPOSITION.md
 ```
 
-Initial formal use-cases now cover:
+`api/main.py` now exposes the formal application-service bundle at:
 
 ```text
-CreatorApplicationService
-  save already-resolved Creator/Profile/PlatformAccount as one UoW
-  cross-entity creator identity checked before persistence
-
-FollowApplicationService
-  follow account using persisted creator identity
-  unfollow relation
-  update NotificationPreference separately
-
-LiveObservationApplicationService
-  persist normalized LiveObservation and commit
-  no transition/session/event interpretation
+app.state.stage_letter_services
 ```
 
-Gate 1.2-4 deliberately does not move Gate 0B/0C state semantics, provider
-composition, scheduler behavior, or notification eligibility into the service
-layer. Those remain later-gate responsibilities.
+The new composition roots wire application services to `SQLAlchemyUnitOfWork`
+using a supplied session factory. They do not import domain rules, provider
+adapters, experiments, or legacy core behavior.
 
-Current acceptance evidence for the new application-service contracts is pending.
+Legacy modules such as `api/routers/subscriptions.py` and
+`workers/probe/worker.py` remain operational debt during staged migration. They
+are not considered formally cut over merely because the new composition seam
+exists. Their semantic replacement belongs to Gates 1.3-1.7 as appropriate.
 
-## 7. Preserved inherited status
+Gate 1.2-5 remains CURRENT until its dedicated composition-root tests and the
+full Gate 1 suite pass locally.
+
+## 5. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -140,36 +98,33 @@ Gate 1.2   CURRENT
 Gate 1.2 does not alter Gate 0A, rewrite historical migrations, or fabricate
 historical truth.
 
-## 8. Stop rules
+## 6. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires any of:
 
 ```text
 domain importing ORM/framework/provider code
-application importing infrastructure implementations
-formal stage_letter runtime importing experiments/core/legacy runtime packages
-API/worker handler becoming canonical business-rule owner
-direct ORM mutations that bypass an existing application service contract
-repository method committing independently inside UnitOfWork flow
-multiple unrelated DB sessions inside one UnitOfWork
-implicit auto-commit on successful context exit
-provider/network calls hidden inside DB transactions
-implicit or lossy identity conversion
-fabricated persistence IDs or historical identities
-Follow and NotificationPreference collapsing again
-raw observation being treated as canonical composed status
-premature UNKNOWN -> OFFLINE or other Gate 0 semantic drift
+application importing concrete infrastructure
+formal stage_letter runtime importing api/workers/core/platform_adapters/experiments
+API/worker composition root becoming a domain-rule owner
+repository-owned commit or multiple unrelated UoW sessions
+provider/network calls inside application DB transactions
+implicit/lossy identity conversion or fabricated ids
+Follow and NotificationPreference collapsing
+raw observation being treated as canonical composed state
+UNKNOWN -> OFFLINE semantic drift
+premature copying of legacy probe/state logic into formal services
 ```
 
-## 9. Current progression
+## 7. Current progression
 
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS
 Gate 1.2-2  PASS
-Gate 1.2-3  PASS / 9-test + 88-test + PostgreSQL evidence
-Gate 1.2-4  CURRENT / service boundary + initial use-cases landed; local evidence pending
-Gate 1.2-5  NOT STARTED
+Gate 1.2-3  PASS
+Gate 1.2-4  PASS / 10 dedicated + 98 full Gate 1 tests
+Gate 1.2-5  CURRENT / formal API+worker roots landed; local evidence pending
 Gate 1.2-6  NOT STARTED
 Gate 1.2    CURRENT
 ```
