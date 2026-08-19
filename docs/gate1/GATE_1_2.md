@@ -1,6 +1,6 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 CURRENT**
+Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 CURRENT**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -9,6 +9,7 @@ Primary freezes:
 - [`GATE_1_2_BOUNDARY_FREEZE.md`](./GATE_1_2_BOUNDARY_FREEZE.md)
 - [`GATE_1_2_REPOSITORIES.md`](./GATE_1_2_REPOSITORIES.md)
 - [`GATE_1_2_UOW.md`](./GATE_1_2_UOW.md)
+- [`GATE_1_2_SERVICES.md`](./GATE_1_2_SERVICES.md)
 
 ## 1. Goal
 
@@ -53,71 +54,77 @@ all earlier Gate 1 tests.
 
 ## 4. Gate 1.2-2 — PASS
 
-Accepted identity evidence:
+Accepted evidence includes:
 
 ```text
 Repository identity tests: 7 / 7 PASS
 Full Gate 1 suite:          69 / 69 PASS
+PostgreSQL repository probe PASS
+Full post-implementation suite: 78 / 78 PASS
+Alembic head: c91e8d2f4a10
+Offline SQL compilation PASS
 ```
 
-Accepted real PostgreSQL repository evidence:
+The four formal repositories operate against PostgreSQL without fabricating
+legacy bridge facts, and repository methods do not own transaction commits.
+
+## 5. Gate 1.2-3 — PASS
+
+Accepted user-local evidence after correcting the mixed ORM/Core flush-order
+defect:
 
 ```text
-[gate12] seeded at Gate 1.1 head -> b63e4f9a1c20
-[gate12] bridge migration PASS -> c91e8d2f4a10
-PASS: Gate 1.2-2 SQLAlchemy repositories + legacy write bridge
-[cleanup] dropped stageletter_gate12_repo
+Dedicated UnitOfWork contracts: 9 tests PASS
+Full Gate 1 suite:              88 tests PASS
+PostgreSQL UnitOfWork probe:    PASS
 ```
 
-Accepted final static evidence:
+The real probe proves one shared AsyncSession across all four repositories,
+explicit atomic commit, normal uncommitted rollback, exceptional rollback +
+propagation, and safe FK ordering through explicit flush without early commit.
 
-```text
-Ran 78 tests in 0.444s
-OK
+Gate 1.2-3 is therefore **PASS / CLOSED**.
 
-c91e8d2f4a10 (head)
-
-PASS: Gate 1.2 offline SQL compilation
-```
-
-Gate 1.2-2 therefore closes PASS. The four formal repositories now operate
-against PostgreSQL without fabricating legacy bridge facts, and repository
-methods do not own transaction commits.
-
-## 5. Gate 1.2-3 — SQLAlchemy UnitOfWork — CURRENT
+## 6. Gate 1.2-4 — Application Services — CURRENT
 
 Landed assets:
 
 ```text
-stage_letter/infrastructure/db/uow.py
-tests/gate1/test_uow_contract.py
-scripts/gate12_uow_probe.py
-docs/gate1/GATE_1_2_UOW.md
+stage_letter/application/errors.py
+stage_letter/application/services/
+  __init__.py
+  creator.py
+  follow.py
+  live.py
+
+tests/gate1/test_application_services.py
+docs/gate1/GATE_1_2_SERVICES.md
 ```
 
-The first PostgreSQL UoW run exposed a real mixed ORM/Core flush-order defect:
-a pending `LiveSession` had not reached PostgreSQL before an FK-dependent Core
-`LiveEvent` INSERT. The repository was corrected by explicitly flushing pending
-ORM parent rows before FK-sensitive Core inserts; flush remains inside the same
-transaction and does not commit.
-
-The corrected real PostgreSQL probe now passes:
+Initial formal use-cases now cover:
 
 ```text
-[uow] database created
-...
-[uow] head PASS -> c91e8d2f4a10
-PASS: Gate 1.2-3 SQLAlchemy UnitOfWork transaction semantics
-[cleanup] dropped stageletter_gate12_uow
+CreatorApplicationService
+  save already-resolved Creator/Profile/PlatformAccount as one UoW
+  cross-entity creator identity checked before persistence
+
+FollowApplicationService
+  follow account using persisted creator identity
+  unfollow relation
+  update NotificationPreference separately
+
+LiveObservationApplicationService
+  persist normalized LiveObservation and commit
+  no transition/session/event interpretation
 ```
 
-This proves shared-session multi-repository commit, normal uncommitted rollback,
-exceptional rollback + propagation, and cleanup against isolated PostgreSQL.
+Gate 1.2-4 deliberately does not move Gate 0B/0C state semantics, provider
+composition, scheduler behavior, or notification eligibility into the service
+layer. Those remain later-gate responsibilities.
 
-Gate 1.2-3 remains CURRENT only because post-fix local static evidence is still
-required for the dedicated UoW contract tests and the full Gate 1 suite.
+Current acceptance evidence for the new application-service contracts is pending.
 
-## 6. Preserved inherited status
+## 7. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -133,7 +140,7 @@ Gate 1.2   CURRENT
 Gate 1.2 does not alter Gate 0A, rewrite historical migrations, or fabricate
 historical truth.
 
-## 7. Stop rules
+## 8. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires any of:
 
@@ -146,22 +153,22 @@ direct ORM mutations that bypass an existing application service contract
 repository method committing independently inside UnitOfWork flow
 multiple unrelated DB sessions inside one UnitOfWork
 implicit auto-commit on successful context exit
-provider/network calls hidden inside repository transactions
+provider/network calls hidden inside DB transactions
 implicit or lossy identity conversion
 fabricated persistence IDs or historical identities
-fake legacy anchor/job bridge rows
-session-based notification idempotency
-UNKNOWN -> OFFLINE or other Gate 0 semantic drift
+Follow and NotificationPreference collapsing again
+raw observation being treated as canonical composed status
+premature UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
 
-## 8. Current progression
+## 9. Current progression
 
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS
-Gate 1.2-2  PASS / 78-test + PostgreSQL + head + offline SQL evidence
-Gate 1.2-3  CURRENT / corrected PostgreSQL probe PASS; post-fix static evidence pending
-Gate 1.2-4  NOT STARTED
+Gate 1.2-2  PASS
+Gate 1.2-3  PASS / 9-test + 88-test + PostgreSQL evidence
+Gate 1.2-4  CURRENT / service boundary + initial use-cases landed; local evidence pending
 Gate 1.2-5  NOT STARTED
 Gate 1.2-6  NOT STARTED
 Gate 1.2    CURRENT
