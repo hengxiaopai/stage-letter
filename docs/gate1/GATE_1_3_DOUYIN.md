@@ -183,7 +183,35 @@ production_approved = false
 
 A provider-backed run is technical evidence only, not production authorization.
 
-## 8. New gateway contracts
+### First provider-run harness finding
+
+The first LIVE and OFFLINE operator attempts both returned UNKNOWN before a real
+provider call because the shell argument had been copied as a Markdown-rendered
+link instead of a raw URL:
+
+```text
+[https://www.douyin.com/user/<sec_uid>](https://www.douyin.com/user/<sec_uid>)
+```
+
+That wrapper is not a canonical gateway identity, so the strict gateway rejected
+it as an input failure. This is not accepted as LIVE/OFFLINE provider evidence.
+
+The probe CLI has now been hardened without weakening the gateway contract:
+
+```text
+raw URL / sec_uid                       -> unchanged
+Markdown link with identical label/url -> safely unwrap to raw URL
+Markdown link with different target    -> reject
+```
+
+Failure output now also preserves the requested expectation, whether CLI input
+normalization occurred, and the normalized failure detail. No cookie value or raw
+provider payload is printed.
+
+`tests/gate1/test_douyin_provider_probe_cli.py` adds three deterministic CLI
+normalization checks.
+
+## 8. Gateway and probe contracts
 
 `tests/gate1/test_douyin_streamget_gateway.py` adds ten checks covering:
 
@@ -200,8 +228,12 @@ explicit response identity mismatch -> AMBIGUOUS
 lazy StreamGet loading + no legacy/runtime/state ownership
 ```
 
+`tests/gate1/test_douyin_provider_probe_cli.py` adds three checks covering raw
+identity preservation, safe equal-target Markdown unwrapping, and rejection of a
+mismatched Markdown target.
+
 Starting from the accepted 144-test baseline, the expected complete Gate 1 suite
-is now 154 tests.
+is now 157 tests.
 
 ## 9. Acceptance
 
@@ -218,12 +250,13 @@ G. failure -> UNKNOWN preserved                     PASS
 H. no legacy runtime import                         PASS / CONTRACT
 I. formal StreamGet gateway landed                  PASS / CODE
 J. gateway contract tests                           PENDING / 10
-K. complete Gate 1 suite after gateway              PENDING / expected 154
-L. provider-backed decisive LIVE probe              PENDING
-M. provider-backed decisive OFFLINE probe           PENDING
+K. provider-probe CLI normalization contracts       PENDING / 3
+L. complete Gate 1 suite after gateway/probe CLI    PENDING / expected 157
+M. provider-backed decisive LIVE probe              PENDING
+N. provider-backed decisive OFFLINE probe           PENDING
 ```
 
-Gate 1.3-3 remains **CURRENT** until J-M pass.
+Gate 1.3-3 remains **CURRENT** until J-N pass.
 
 Provider-backed acceptance should use creators whose LIVE/OFFLINE state is
 independently checked at probe time. The provider probe must agree with that
