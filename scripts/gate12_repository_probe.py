@@ -15,8 +15,13 @@ import argparse
 import asyncio
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import asyncpg
 from alembic import command
@@ -55,7 +60,6 @@ from stage_letter.infrastructure.db.repositories import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
 GATE11_HEAD = "b63e4f9a1c20"
 EXPECTED_HEAD = "c91e8d2f4a10"
 DB_NAME_RE = re.compile(r"^[a-z0-9_]+$")
