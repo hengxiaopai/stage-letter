@@ -1,6 +1,6 @@
 # Gate 1.5 — State / Event Persistence
 
-Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 PASS / CLOSED / 1.5-3 ATOMIC PERSISTENCE LANDED / LOCAL+POSTGRES EVIDENCE PENDING**
+Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 PASS / CLOSED / 1.5-3 PASS / CLOSED / 1.5-4 CONSUMPTION LANDED / LOCAL EVIDENCE PENDING**
 
 Entry authority: Gate 1.4 PASS / CLOSED.
 
@@ -25,8 +25,8 @@ Gate 1.5 does not call platform providers, does not reinterpret provider metadat
 ```text
 Gate 1.5-1  Formal State Reducer + Transition Intent Contract     PASS / CLOSED
 Gate 1.5-2  Observation Replay + Persistent State Reconstruction  PASS / CLOSED
-Gate 1.5-3  Atomic Session / Event Persistence                     CURRENT
-Gate 1.5-4  Worker Consumption + Idempotent Processing             NOT STARTED
+Gate 1.5-3  Atomic Session / Event Persistence                     PASS / CLOSED
+Gate 1.5-4  Worker Consumption + Idempotent Processing             CURRENT
 Gate 1.5-5  Restart / Concurrency Acceptance                       NOT STARTED
 ```
 
@@ -35,180 +35,124 @@ Gate 1.5-5  Restart / Concurrency Acceptance                       NOT STARTED
 ```text
 1.5-1  12 / 12 dedicated + 295 / 295 complete Gate 1 PASS
 1.5-2  13 / 13 dedicated + 308 / 308 complete Gate 1 PASS
+1.5-3  13 / 13 dedicated + 321 / 321 complete Gate 1 PASS
+        + real PostgreSQL transition persistence probe PASS
 ```
 
-Gate 1.5-1 established the pure reducer and persistence-neutral OPEN/CLOSE intents. Gate 1.5-2 established restart reconstruction from formal `monitor:*` observations in durable row order, preserving late-arrival stale semantics without a hidden state table.
+Gate 1.5-3 accepted PostgreSQL evidence proves database-owned numeric session allocation, idempotent OPEN replay, same-session CLOSE, one session row, two canonical events, zero open sessions after close, and no provider/notification activity. The two earlier acceptance-probe defects were probe-only ORM/result-label issues and are regression-locked.
 
-Result: **Gate 1.5-2 PASS / CLOSED**.
+Result: **Gate 1.5-3 PASS / CLOSED**.
 
-## 4. Gate 1.5-3 — CURRENT
+## 4. Gate 1.5-4 — CURRENT
 
-### 4.1 Persistence-owned session identity
+### 4.1 Consumption boundary
 
-`LiveSession.session_id` remains a string in the formal domain boundary, but PostgreSQL owns its canonical BIGINT allocation.
-
-The `LiveRepository` port exposes:
-
-```text
-create_session(account_id, opened_at, origin, source_started_at) -> LiveSession
-get_session(session_id) -> LiveSession | None
-```
-
-The SQLAlchemy implementation inserts a new `live_sessions` row **without supplying `id`** and uses:
-
-```text
-RETURNING live_sessions.id
-```
-
-The returned PostgreSQL identity is losslessly serialized into the formal string `session_id`. Application/domain code never derives a BIGINT session id from `monitor:*`, provider ids, hashes, timestamps, or truncation.
-
-No new migration is required for this slice; the existing PostgreSQL primary-key sequence remains the allocation authority.
-
-### 4.2 Deterministic event identity
-
-`LiveEvent.event_id` is a string idempotency identity and is intentionally separate from the BIGINT session identity.
-
-Landed helper:
-
-```text
-make_live_event_id(account_id, observation_id, event_type)
-```
-
-It produces a bounded deterministic `live-event:<sha256>` value from the already-durable formal monitor observation identity plus account and event type. Hashing here is only for the string event idempotency key; it is never used to fabricate a session BIGINT.
-
-START and END event identities are type-specific and remain stable across restart/retry.
-
-### 4.3 Atomic transition persistence service
+Gate 1.5-4 connects durable observation evidence to the accepted reducer and transition persistence services without re-emitting historical intents.
 
 Landed:
 
 ```text
-stage_letter/application/services/live_transition.py
+stage_letter/application/services/live_consumption.py
 ```
 
-`LiveTransitionPersistenceApplicationService.apply(observation, intent)` performs one transaction:
+`LiveObservationConsumptionApplicationService.consume(account_id, observation_id)` performs:
 
 ```text
-verify PlatformAccount exists
-verify exact LiveObservation is already durable
-verify monitor: namespace
-verify intent timestamp/status/provenance matches decisive observation
-check deterministic LiveEvent id for prior completion
-
-OPEN_SESSION:
-  require no existing open session
-  allocate session id in PostgreSQL
-  persist LIVE_STARTED event
-
-CLOSE_SESSION:
-  require one open session
-  close that same session
-  persist LIVE_ENDED event
-
-commit once
+locate one durable formal monitor observation
+reconstruct reducer state immediately BEFORE that observation
+process exactly that target observation once in the reducer
+if no intent -> read-only result
+if one intent -> delegate to atomic transition persistence
+if more than one intent -> explicit invariant failure
 ```
 
-If the deterministic event already exists, the service reloads and validates the referenced canonical session/event and returns `reused_existing=True` without another commit.
+The target observation itself is deliberately excluded from reconstruction. This prevents it from being classified as a duplicate before the consumer gets a chance to decide its new transition.
 
-If event insertion loses a race after this UoW has allocated/closed a session, the service raises before commit; the UoW rollback prevents a partial session-without-event commit. Distributed concurrency acceptance remains Gate 1.5-5.
+### 4.2 Point-in-time reconstruction
 
-### 4.4 Frozen truth rules
+`StateReconstructionApplicationService` now also exposes:
 
 ```text
-OPEN_SESSION requires decisive LIVE observation
-CLOSE_SESSION requires decisive OFFLINE observation
-UNKNOWN can never enter transition persistence
-intent.occurred_at == decisive observation.observed_at
-OPEN source_started_at must equal persisted observation source_started_at
-BOOTSTRAP_LIVE origin -> BOOTSTRAP_LIVE event cause
-TRANSITION origin -> TRANSITION event cause
-CLOSE cause is always TRANSITION
-no provider call
-no NotificationDelivery creation
+reconstruct_before_observation(account_id, observation_id)
 ```
 
-### 4.5 Repository event contract
-
-`LiveRepository.append_event()` returns:
+It pages formal `monitor:*` observations in durable sequence order and stops when it reaches the requested target. The returned `ObservationConsumptionPoint` contains:
 
 ```text
-True  -> this transaction inserted the deterministic event id
-False -> that event id was already claimed
+prior  -> EngineSnapshot reconstructed only from earlier durable observations
+target -> exact ObservationReplayRecord to consume
 ```
 
-The SQLAlchemy implementation retains `ON CONFLICT DO NOTHING` on `uq_g11_live_event_id` and adds `RETURNING live_events.id`, allowing the application service to distinguish a successful atomic write from an idempotency/concurrency collision.
+Historical intents emitted while rebuilding `prior` are discarded exactly as in Gate 1.5-2. They are never forwarded to transition persistence.
 
-### 4.6 PostgreSQL acceptance probe
+### 4.3 Idempotent retry semantics
 
-Landed:
+Retrying the same decisive target performs the same deterministic sequence:
 
 ```text
-scripts/gate15_transition_persistence_probe.py
+same durable prior history
+  -> same pre-target reducer state
+  -> same target observation
+  -> same transition intent
+  -> same deterministic LiveEvent.event_id
 ```
 
-The probe uses the real local PostgreSQL database at migration head `d14e7c9a5b30`, creates an isolated formal account and two durable monitor observations, then proves:
+The Gate 1.5-3 persistence service therefore reuses the already-persisted canonical event/session on retry instead of creating duplicates.
+
+This is idempotent state-output processing. It does not claim exactly-once worker execution.
+
+### 4.4 No-intent observations stay read-only
+
+The consumer does not open a UnitOfWork or commit merely because an observation exists. `UNKNOWN`, first OFFLINE, pending confirmation samples, cancelled transitions, duplicate/stale reducer outcomes, and any other no-intent result remain read-only at the state-output layer.
+
+A historical transition that occurred before the target may be reconstructed semantically in memory, but its historical intent is not re-persisted.
+
+### 4.5 Worker composition
+
+`workers/composition.py` now exposes, from the same lazy UoW factory:
 
 ```text
-OPEN allocates a real numeric session id from PostgreSQL
-replaying the same OPEN reuses the existing event/session
-CLOSE closes that same session id
-exactly one session row exists
-exactly two canonical events exist
-zero open sessions remain after close
-provider_called = false
-notification_created = false
+state_reconstruction
+live_transitions
+live_observation_consumer
 ```
 
-Two acceptance-script defects were exposed during local execution before PostgreSQL evidence could be accepted: first, the probe referenced physical database column names as Python ORM attributes; second, SQLAlchemy result-row keys followed the underlying mapped column names rather than the intended domain attribute names. Both are probe-only defects, not runtime/schema failures.
+Construction still performs no database/provider I/O. The consumer has no adapter registry, provider gateway, notification repository, or queue dependency.
 
-The probe now selects mapped session fields with explicit stable labels:
+### 4.6 Landed deterministic contracts
 
 ```text
-id                -> session_id
-opened_at         -> opened_at
-closed_at         -> closed_at
-origin            -> origin
-source_started_at -> source_started_at
+tests/gate1/test_gate15_observation_consumption.py  12 tests
 ```
 
-This prevents ORM attribute names and physical column names (`started_at` / `ended_at`) from leaking into result-row access. Probe rows are removed afterward. This remains non-production evidence only.
+The contracts cover pre-target reconstruction, missing/non-monitor target rejection, no-intent OFFLINE/UNKNOWN behavior, bootstrap and real transition OPEN emission, stale-target suppression, historical-intent discard, deterministic retry delegation, worker wiring without construction I/O, and dependency-boundary purity.
 
-### 4.7 Landed deterministic contracts
+Accepted entering baseline is 321 tests. Twelve new tests raise the expected complete Gate 1 suite to:
 
 ```text
-tests/gate1/test_gate15_transition_persistence.py       12 tests
-tests/gate1/test_gate15_transition_probe_contract.py     1 test
+333 / 333
 ```
 
-The contracts cover deterministic event identity, persistence-owned session allocation, atomic OPEN, bootstrap provenance, atomic CLOSE, event reuse, missing/mismatched durable evidence, monitor/status gates, missing open-session failure, no partial commit after event collision, application boundary purity, and explicit result labels in the PostgreSQL acceptance probe.
-
-Accepted entering baseline is 308 tests. Thirteen new tests raise the expected complete Gate 1 suite to:
+### 4.7 Acceptance — Gate 1.5-4
 
 ```text
-321 / 321
+A. Gate 1.5-3 PASS / CLOSED                           PASS
+B. target excluded from historical reconstruction     PASS / CONTRACT
+C. historical intents never forwarded to persistence  PASS / CONTRACT
+D. no-intent observations remain read-only            PASS / CONTRACT
+E. decisive target delegates exactly one new intent   PASS / CONTRACT
+F. retry reproduces same target intent                 PASS / CONTRACT
+G. worker construction remains side-effect free        PASS / CONTRACT
+H. no provider/notification dependency                 PASS / CONTRACT
+I. dedicated Gate 1.5-4 contracts                     PENDING / 12
+J. complete Gate 1 suite                              PENDING / expected 333
 ```
 
-### 4.8 Acceptance — Gate 1.5-3
-
-```text
-A. Gate 1.5-2 PASS / CLOSED                         PASS
-B. PostgreSQL-owned BIGINT session allocation       PASS / CODE
-C. no derived/fabricated numeric session identity   PASS / CONTRACT
-D. deterministic string LiveEvent idempotency       PASS / CONTRACT
-E. OPEN session + LIVE_STARTED one-UoW atomicity    PASS / CONTRACT
-F. CLOSE session + LIVE_ENDED one-UoW atomicity     PASS / CONTRACT
-G. existing event reuse without duplicate commit    PASS / CONTRACT
-H. UNKNOWN/provider/notification boundaries         PASS / CONTRACT
-I. dedicated Gate 1.5-3 contracts                   PENDING / 13
-J. complete Gate 1 suite                            PENDING / expected 321
-K. real PostgreSQL transition persistence probe     PENDING / LOCAL POSTGRES
-```
-
-Gate 1.5-3 remains CURRENT until I-K pass.
+Gate 1.5-4 remains CURRENT until I-J pass.
 
 ## 5. Next slice
 
-Gate 1.5-4 will connect durable observation consumption, reconstruction, reducer processing, and the atomic transition persistence service into one worker use-case. It must ensure an observation that emits no intent stays read-only, a decisive transition is applied idempotently, and retries never replay historical intents into duplicate session/event output.
+Gate 1.5-5 will provide real PostgreSQL restart/concurrency acceptance for the complete consumption path. It will cross-check reconstructed reducer state against persisted open-session/event facts, exercise retry after process restart, and test concurrent consumption of the same decisive observation without claiming exactly-once worker execution.
 
 ## 6. Stop rules
 
@@ -222,11 +166,13 @@ Gate 1.5 calling provider adapters
 sorting replay solely by observed_at and losing late-arrival stale semantics
 legacy/manual observation silently entering formal reconstruction
 replaying historical intents into duplicate session/event writes
+processing the target observation inside prior reconstruction
 hashing/truncating/faking BIGINT session identity
 inventing historical session origin/event cause
 partial commit of session without matching event
-creating notification delivery from state reducer/replay/transition persistence
+creating NotificationDelivery from state reduction/consumption
 relying on process memory as the only restart truth
+claiming exactly-once worker execution from idempotent persistence
 formal runtime importing experiments or platform_adapters
 ```
 
