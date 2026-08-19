@@ -1,6 +1,6 @@
 # Gate 1.3-3 — Douyin Formal Adapter Migration
 
-Status: **CURRENT / FORMAL ADAPTER CORE PASS / STREAMGET GATEWAY LANDED / PROVIDER EVIDENCE PENDING**
+Status: **CURRENT / FORMAL ADAPTER CORE PASS / STREAMGET GATEWAY LANDED / PROVIDER RUNTIME INSTALL PENDING**
 
 Entry authority: Gate 1.3-2 PASS / CLOSED.
 
@@ -61,15 +61,16 @@ workers/*
 
 ## 3. Formal StreamGet gateway — landed
 
-New formal provider transport:
+Formal provider transport:
 
 ```text
 stage_letter/infrastructure/platforms/douyin_streamget.py
 tests/gate1/test_douyin_streamget_gateway.py
 scripts/gate13_douyin_provider_probe.py
+requirements-provider-douyin.txt
 ```
 
-The runtime chain is now:
+The runtime chain is:
 
 ```text
 StreamGetDouyinGateway
@@ -85,6 +86,13 @@ StreamGet `fetch_app_stream_data()` and does not import the legacy
 StreamGet is imported lazily only when a real provider call occurs. Importing the
 formal platform package therefore does not itself require the optional provider
 library to be installed.
+
+The optional Douyin provider dependency is pinned separately to the accepted
+Gate 0A runtime baseline:
+
+```text
+streamget==4.0.10
+```
 
 ## 4. Provider transport rules
 
@@ -120,11 +128,12 @@ Gate 1.3-2 diagnostic vocabulary. The formal adapter then maps live-read failure
 to UNKNOWN, never OFFLINE.
 
 ```text
-TimeoutError          -> TIMEOUT diagnostic -> UNKNOWN
-ConnectionError       -> NETWORK diagnostic -> UNKNOWN
-generic wrapper error -> UNKNOWN diagnostic -> UNKNOWN
-non-dict payload      -> SCHEMA_DRIFT diagnostic -> UNKNOWN
+TimeoutError              -> TIMEOUT diagnostic -> UNKNOWN
+ConnectionError           -> NETWORK diagnostic -> UNKNOWN
+generic wrapper error     -> UNKNOWN diagnostic -> UNKNOWN
+non-dict payload          -> SCHEMA_DRIFT diagnostic -> UNKNOWN
 explicit sec_uid mismatch -> AMBIGUOUS diagnostic -> UNKNOWN
+missing StreamGet runtime -> UNKNOWN diagnostic -> UNKNOWN
 ```
 
 If StreamGet returns an explicit sec_uid-like field, a mismatch is rejected. If
@@ -155,9 +164,43 @@ stale title never overrides explicit state
 canonical_url comes from stable profile identity
 ```
 
-## 7. Provider-backed probe
+## 7. Provider runtime preflight
 
-Run the formal chain directly:
+Before a real provider-backed probe, install the separate provider runtime into
+the same project venv used by the probe:
+
+```text
+python -m pip install -r requirements-provider-douyin.txt
+streamget install-node
+```
+
+Then verify the interpreter can import the accepted baseline before probing:
+
+```text
+python -c "from importlib.metadata import version; import streamget; print(version('streamget'))"
+```
+
+Expected baseline:
+
+```text
+4.0.10
+```
+
+The first corrected sec_uid-based LIVE and OFFLINE operator probes both returned:
+
+```text
+status = UNKNOWN
+provider_failure_kind = UNKNOWN
+provider_failure_detail = streamget unavailable: ModuleNotFoundError
+```
+
+This is a **provider-runtime dependency gap**, not LIVE/OFFLINE evidence and not a
+state-mapping defect. It confirms that the probe fails conservatively before any
+provider request when StreamGet is absent from the active `.venv`.
+
+## 8. Provider-backed probe
+
+Run the formal chain directly after preflight:
 
 ```text
 python scripts/gate13_douyin_provider_probe.py <sec_uid-or-profile-url> --expect LIVE
@@ -183,59 +226,18 @@ production_approved = false
 
 A provider-backed run is technical evidence only, not production authorization.
 
-### First provider-run harness finding
+The probe CLI also safely unwraps a Markdown-rendered link only when its visible
+URL and target URL are identical; the formal gateway itself remains strict.
 
-The first LIVE and OFFLINE operator attempts both returned UNKNOWN before a real
-provider call because the shell argument had been copied as a Markdown-rendered
-link instead of a raw URL:
+## 9. Gateway and probe contracts
 
-```text
-[https://www.douyin.com/user/<sec_uid>](https://www.douyin.com/user/<sec_uid>)
-```
-
-That wrapper is not a canonical gateway identity, so the strict gateway rejected
-it as an input failure. This is not accepted as LIVE/OFFLINE provider evidence.
-
-The probe CLI has now been hardened without weakening the gateway contract:
-
-```text
-raw URL / sec_uid                       -> unchanged
-Markdown link with identical label/url -> safely unwrap to raw URL
-Markdown link with different target    -> reject
-```
-
-Failure output now also preserves the requested expectation, whether CLI input
-normalization occurred, and the normalized failure detail. No cookie value or raw
-provider payload is printed.
-
-`tests/gate1/test_douyin_provider_probe_cli.py` adds three deterministic CLI
-normalization checks.
-
-## 8. Gateway and probe contracts
-
-`tests/gate1/test_douyin_streamget_gateway.py` adds ten checks covering:
-
-```text
-raw sec_uid -> stable profile URL
-profile URL -> same sec_uid
-historical live URL rejection
-profile mapping without invented avatar/bio
-raw status and metadata pass-through
-explicit positive start_time parsing only
-timeout/network normalization
-generic runtime failure -> UNKNOWN diagnostic
-explicit response identity mismatch -> AMBIGUOUS
-lazy StreamGet loading + no legacy/runtime/state ownership
-```
-
-`tests/gate1/test_douyin_provider_probe_cli.py` adds three checks covering raw
-identity preservation, safe equal-target Markdown unwrapping, and rejection of a
-mismatched Markdown target.
+`tests/gate1/test_douyin_streamget_gateway.py` adds ten gateway checks and
+`tests/gate1/test_douyin_provider_probe_cli.py` adds three CLI-input checks.
 
 Starting from the accepted 144-test baseline, the expected complete Gate 1 suite
-is now 157 tests.
+is 157 tests.
 
-## 9. Acceptance
+## 10. Acceptance
 
 Current Gate 1.3-3 acceptance state:
 
@@ -249,20 +251,22 @@ F. stable identity rules frozen                     PASS
 G. failure -> UNKNOWN preserved                     PASS
 H. no legacy runtime import                         PASS / CONTRACT
 I. formal StreamGet gateway landed                  PASS / CODE
-J. gateway contract tests                           PENDING / 10
-K. provider-probe CLI normalization contracts       PENDING / 3
-L. complete Gate 1 suite after gateway/probe CLI    PENDING / expected 157
-M. provider-backed decisive LIVE probe              PENDING
-N. provider-backed decisive OFFLINE probe           PENDING
+J. optional provider dependency pin                 PASS / CODE
+K. gateway contract tests                           PENDING / 10
+L. provider-probe CLI normalization contracts       PENDING / 3
+M. complete Gate 1 suite after gateway/probe CLI    PENDING / expected 157
+N. StreamGet provider runtime preflight              PENDING
+O. provider-backed decisive LIVE probe              PENDING
+P. provider-backed decisive OFFLINE probe           PENDING
 ```
 
-Gate 1.3-3 remains **CURRENT** until J-N pass.
+Gate 1.3-3 remains **CURRENT** until K-P pass.
 
 Provider-backed acceptance should use creators whose LIVE/OFFLINE state is
 independently checked at probe time. The provider probe must agree with that
 current ground truth. This does not close the separate Gate 0A lifecycle gap.
 
-## 10. Stop rules
+## 11. Stop rules
 
 Stop with FAIL/BLOCKED if progress requires:
 
@@ -270,7 +274,7 @@ Stop with FAIL/BLOCKED if progress requires:
 legacy platform_adapters imported into stage_letter runtime
 experiments imported into formal runtime
 raw status other than accepted integer 2/4 guessed as decisive truth
-request/parse/auth failure -> OFFLINE
+request/parse/auth/dependency failure -> OFFLINE
 room URL treated as canonical creator identity
 stale title treated as live-state evidence
 provider identity mismatch silently accepted
