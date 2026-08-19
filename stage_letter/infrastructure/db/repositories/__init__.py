@@ -5,16 +5,26 @@ eligibility, provider calls, and transaction commits do not belong in
 repository classes.
 """
 
+from .common import RepositoryMappingError
+from .creator import SQLAlchemyCreatorRepository
+from .follow import SQLAlchemyFollowRepository
 from .identity import (
     MAX_POSTGRES_BIGINT,
     PersistenceIdentityError,
     parse_persistence_id,
     serialize_persistence_id,
 )
+from .live import SQLAlchemyLiveRepository
+from .notification import SQLAlchemyNotificationRepository
 
 __all__ = [
     "MAX_POSTGRES_BIGINT",
     "PersistenceIdentityError",
+    "RepositoryMappingError",
+    "SQLAlchemyCreatorRepository",
+    "SQLAlchemyFollowRepository",
+    "SQLAlchemyLiveRepository",
+    "SQLAlchemyNotificationRepository",
     "parse_persistence_id",
     "serialize_persistence_id",
 ]
