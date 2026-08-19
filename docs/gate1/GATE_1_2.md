@@ -1,6 +1,6 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 PASS / 1.2-2 CURRENT**
+Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 CURRENT**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -8,6 +8,7 @@ Primary freezes:
 
 - [`GATE_1_2_BOUNDARY_FREEZE.md`](./GATE_1_2_BOUNDARY_FREEZE.md)
 - [`GATE_1_2_REPOSITORIES.md`](./GATE_1_2_REPOSITORIES.md)
+- [`GATE_1_2_UOW.md`](./GATE_1_2_UOW.md)
 
 ## 1. Goal
 
@@ -50,49 +51,16 @@ OK
 The full suite includes the seven AST/service-boundary contracts and preserves
 all earlier Gate 1 tests.
 
-Gate 1.2-1: **PASS**.
+## 4. Gate 1.2-2 — PASS
 
-## 4. Gate 1.2-2 — CURRENT
-
-Identity contract evidence:
+Accepted identity evidence:
 
 ```text
 Repository identity tests: 7 / 7 PASS
 Full Gate 1 suite:          69 / 69 PASS
 ```
 
-Implementation assets landed:
-
-```text
-migrations/versions/c91e8d2f4a10_gate12_relax_legacy_write_bridges.py
-
-stage_letter/infrastructure/db/repositories/
-  common.py
-  identity.py
-  creator.py
-  follow.py
-  live.py
-  notification.py
-
-tests/gate1/test_repository_implementations.py
-scripts/gate12_repository_probe.py
-```
-
-The compatibility revision follows `b63e4f9a1c20` and lets new formal rows leave
-obsolete legacy bridge fields NULL instead of fabricating anchors, notification
-jobs, stale status, confidence, or provenance facts. It also removes the old
-session-keyed delivery uniqueness because canonical delivery idempotency is
-already event-keyed.
-
-The four repository implementations satisfy the formal ports structurally and
-do not own transaction commits. The LiveRepository observation lookup is aligned
-with the already accepted durable identity:
-
-```text
-(account_id, source, observation_id)
-```
-
-Real PostgreSQL repository evidence now passes:
+Accepted real PostgreSQL repository evidence:
 
 ```text
 [gate12] seeded at Gate 1.1 head -> b63e4f9a1c20
@@ -101,16 +69,44 @@ PASS: Gate 1.2-2 SQLAlchemy repositories + legacy write bridge
 [cleanup] dropped stageletter_gate12_repo
 ```
 
-This proves the bridge migration and four repository implementations work
-against isolated PostgreSQL without fabricating legacy bridge facts. The first
-probe attempt was blocked only by direct-script Python import bootstrap and was
-fixed before the successful run.
+Accepted final static evidence:
 
-Gate 1.2-2 is not closed yet. Remaining acceptance evidence is the post-change
-full Gate 1 suite/boundary contracts, the Alembic head check, and UTF-8 offline
-SQL compilation through `c91e8d2f4a10`.
+```text
+Ran 78 tests in 0.444s
+OK
 
-## 5. Preserved inherited status
+c91e8d2f4a10 (head)
+
+PASS: Gate 1.2 offline SQL compilation
+```
+
+Gate 1.2-2 therefore closes PASS. The four formal repositories now operate
+against PostgreSQL without fabricating legacy bridge facts, and repository
+methods do not own transaction commits.
+
+## 5. Gate 1.2-3 — SQLAlchemy UnitOfWork — CURRENT
+
+Landed assets:
+
+```text
+stage_letter/infrastructure/db/uow.py
+tests/gate1/test_uow_contract.py
+scripts/gate12_uow_probe.py
+docs/gate1/GATE_1_2_UOW.md
+```
+
+The concrete UnitOfWork creates one AsyncSession per entered context and binds
+all four repositories to that exact session. Commit is explicit; normal exit
+without commit rolls back; exceptional exit before commit rolls back and
+propagates; the session always closes.
+
+The PostgreSQL probe will verify multi-repository atomic commit and rollback in
+an isolated `stageletter_gate12_uow` database.
+
+Gate 1.2-3 remains CURRENT until its local contract suite, full Gate 1 suite, and
+real PostgreSQL transaction probe pass.
+
+## 6. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -123,10 +119,10 @@ Gate 1.1   PASS
 Gate 1.2   CURRENT
 ```
 
-Gate 1.2 does not alter the Gate 0A status and does not rewrite historical
-migrations or fabricate historical truth.
+Gate 1.2 does not alter Gate 0A, rewrite historical migrations, or fabricate
+historical truth.
 
-## 6. Stop rules
+## 7. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires any of:
 
@@ -137,6 +133,8 @@ formal stage_letter runtime importing experiments/core/legacy runtime packages
 API/worker handler becoming canonical business-rule owner
 direct ORM mutations that bypass an existing application service contract
 repository method committing independently inside UnitOfWork flow
+multiple unrelated DB sessions inside one UnitOfWork
+implicit auto-commit on successful context exit
 provider/network calls hidden inside repository transactions
 implicit or lossy identity conversion
 fabricated persistence IDs or historical identities
@@ -145,13 +143,13 @@ session-based notification idempotency
 UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
 
-## 7. Current progression
+## 8. Current progression
 
 ```text
 Gate 1.1    PASS
-Gate 1.2-1  PASS / 62-test full suite incl. 7 boundary contracts
-Gate 1.2-2  CURRENT / PostgreSQL probe PASS; static acceptance pending
-Gate 1.2-3  NOT STARTED
+Gate 1.2-1  PASS
+Gate 1.2-2  PASS / 78-test + PostgreSQL + head + offline SQL evidence
+Gate 1.2-3  CURRENT / UnitOfWork code + contracts + DB probe landed; local evidence pending
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
 Gate 1.2-6  NOT STARTED
