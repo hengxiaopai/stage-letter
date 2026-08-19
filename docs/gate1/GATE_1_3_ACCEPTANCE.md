@@ -1,14 +1,21 @@
 # Gate 1.3 — Adapter Framework Final Acceptance
 
-Status: **CURRENT / 1.3-4 PASS / 1.3-5 ACCEPTANCE CONTRACTS LANDED / LOCAL EVIDENCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.3-4A/B/C/D PASS / CLOSED.
 
-## 1. Goal
+## 1. Accepted final local evidence
 
-Gate 1.3-5 is the final deterministic acceptance slice for the formal platform-adapter framework. It does not repeat provider probing already accepted in earlier slices. It verifies that the four formal platforms remain wired through one conservative, infrastructure-owned boundary without reintroducing legacy runtime dependencies or provider-specific state leakage into the formal domain.
+User-local deterministic acceptance on 2026-08-19:
 
-## 2. Accepted provider evidence entering 1.3-5
+```text
+Gate 1.3 final acceptance contracts   10 / 10 PASS
+complete Gate 1 suite                235 / 235 PASS
+```
+
+These results close Gate 1.3-5 and Gate 1.3. They are local test evidence, not a claim of CI execution.
+
+## 2. Accepted provider evidence
 
 ```text
 Douyin     real LIVE control     PASS
@@ -21,7 +28,7 @@ Douyu      real LIVE control     PASS
 Douyu      real OFFLINE control  PASS
 ```
 
-The provider controls are not re-run in 1.3-5 unless a deterministic regression shows that a platform semantic or transport boundary changed materially.
+No provider probe was repeated merely for final acceptance because each platform's decisive LIVE/OFFLINE evidence had already been accepted in its migration slice.
 
 ## 3. Frozen formal truth
 
@@ -54,13 +61,9 @@ Douyu:
 
 Provider metadata such as stale page titles, room metadata, replay content, or historical room fields never overrides explicit live-state evidence.
 
-## 4. Final acceptance contracts landed
+## 4. Final acceptance coverage
 
-```text
-tests/gate1/test_gate13_acceptance.py  10 tests
-```
-
-The contracts verify:
+The accepted final contracts verify:
 
 ```text
 formal LiveStatus remains exactly three-state
@@ -76,49 +79,7 @@ Douyu videoLoop alone cannot promote creator LIVE
 Huya/Douyu conflicting explicit status evidence remains non-decisive
 ```
 
-## 5. Expected local evidence
-
-Accepted complete Gate 1 baseline entering 1.3-5 is:
-
-```text
-225 / 225 PASS
-```
-
-The ten final acceptance contracts raise the expected complete Gate 1 suite to:
-
-```text
-10 / 10 Gate 1.3 final acceptance contracts
-235 / 235 complete Gate 1 suite
-```
-
-These are user-local deterministic tests. They are not a claim of CI execution or a new provider-network run.
-
-## 6. Acceptance
-
-```text
-A. Gate 1.3-4A Bilibili PASS / CLOSED              PASS
-B. Gate 1.3-4B Huya PASS / CLOSED                  PASS
-C. Gate 1.3-4C Douyu PASS / CLOSED                 PASS
-D. Gate 1.3-4D registry acceptance PASS / CLOSED   PASS
-E. exact four-platform formal registry             PASS / CONTRACT
-F. evidence-backed state mappings preserved        PASS / CONTRACT
-G. UNKNOWN/failure conservatism preserved          PASS / CONTRACT
-H. replay/loop cannot fabricate creator LIVE       PASS / CONTRACT
-I. no legacy runtime dependency                    PASS / CONTRACT
-J. no session/event/notification ownership         PASS / CONTRACT
-K. dedicated Gate 1.3 acceptance tests             PENDING / 10
-L. complete Gate 1 suite                           PENDING / expected 235
-```
-
-Gate 1.3 remains CURRENT until K-L pass.
-
-## 7. Inherited caveat
-
-Gate 0A remains **DEGRADED** for the separate deferred same-creator OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Gate 1.3 acceptance must not rewrite that historical status.
-
-## 8. Exit
-
-If 10/10 and 235/235 pass, Gate 1.3 may close as:
+## 5. Exit
 
 ```text
 Gate 1.3-5  PASS / CLOSED
@@ -126,4 +87,6 @@ Gate 1.3    PASS / CLOSED
 Gate 1.4    CURRENT
 ```
 
-No additional real provider controls are required merely to close Gate 1.3, because each platform's decisive LIVE/OFFLINE provider evidence was already accepted in its platform slice.
+## 6. Inherited caveat
+
+Gate 0A remains **DEGRADED** for the separate deferred same-creator OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Gate 1.3 success does not rewrite that historical status.
