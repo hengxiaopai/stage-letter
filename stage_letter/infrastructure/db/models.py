@@ -1,9 +1,9 @@
-"""Gate 1.1 formal SQLAlchemy persistence models.
+"""Gate 1 formal SQLAlchemy persistence models.
 
-This module describes the post-hardening persistence shape for the ten frozen
-V0.1 domain entities. Existing legacy tables/columns remain readable during the
-migration window; bridge fields are explicitly named ``legacy_*`` and are not
-part of the formal domain vocabulary.
+This module describes the post-Gate-1.2 compatibility persistence shape for the
+ten frozen V0.1 domain entities. Existing legacy tables/columns remain readable
+during the migration window; bridge fields are explicitly named ``legacy_*``
+and are not part of the formal domain vocabulary.
 
 Alembic remains the schema-change authority. Do not use ``metadata.create_all``
 as a substitute for the forward-only Gate 1 migration chain.
@@ -78,11 +78,11 @@ class PlatformAccountModel(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("creators.id"), nullable=False)
-    legacy_anchor_id: Mapped[int] = mapped_column("anchor_id", BigInteger, nullable=False)
+    legacy_anchor_id: Mapped[int | None] = mapped_column("anchor_id", BigInteger, nullable=True)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     platform_user_id: Mapped[str] = mapped_column(String(128), nullable=False)
     room_id: Mapped[str | None] = mapped_column(String(128))
-    canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Administrative configuration only. Runtime health is persisted separately.
     is_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -165,15 +165,14 @@ class LiveSessionModel(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     platform_account_id: Mapped[int] = mapped_column(ForeignKey("platform_accounts.id"), nullable=False)
-    # Legacy NOT NULL bridge fields remain until a later CONTRACT gate.
-    legacy_anchor_id: Mapped[int] = mapped_column("anchor_id", BigInteger, nullable=False)
-    legacy_platform: Mapped[str] = mapped_column("platform", String(32), nullable=False)
+    legacy_anchor_id: Mapped[int | None] = mapped_column("anchor_id", BigInteger, nullable=True)
+    legacy_platform: Mapped[str | None] = mapped_column("platform", String(32), nullable=True)
     opened_at: Mapped[datetime] = mapped_column("started_at", DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column("ended_at", DateTime(timezone=True))
     origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    started_at_source: Mapped[str] = mapped_column(String(16), nullable=False, default="probe")
-    legacy_state: Mapped[str] = mapped_column("state", String(16), nullable=False, default="OPEN")
+    started_at_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    legacy_state: Mapped[str | None] = mapped_column("state", String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -194,12 +193,14 @@ class LiveEventModel(Base):
     event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     platform_account_id: Mapped[int] = mapped_column(ForeignKey("platform_accounts.id"), nullable=False)
     live_session_id: Mapped[int | None] = mapped_column(ForeignKey("live_sessions.id"))
-    legacy_anchor_id: Mapped[int] = mapped_column("anchor_id", BigInteger, nullable=False)
+    legacy_anchor_id: Mapped[int | None] = mapped_column("anchor_id", BigInteger, nullable=True)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     cause: Mapped[str | None] = mapped_column(String(32), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    legacy_detected_at: Mapped[datetime] = mapped_column("detected_at", DateTime(timezone=True), nullable=False)
-    legacy_confidence: Mapped[str] = mapped_column("confidence", String(16), nullable=False, default="normal")
+    legacy_detected_at: Mapped[datetime | None] = mapped_column(
+        "detected_at", DateTime(timezone=True), nullable=True
+    )
+    legacy_confidence: Mapped[str | None] = mapped_column("confidence", String(16), nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -217,8 +218,9 @@ class NotificationDeliveryModel(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    # Supporting legacy queue bookkeeping remains during EXPAND/BACKFILL.
-    legacy_notification_job_id: Mapped[int] = mapped_column("notification_job_id", BigInteger, nullable=False)
+    legacy_notification_job_id: Mapped[int | None] = mapped_column(
+        "notification_job_id", BigInteger, nullable=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     live_event_id: Mapped[int] = mapped_column(ForeignKey("live_events.id"), nullable=False)
     live_session_id: Mapped[int | None] = mapped_column(ForeignKey("live_sessions.id"))
