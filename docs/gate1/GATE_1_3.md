@@ -79,6 +79,7 @@ Provider transport is landed through:
 stage_letter/infrastructure/platforms/douyin_streamget.py
 tests/gate1/test_douyin_streamget_gateway.py
 scripts/gate13_douyin_provider_probe.py
+requirements-provider-douyin.txt
 ```
 
 The runtime chain is:
@@ -90,32 +91,39 @@ StreamGetDouyinGateway
           -> LiveSnapshot
 ```
 
-The new gateway uses StreamGet PROFILE/sec_uid reads only, lazily imports
-StreamGet on real provider access, and does not import legacy
-`platform_adapters/*`, `experiments/*`, `core/*`, `api/*`, or `workers/*` inward.
+The gateway uses StreamGet PROFILE/sec_uid reads only, lazily imports StreamGet
+on real provider access, and does not import legacy `platform_adapters/*`,
+`experiments/*`, `core/*`, `api/*`, or `workers/*` inward.
 
-The first operator LIVE/OFFLINE probe attempts returned UNKNOWN because the CLI
-identity argument was copied as a Markdown-wrapped link rather than a raw Douyin
-profile URL. That failed before decisive provider evidence and therefore counts as
-probe-harness/input evidence only, not a LIVE/OFFLINE result.
+Provider runtime issues discovered during operator evidence collection were fixed
+without weakening truth semantics: Markdown-rendered URL input was isolated to
+probe CLI normalization; StreamGet was installed in the active venv; SOCKS
+support was added for proxied Node runtime installation. All such failures stayed
+UNKNOWN until the provider chain became operational.
 
-The CLI is now hardened to unwrap a Markdown link only when its visible URL and
-target URL are identical, while the formal gateway remains strict. A mismatched
-Markdown target is rejected. Three dedicated probe-CLI contracts were added.
+Decisive provider-backed evidence is now accepted:
 
-Current pending evidence is therefore:
+```text
+LIVE control    大坤坤  -> LIVE    / expectation_match=true / streamget.profile
+OFFLINE control 陈泽-   -> OFFLINE / expectation_match=true / streamget.profile
+cookie required         false
+production approved     false
+```
+
+These runs prove the formal provider transport can produce both decisive LIVE and
+OFFLINE facts through the new runtime chain. They do not prove or close the
+separate Gate 0A same-creator OFFLINE -> LIVE -> OFFLINE lifecycle gap.
+
+Remaining Gate 1.3-3 evidence is deterministic local regression only:
 
 ```text
 10 / 10 StreamGet gateway contracts
 3 / 3 provider-probe CLI normalization contracts
 157 / 157 complete Gate 1 suite
-one independently verified LIVE provider probe
-one independently verified OFFLINE provider probe
 ```
 
-The real probes must use current independently checked creator state. They are
-technical transport evidence only and do not upgrade Gate 0A lifecycle evidence
-or production authorization.
+If all three remain green, Gate 1.3-3 may close PASS / CLOSED and Gate 1.3-4 may
+start. No additional real Douyin probe is required for this slice.
 
 ## 5. Legacy treatment
 
@@ -142,7 +150,7 @@ Gate 1.3   CURRENT
 ```text
 Gate 1.3-1  PASS
 Gate 1.3-2  PASS
-Gate 1.3-3  CURRENT / adapter core PASS; StreamGet gateway + hardened probe landed; local/provider evidence pending
+Gate 1.3-3  CURRENT / adapter core PASS; provider LIVE+OFFLINE evidence PASS; final local suite pending
 Gate 1.3-4  NOT STARTED
 Gate 1.3-5  NOT STARTED
 Gate 1.3    CURRENT
