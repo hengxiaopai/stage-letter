@@ -1,16 +1,15 @@
 # Gate 1.3-2 — Provider Error / Ambiguity Normalization
 
-Status: **CURRENT / CODE + CONTRACTS LANDED / LOCAL EVIDENCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.3-1 PASS / CLOSED.
 
 ## 1. Purpose
 
 Gate 1.3-2 freezes how provider/transport failures and ambiguous responses are
-represented before any concrete provider adapter is migrated into the formal
-runtime.
+represented before concrete provider adapters enter the formal runtime.
 
-The rule is intentionally conservative:
+The accepted conservative rule is:
 
 ```text
 provider failure / ambiguity
@@ -25,9 +24,9 @@ provider failure / ambiguity
 Only explicit provider evidence mapped by a concrete adapter may produce LIVE or
 OFFLINE.
 
-## 2. Diagnostic failure vocabulary
+## 2. Accepted diagnostic vocabulary
 
-Formal infrastructure now defines `ProviderFailureKind`:
+Infrastructure-only `ProviderFailureKind` remains:
 
 ```text
 TIMEOUT
@@ -44,8 +43,7 @@ UPSTREAM_ERROR
 UNKNOWN
 ```
 
-These values are diagnostic infrastructure vocabulary, not additions to formal
-`LiveStatus`. Canonical live truth remains exactly:
+These diagnostics are not additions to formal `LiveStatus`, which remains exactly:
 
 ```text
 LIVE
@@ -53,9 +51,7 @@ OFFLINE
 UNKNOWN
 ```
 
-## 3. HTTP normalization
-
-`classify_http_failure()` provides conservative transport classification:
+## 3. Accepted normalization behavior
 
 ```text
 401      -> AUTH_REQUIRED
@@ -63,122 +59,69 @@ UNKNOWN
 404      -> NOT_FOUND
 429      -> RATE_LIMITED
 5xx      -> UPSTREAM_ERROR
-other    -> UNKNOWN
+other    -> UNKNOWN diagnostic
+
+TimeoutError     -> TIMEOUT
+ConnectionError  -> NETWORK
+other exception  -> UNKNOWN diagnostic
 ```
 
-None of those classifications implies OFFLINE.
+Every failure kind converts to an UNKNOWN live snapshot through
+`unknown_snapshot_for_failure()` and does not invent `source_started_at` or
+`title`.
 
-## 4. Exception normalization
-
-`classify_exception()` only infers categories that Python exception type makes
-safe to infer:
+`normalize_explicit_status()` maps only provider values explicitly supplied by a
+concrete adapter:
 
 ```text
-TimeoutError      -> TIMEOUT
-ConnectionError   -> NETWORK
-other exception   -> UNKNOWN
+explicit live value     -> LIVE
+explicit offline value  -> OFFLINE
+anything else           -> UNKNOWN
 ```
 
-Parse/schema/captcha/ambiguity categories must be supplied explicitly by the
-provider-specific implementation when evidence supports them. Generic exception
-text is not parsed to invent a stronger classification.
+LIVE and OFFLINE value sets must be disjoint.
 
-## 5. Failure -> live snapshot
+## 4. Accepted local evidence
 
-`unknown_snapshot_for_failure()` preserves the external account identity,
-observation time, source, room id, and canonical URL while producing:
+User-local acceptance:
 
 ```text
-status = UNKNOWN
-source_started_at = None
-title = None
+Dedicated provider-failure normalization contracts: 11 / 11 PASS
+Complete Gate 1 suite:                         132 / 132 PASS
 ```
 
-The normalizer deliberately does not invent live metadata from a failed request.
-Diagnostic details remain in `ProviderFailure`; they are not smuggled into
-canonical live truth.
+The dedicated contracts cover diagnostic/live-truth separation, HTTP and
+exception classification, all-failure-to-UNKNOWN behavior, provenance
+preservation, no invented live metadata, conservative explicit status mapping,
+operation errors, and absence of legacy/session/event ownership.
 
-## 6. Explicit status mapping
-
-`normalize_explicit_status()` is the only generic status helper introduced in
-this slice.
-
-Concrete adapters supply provider-specific sets of explicit LIVE and OFFLINE
-values. Any unrecognized/missing value returns UNKNOWN. LIVE/OFFLINE value sets
-must be disjoint.
-
-Example shape:
-
-```text
-raw value in explicit live set     -> LIVE
-raw value in explicit offline set  -> OFFLINE
-anything else                      -> UNKNOWN
-```
-
-The actual Douyin/Bilibili/Huya/Douyu value mappings remain Gate 1.3-3/1.3-4
-work and must be evidence-backed.
-
-## 7. Operation errors outside live snapshot reads
-
-`ProviderOperationError` carries a normalized `ProviderFailure` for operations
-such as identity/profile resolution where returning a `LiveSnapshot` is not the
-right contract.
-
-It does not encode live truth and its existence must never be interpreted as
-OFFLINE by callers.
-
-## 8. Contract tests
-
-Landed:
-
-```text
-tests/gate1/test_provider_failure_normalization.py
-```
-
-The eleven contracts verify:
-
-```text
-diagnostic failure vocabulary is separate from live truth
-HTTP failure classification
-safe exception classification
-all failure kinds -> UNKNOWN live snapshot
-identity/source provenance is preserved
-failed reads do not invent source_started_at/title
-explicit LIVE/OFFLINE values map only when recognized
-unrecognized/missing status -> UNKNOWN
-overlapping status sets rejected
-ProviderOperationError carries diagnostic failure only
-normalizer has no legacy imports or session/event ownership
-```
-
-## 9. Acceptance
-
-Gate 1.3-2 PASS requires:
+## 5. Acceptance result
 
 ```text
 A. Gate 1.3-1 PASS / CLOSED                          PASS
-B. diagnostic failure vocabulary landed              PASS / CODE
-C. HTTP/exception classification landed              PASS / CODE
-D. every failure/ambiguity maps to UNKNOWN truth     CONTRACT LANDED
-E. explicit provider status mapping is conservative  CONTRACT LANDED
-F. no invented live metadata on failure              CONTRACT LANDED
-G. no legacy runtime dependency                      CONTRACT LANDED
-H. dedicated normalization contracts pass            PENDING / 11
-I. complete Gate 1 suite remains green               PENDING / expected 132
+B. diagnostic failure vocabulary landed              PASS
+C. HTTP/exception classification landed              PASS
+D. every failure/ambiguity maps to UNKNOWN truth     PASS
+E. explicit provider status mapping is conservative  PASS
+F. no invented live metadata on failure              PASS
+G. no legacy runtime dependency                      PASS
+H. dedicated normalization contracts                 PASS / 11
+I. complete Gate 1 suite                             PASS / 132
 ```
 
-Gate 1.3-2 remains **CURRENT** until H-I pass.
+Gate 1.3-2: **PASS / CLOSED**.
 
-## 10. Stop rules
+Next: Gate 1.3-3 — Douyin Formal Adapter Migration.
 
-Stop with FAIL/BLOCKED if implementation pressure requires:
+## 6. Preserved stop rules
+
+The accepted behavior must not later be weakened by:
 
 ```text
 403/404/429/timeout/parse/captcha/ambiguity -> OFFLINE
-new provider-specific values added to formal LiveStatus
+provider-specific states added to formal LiveStatus
 exception-message guessing promoted to canonical status
-failure response inventing source_started_at/title
-provider diagnostic details persisted as canonical state
+failure responses inventing source_started_at/title
 legacy platform_adapters imported inward
-state/session/event mutation inside failure normalization
+state/session/event mutation inside provider normalization
 ```
