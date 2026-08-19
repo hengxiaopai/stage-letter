@@ -125,6 +125,15 @@ class LiveRepository(Protocol):
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None: ...
 
+    async def acquire_transition_lock(self, account_id: str) -> None:
+        """Serialize canonical session/event mutation for one account transaction.
+
+        This is a persistence coordination primitive only. It does not imply
+        exactly-once worker or provider execution and must be released by the
+        surrounding transaction boundary on commit/rollback.
+        """
+        ...
+
     async def get_open_session(self, account_id: str) -> LiveSession | None: ...
 
     async def get_session(self, session_id: str) -> LiveSession | None:
