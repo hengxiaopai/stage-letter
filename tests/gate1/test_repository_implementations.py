@@ -90,6 +90,12 @@ class RepositoryImplementationContractTests(unittest.TestCase):
         self.assertNotIn("INSERT INTO notification_jobs", source)
         self.assertNotIn("SET notification_job_id", source)
 
+    def test_bridge_removes_only_obsolete_session_keyed_delivery_uniqueness(self) -> None:
+        source = MIGRATION.read_text(encoding="utf-8")
+        self.assertIn('"uq_nd_user_session_channel"', source)
+        self.assertIn("op.drop_constraint", source)
+        self.assertNotIn('op.drop_constraint(\n        "uq_g11_delivery_user_event_channel"', source)
+
     def test_repository_layer_does_not_import_transport_or_legacy_runtime(self) -> None:
         forbidden = ("api", "workers", "core", "platform_adapters", "experiments")
         violations: list[str] = []
