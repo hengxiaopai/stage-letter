@@ -135,6 +135,13 @@ class LiveObservationModel(Base):
             name="ck_g11_live_observation_status",
         ),
         Index("idx_g11_observation_account_time", "platform_account_id", "observed_at"),
+        Index(
+            "uq_g14_monitor_probe_identity",
+            "platform_account_id",
+            "observation_id",
+            unique=True,
+            postgresql_where=text("observation_id LIKE 'monitor:%'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
