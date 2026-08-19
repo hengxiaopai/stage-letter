@@ -12,6 +12,13 @@ from .live import (
     LiveStatus,
     SessionOrigin,
 )
+from .notification_policy import (
+    EligibilityDecision,
+    EligibilityReason,
+    NotificationTarget,
+    build_pending_delivery,
+    evaluate_notification_eligibility,
+)
 from .notifications import (
     DeliveryChannel,
     DeliveryKey,
@@ -35,6 +42,8 @@ __all__ = [
     "DeliveryChannel",
     "DeliveryKey",
     "DeliveryState",
+    "EligibilityDecision",
+    "EligibilityReason",
     "EngineConfig",
     "EngineSnapshot",
     "EngineState",
@@ -49,6 +58,7 @@ __all__ = [
     "LiveStatus",
     "NotificationDelivery",
     "NotificationPreference",
+    "NotificationTarget",
     "PlatformAccount",
     "ProcessResult",
     "RuntimeHealthState",
@@ -56,4 +66,6 @@ __all__ = [
     "TransitionIntent",
     "TransitionIntentType",
     "User",
+    "build_pending_delivery",
+    "evaluate_notification_eligibility",
 ]
