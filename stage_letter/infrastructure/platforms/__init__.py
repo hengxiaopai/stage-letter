@@ -1,5 +1,6 @@
 """Formal platform adapter infrastructure for Stage Letter."""
 
+from .douyin_streamget import STREAMGET_DOUYIN_SOURCE, StreamGetDouyinGateway
 from .failures import (
     ProviderFailure,
     ProviderFailureKind,
@@ -17,6 +18,8 @@ __all__ = [
     "ProviderFailure",
     "ProviderFailureKind",
     "ProviderOperationError",
+    "STREAMGET_DOUYIN_SOURCE",
+    "StreamGetDouyinGateway",
     "classify_exception",
     "classify_http_failure",
     "normalize_explicit_status",
