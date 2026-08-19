@@ -154,8 +154,11 @@ class MonitoringScheduler:
         last_error: Exception | None = None
         for attempt in range(1, self.policy.max_attempts + 1):
             try:
-                async with self._global_limit:
-                    async with self._platform_limit(account.platform):
+                # Acquire the platform slot before the global slot. A task waiting
+                # on a saturated platform must not consume scarce global capacity
+                # and block other platforms from making progress.
+                async with self._platform_limit(account.platform):
+                    async with self._global_limit:
                         result = await self._probes.execute(request)
                 return ScheduledProbeOutcome(
                     request=request,
