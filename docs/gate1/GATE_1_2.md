@@ -1,10 +1,10 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 BOUNDARY FREEZE CURRENT**
+Status: **CURRENT / 1.2-1 PASS / 1.2-2 CURRENT**
 
 Entry authority: Gate 1.1 PASS.
 
-Primary freeze:
+Primary freezes:
 
 - [`GATE_1_2_BOUNDARY_FREEZE.md`](./GATE_1_2_BOUNDARY_FREEZE.md)
 
@@ -36,13 +36,13 @@ stage_letter/application/
 stage_letter/infrastructure/db/
 ```
 
-`stage_letter/application/ports.py` already defines the repository and UnitOfWork
-ports accepted in Gate 1.1.
+`stage_letter/application/ports.py` defines the repository and UnitOfWork ports
+accepted in Gate 1.1.
 
 Inherited pre-formal implementation still exists under top-level legacy paths,
 including `api/services/*`, `workers/*`, `core/*`, and `platform_adapters/*`.
-Those modules are migration debt and are not allowed to become dependencies of
-formal `stage_letter/*` runtime code.
+Those modules remain migration debt and are not allowed to become dependencies
+of formal `stage_letter/*` runtime code.
 
 ## 3. Gate 1.2 slices
 
@@ -55,7 +55,7 @@ Gate 1.2-5  API/Worker Composition Roots + legacy cutover
 Gate 1.2-6  Boundary Regression / acceptance
 ```
 
-## 4. Gate 1.2-1 — CURRENT
+## 4. Gate 1.2-1 — PASS
 
 Landed assets:
 
@@ -64,22 +64,58 @@ docs/gate1/GATE_1_2_BOUNDARY_FREEZE.md
 tests/gate1/test_service_boundaries.py
 ```
 
-The freeze establishes:
+Accepted user-local evidence:
 
 ```text
-domain: stdlib/domain only
-application: domain + application ports/services only
-infrastructure: may implement ports; cannot depend on API/workers/legacy runtime
-api/workers target: composition roots only
-experiments: evidence/oracle only, never formal runtime dependency
+Ran 62 tests in 0.189s
+OK
 ```
 
-Known legacy API/worker service code is explicitly quarantined instead of being
-silently treated as compliant.
+The full suite includes the seven AST/service-boundary contracts and preserves
+all earlier Gate 1 tests. The dependency freeze is therefore accepted.
 
-Gate 1.2-1 requires local contract evidence before PASS.
+Gate 1.2-1: **PASS**.
 
-## 5. Preserved inherited status
+## 5. Gate 1.2-2 — SQLAlchemy Repository Implementations — CURRENT
+
+Target package:
+
+```text
+stage_letter/infrastructure/db/repositories/
+  creator.py
+  follow.py
+  live.py
+  notification.py
+```
+
+Implementations must satisfy the Gate 1.1 ports:
+
+```text
+CreatorRepository
+FollowRepository
+LiveRepository
+NotificationRepository
+```
+
+Repository responsibilities are limited to persistence translation and query /
+write behavior. They must not:
+
+```text
+commit independently
+own state-transition rules
+own notification eligibility
+call providers/network services
+import api/workers/core/platform_adapters/experiments
+reinterpret UNKNOWN as OFFLINE
+```
+
+A concrete identity-mapping contract must be frozen before repository acceptance
+because formal domain identifiers are strings while the expanded PostgreSQL
+schema retains legacy BigInteger primary keys plus formal string identities for
+observations/events. Repository code must translate these identities explicitly
+rather than hiding conversions or inventing IDs.
+
+## 6. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -95,7 +131,7 @@ Gate 1.2   CURRENT
 Gate 1.2 does not alter the Gate 0A status and does not rewrite historical
 migrations or fabricate historical truth.
 
-## 6. Stop rules
+## 7. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires any of:
 
@@ -107,15 +143,17 @@ API/worker handler becoming canonical business-rule owner
 direct ORM mutations that bypass an existing application service contract
 repository method committing independently inside UnitOfWork flow
 provider/network calls hidden inside repository transactions
+implicit or lossy identity conversion
+fabricated persistence IDs or historical identities
 UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
 
-## 7. Current progression
+## 8. Current progression
 
 ```text
 Gate 1.1    PASS
-Gate 1.2-1  CURRENT / freeze + tests landed; local evidence pending
-Gate 1.2-2  NOT STARTED
+Gate 1.2-1  PASS / 62-test full suite incl. 7 boundary contracts
+Gate 1.2-2  CURRENT / SQLAlchemy repository implementations
 Gate 1.2-3  NOT STARTED
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
