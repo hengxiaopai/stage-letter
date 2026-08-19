@@ -30,6 +30,7 @@ class ApplicationPortContractTests(unittest.TestCase):
                 "get_profile",
                 "get_account",
                 "get_account_by_platform_identity",
+                "list_enabled_accounts",
                 "save_creator",
                 "save_profile",
                 "save_account",
