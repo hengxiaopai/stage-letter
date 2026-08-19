@@ -69,7 +69,7 @@ class ScheduledProbeOutcome:
     platform: str
     attempts: int
     result: MonitoringProbeResult | None = None
-    error: BaseException | None = None
+    error: Exception | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -151,7 +151,7 @@ class MonitoringScheduler:
         account: PlatformAccount,
         request: MonitoringProbeRequest,
     ) -> ScheduledProbeOutcome:
-        last_error: BaseException | None = None
+        last_error: Exception | None = None
         for attempt in range(1, self.policy.max_attempts + 1):
             try:
                 async with self._global_limit:
@@ -168,7 +168,7 @@ class MonitoringScheduler:
                 if attempt >= self.policy.max_attempts:
                     break
                 await self._sleep(self.policy.backoff_seconds(attempt))
-            except BaseException as exc:
+            except Exception as exc:
                 return ScheduledProbeOutcome(
                     request=request,
                     platform=account.platform,
