@@ -1,6 +1,6 @@
 # Gate 1.2-3 — SQLAlchemy UnitOfWork + Transaction Semantics
 
-Status: **CURRENT / FIRST POSTGRES ATTEMPT FAILED / CORRECTIVE FLUSH FIX LANDED / RE-RUN PENDING**
+Status: **CURRENT / CORRECTED POSTGRES PROBE PASS / STATIC ACCEPTANCE PENDING**
 
 Entry authority: Gate 1.2-2 PASS.
 
@@ -135,14 +135,14 @@ append_event()
   -> PostgreSQL Core INSERT ... ON CONFLICT
 ```
 
-A Core DML execution does not provide the ORM dependency ordering guarantee that
-this write path needs. The pending parent `LiveSession` had not been flushed before
-the FK-constrained Core `live_events` INSERT.
+A Core DML execution did not provide the ORM dependency ordering guarantee that
+this write path needed. The pending parent `LiveSession` had not been flushed
+before the FK-constrained Core `live_events` INSERT.
 
-This is a real Gate 1.2-3 integration defect, not an environment failure. The
+This was a real Gate 1.2-3 integration defect, not an environment failure. The
 probe correctly stopped and cleaned up its temporary database.
 
-## 7. Corrective fix — LANDED
+## 7. Corrective fix — PASS IN REAL POSTGRESQL
 
 `SQLAlchemyLiveRepository` now explicitly calls:
 
@@ -168,7 +168,7 @@ boundary.
 The UnitOfWork's explicit rollback bookkeeping also remains aligned with the
 frozen rule that an explicit rollback is not repeated again on context exit.
 
-## 8. Real PostgreSQL probe
+## 8. Real PostgreSQL probe — PASS
 
 Probe:
 
@@ -184,7 +184,17 @@ stageletter_gate12_uow
 
 and always attempts cleanup in `finally`.
 
-The corrected probe must still prove three transaction scenarios:
+Accepted user-local evidence after the corrective flush fix:
+
+```text
+[uow] database created
+...
+[uow] head PASS -> c91e8d2f4a10
+PASS: Gate 1.2-3 SQLAlchemy UnitOfWork transaction semantics
+[cleanup] dropped stageletter_gate12_uow
+```
+
+The corrected probe therefore proves all three transaction scenarios:
 
 ```text
 COMMIT
@@ -205,7 +215,7 @@ EXCEPTIONAL EXIT
 ```
 
 It also proves all four concrete repositories share the same AsyncSession inside
-one UnitOfWork.
+one UnitOfWork and that the temporary database is cleaned up.
 
 ## 9. Acceptance
 
@@ -213,20 +223,20 @@ Gate 1.2-3 PASS requires:
 
 ```text
 A. Gate 1.2-2 closed PASS                                  PASS
-B. concrete UnitOfWork implements formal port              CODE LANDED
-C. all four repositories share one AsyncSession            CONTRACT + PROBE LANDED
-D. explicit commit persists multi-repository work          RE-RUN PENDING
-E. normal uncommitted exit rolls back                      RE-RUN PENDING
-F. exceptional exit rolls back and propagates              RE-RUN PENDING
+B. concrete UnitOfWork implements formal port              PASS / code landed
+C. all four repositories share one AsyncSession            PASS / real DB probe
+D. explicit commit persists multi-repository work          PASS / real DB probe
+E. normal uncommitted exit rolls back                      PASS / real DB probe
+F. exceptional exit rolls back and propagates              PASS / real DB probe
 G. session always closes                                   CONTRACT LANDED
 H. UnitOfWork owns no provider/network behavior            CONTRACT LANDED
-I. FK-sensitive Core inserts flush pending ORM parents      FIX + CONTRACT LANDED
+I. FK-sensitive Core inserts flush pending ORM parents     PASS / real DB probe
 J. UnitOfWork contract tests pass                          PENDING LOCAL EVIDENCE
 K. full Gate 1 suite remains green                         PENDING LOCAL EVIDENCE
-L. PostgreSQL UnitOfWork probe passes                      PENDING RE-RUN
+L. PostgreSQL UnitOfWork probe passes                      PASS
 ```
 
-Gate 1.2-3 remains **CURRENT** until J-L pass.
+Gate 1.2-3 remains **CURRENT** until J-K pass.
 
 ## 10. Stop rules
 
