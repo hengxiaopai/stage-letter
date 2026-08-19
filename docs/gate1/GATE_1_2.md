@@ -95,16 +95,27 @@ scripts/gate12_uow_probe.py
 docs/gate1/GATE_1_2_UOW.md
 ```
 
-The concrete UnitOfWork creates one AsyncSession per entered context and binds
-all four repositories to that exact session. Commit is explicit; normal exit
-without commit rolls back; exceptional exit before commit rolls back and
-propagates; the session always closes.
+The first PostgreSQL UoW run exposed a real mixed ORM/Core flush-order defect:
+a pending `LiveSession` had not reached PostgreSQL before an FK-dependent Core
+`LiveEvent` INSERT. The repository was corrected by explicitly flushing pending
+ORM parent rows before FK-sensitive Core inserts; flush remains inside the same
+transaction and does not commit.
 
-The PostgreSQL probe will verify multi-repository atomic commit and rollback in
-an isolated `stageletter_gate12_uow` database.
+The corrected real PostgreSQL probe now passes:
 
-Gate 1.2-3 remains CURRENT until its local contract suite, full Gate 1 suite, and
-real PostgreSQL transaction probe pass.
+```text
+[uow] database created
+...
+[uow] head PASS -> c91e8d2f4a10
+PASS: Gate 1.2-3 SQLAlchemy UnitOfWork transaction semantics
+[cleanup] dropped stageletter_gate12_uow
+```
+
+This proves shared-session multi-repository commit, normal uncommitted rollback,
+exceptional rollback + propagation, and cleanup against isolated PostgreSQL.
+
+Gate 1.2-3 remains CURRENT only because post-fix local static evidence is still
+required for the dedicated UoW contract tests and the full Gate 1 suite.
 
 ## 6. Preserved inherited status
 
@@ -149,7 +160,7 @@ UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 Gate 1.1    PASS
 Gate 1.2-1  PASS
 Gate 1.2-2  PASS / 78-test + PostgreSQL + head + offline SQL evidence
-Gate 1.2-3  CURRENT / UnitOfWork code + contracts + DB probe landed; local evidence pending
+Gate 1.2-3  CURRENT / corrected PostgreSQL probe PASS; post-fix static evidence pending
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
 Gate 1.2-6  NOT STARTED
