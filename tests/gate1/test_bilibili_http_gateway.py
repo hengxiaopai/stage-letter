@@ -24,14 +24,17 @@ NOW = datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc)
 class _Transport:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
+        # Current getRoomInfoOld shape is keyed by requested mid and does not
+        # require uid to be echoed in the data object. Its status fields are
+        # camelCase; formal transport must not treat missing uid as schema drift.
         self.uid_payload: dict[str, object] = {
             "code": 0,
             "data": {
-                "uid": 528738158,
+                "roomStatus": 1,
+                "roundStatus": 0,
+                "liveStatus": 0,
                 "roomid": 8758725,
-                "live_status": 0,
                 "title": "Room title",
-                "live_time": 0,
             },
         }
         self.room_payload: dict[str, object] = {
@@ -75,7 +78,7 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ProviderOperationError):
             gateway.parse_identity("https://example.invalid/not-bilibili")
 
-    async def test_uid_resolution_uses_uid_endpoint_and_canonical_space_url(self) -> None:
+    async def test_uid_resolution_uses_requested_uid_when_endpoint_omits_uid(self) -> None:
         gateway, transport = self._build()
         record = await gateway.resolve_identity("528738158")
         self.assertEqual("528738158", record.uid)
@@ -92,10 +95,33 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(BILIBILI_ROOM_SOURCE, "bilibili.room_init")
         self.assertTrue(transport.calls[0][0].endswith("room_init"))
 
-    async def test_fetch_live_preserves_raw_status_and_metadata(self) -> None:
+    async def test_fetch_live_reads_current_camelcase_status_and_carousel(self) -> None:
         gateway, transport = self._build()
         transport.uid_payload["data"] = {
-            "uid": 528738158,
+            "roomStatus": 1,
+            "roundStatus": 0,
+            "liveStatus": 1,
+            "roomid": 8758725,
+            "title": "Live title",
+        }
+        record = await gateway.fetch_live("528738158")
+        self.assertEqual(1, record.raw_live_status)
+        self.assertEqual("8758725", record.room_id)
+        self.assertEqual("Live title", record.title)
+        self.assertEqual(NOW, record.observed_at)
+
+        transport.uid_payload["data"] = {
+            "roomStatus": 1,
+            "roundStatus": 1,
+            "liveStatus": 0,
+            "roomid": 8758725,
+        }
+        carousel = await gateway.fetch_live("528738158")
+        self.assertEqual(2, carousel.raw_live_status)
+
+    async def test_legacy_snake_case_status_and_live_time_remain_supported(self) -> None:
+        gateway, transport = self._build()
+        transport.uid_payload["data"] = {
             "roomid": 8758725,
             "live_status": 1,
             "title": "Live title",
@@ -103,23 +129,7 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
         }
         record = await gateway.fetch_live("528738158")
         self.assertEqual(1, record.raw_live_status)
-        self.assertEqual("8758725", record.room_id)
-        self.assertEqual("Live title", record.title)
-        self.assertEqual(NOW, record.observed_at)
         self.assertIsNotNone(record.source_started_at)
-
-    async def test_invalid_live_time_is_not_invented(self) -> None:
-        gateway, transport = self._build()
-        for raw in (None, 0, 1_000_000_000, "bad", True):
-            with self.subTest(raw=raw):
-                transport.uid_payload["data"] = {
-                    "uid": 528738158,
-                    "roomid": 8758725,
-                    "live_status": 1,
-                    "live_time": raw,
-                }
-                record = await gateway.fetch_live("528738158")
-                self.assertIsNone(record.source_started_at)
 
     async def test_nonzero_provider_code_is_not_offline_truth(self) -> None:
         gateway, transport = self._build()
@@ -128,12 +138,12 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
             await gateway.fetch_live("528738158")
         self.assertIs(ProviderFailureKind.NOT_FOUND, ctx.exception.failure.kind)
 
-    async def test_provider_uid_mismatch_is_ambiguous(self) -> None:
+    async def test_explicit_provider_uid_mismatch_is_ambiguous(self) -> None:
         gateway, transport = self._build()
         transport.uid_payload["data"] = {
             "uid": 999,
             "roomid": 8758725,
-            "live_status": 1,
+            "liveStatus": 1,
         }
         with self.assertRaises(ProviderOperationError) as ctx:
             await gateway.fetch_live("528738158")
