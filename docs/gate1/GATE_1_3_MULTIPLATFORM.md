@@ -1,6 +1,6 @@
 # Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration
 
-Status: **CURRENT / 1.3-4A BILIBILI CORE+HTTP GATEWAY LANDED / UID-SCHEMA FIX LANDED / LOCAL+PROVIDER EVIDENCE PENDING**
+Status: **CURRENT / 1.3-4A BILIBILI PROVIDER SEMANTICS CORRECTED / FINAL LOCAL+OFFLINE REPROBE PENDING**
 
 Entry authority: Gate 1.3-3 PASS / CLOSED.
 
@@ -18,24 +18,45 @@ Gate 1.3-4D  cross-platform regression / registry acceptance
 
 No platform is allowed to inherit another platform's state mapping.
 
-## 2. Bilibili evidence authority
+## 2. Bilibili evidence authority — corrected by current provider control
 
-The accepted Gate 0B record establishes:
+The inherited Gate 0B record had treated Bilibili room status `2` / carousel as
+ONLINE. Gate 1.3-4A current ground-truth controls exposed that this is not correct
+for Stage Letter's product meaning of **creator is actually broadcasting now**.
+
+Current operator controls on 2026-08-19 established:
 
 ```text
-stable external identity: Bilibili uid / space profile
-live_status = 0 -> OFFLINE
-live_status = 1 -> LIVE
-live_status = 2 -> LIVE / carousel
-other / missing / failure -> not decisive canonical truth
+uid 299312132  independently checked LIVE
+provider result LIVE
+expectation_match true
+
+uid 8618005    independently checked not actually live
+provider initially returned LIVE
+expectation_match false
+provider title resembled replay/upload content
 ```
 
-The recorded soak matrix included both decisive paths, with 139 ONLINE and 91
-OFFLINE observations. It still lacked a real same-creator transition, so this
-migration does not claim lifecycle proof.
+The second control revealed a semantic bug in the formal transport: the
+`getRoomInfoOld` response's separate `roundStatus=1` carousel/replay flag had been
+promoted to raw status `2`, and the formal adapter then mapped `2 -> LIVE`.
 
-Room id is live-room/navigation metadata; uid remains the formal PlatformAccount
-identity.
+That behavior would create a false positive for Stage Letter's P0 question
+"is my creator live now?" and could eventually create a false LIVE_STARTED event.
+It is therefore rejected.
+
+The corrected formal truth is:
+
+```text
+actual creator live status 1 -> LIVE
+actual creator live status 0 -> OFFLINE
+room/carousel status 2       -> OFFLINE for creator-live truth
+roundStatus=1 alone          -> never promotes to LIVE
+other / missing / failure    -> UNKNOWN
+```
+
+Carousel/replay activity may remain provider metadata in future, but it is not a
+canonical creator-live state.
 
 ## 3. Bilibili formal core
 
@@ -47,20 +68,14 @@ tests/gate1/test_bilibili_formal_adapter.py
 ```
 
 The adapter implements `LivePlatformAdapter` via an injected
-`BilibiliProviderGateway`:
+`BilibiliProviderGateway` and keeps uid/space identity canonical over room ids.
+
+Corrected mapping is strict by type:
 
 ```text
-resolve_identity(input) -> BilibiliIdentityRecord
-fetch_profile(uid)      -> BilibiliProfileRecord
-fetch_live(uid)         -> BilibiliLiveRecord
-```
-
-Canonical mapping is strict by type:
-
-```text
-integer 0 -> OFFLINE
 integer 1 -> LIVE
-integer 2 -> LIVE
+integer 0 -> OFFLINE
+integer 2 -> OFFLINE / carousel is not creator-live
 bool / string lookalikes / other values -> UNKNOWN
 ```
 
@@ -77,7 +92,7 @@ scripts/gate13_bilibili_provider_probe.py
 tests/gate1/test_bilibili_http_gateway.py
 ```
 
-Provider endpoints:
+The transport uses:
 
 ```text
 uid path:
@@ -95,58 +110,45 @@ live-room URL            -> room_init -> stable uid
 canonical_url            -> https://space.bilibili.com/<uid>
 ```
 
-The transport returns provider records only. Non-2xx, timeout, network,
-non-JSON, provider nonzero code, missing data, or explicit uid mismatch become
-normalized provider failures; none becomes OFFLINE merely because a request
-failed.
+`getRoomInfoOld` can omit uid in its data object. Missing echoed uid is therefore
+not schema drift; an explicit contradictory uid remains AMBIGUOUS.
 
-## 5. First provider-run finding — getRoomInfoOld schema correction
-
-The first operator LIVE/OFFLINE probes both stopped with:
+The current transport also keeps `roundStatus` separate from creator-live truth:
 
 ```text
-status = UNKNOWN
-provider_failure_kind = SCHEMA_DRIFT
-provider_source = bilibili.resolve
-provider_failure_detail = invalid uid
+liveStatus / live_status -> raw creator-live status
+roundStatus              -> does not override liveStatus
 ```
 
-This was not LIVE/OFFLINE evidence and not an input-URL defect. Inspection showed
-the formal gateway had incorrectly required `getRoomInfoOld` to echo `uid` in
-its `data` object. That endpoint is already keyed by the requested `mid` and may
-omit uid. Its current status shape also uses `liveStatus` / `roundStatus`, while
-historical Stage Letter fixtures used `live_status`.
+This fixes the false-positive control without weakening failure handling.
 
-The fix preserves identity safety without inventing provider truth:
+## 5. Current provider evidence
+
+Accepted decisive LIVE control:
 
 ```text
-uid request + response omits uid
-  -> requested positive uid remains stable identity
-
-response explicitly includes uid
-  -> it must match requested uid, otherwise AMBIGUOUS
-
-getRoomInfoOld liveStatus
-  0 -> raw 0
-  1 -> raw 1
-
-roundStatus = 1
-  -> raw 2 / carousel
-
-historical explicit live_status fixture
-  -> remains supported for regression compatibility
+uid                 299312132
+expected            LIVE
+observed            LIVE
+expectation_match   true
+source              bilibili.getRoomInfoOld
+room_id             26681116
 ```
 
-The formal adapter above the gateway still owns canonical normalization:
+The first OFFLINE control is intentionally **not accepted** because it exposed the
+carousel false-positive defect:
 
 ```text
-raw integer 0 -> OFFLINE
-raw integer 1 -> LIVE
-raw integer 2 -> LIVE
-anything unsupported / failure -> UNKNOWN
+uid                 8618005
+expected            OFFLINE
+observed            LIVE
+expectation_match   false
+source              bilibili.getRoomInfoOld
+room_id             6136246
 ```
 
-No provider failure is converted to OFFLINE by this correction.
+After the semantic correction, the same independently checked OFFLINE control must
+be re-run and produce OFFLINE before Gate 1.3-4A can close.
 
 ## 6. Huya evidence boundary before migration
 
@@ -185,12 +187,16 @@ test_bilibili_formal_adapter.py  11 tests
 test_bilibili_http_gateway.py     9 tests
 ```
 
-The HTTP-gateway fixtures now model the current uid-endpoint shape: uid may be
-absent, status may be camelCase, roundStatus is handled explicitly, and an
-explicit contradictory uid remains AMBIGUOUS.
+The same 20-test count is retained, but two semantics were corrected rather than
+adding redundant tests:
+
+```text
+raw status 2 carousel -> OFFLINE
+roundStatus=1 + liveStatus=0 -> raw creator status remains 0
+```
 
 Accepted complete Gate 1 baseline entering 1.3-4A is 157 tests. Expected complete
-suite after the 20 Bilibili contracts remains 177 tests.
+suite remains 177 tests.
 
 ## 9. Acceptance — Gate 1.3-4A
 
@@ -198,19 +204,19 @@ suite after the 20 Bilibili contracts remains 177 tests.
 A. Gate 1.3-3 PASS / CLOSED                    PASS
 B. Bilibili formal adapter core                PASS / CODE
 C. uid identity rule frozen                    PASS / CODE
-D. evidence-backed 0/1/2 mapping frozen        PASS / CODE
-E. failure -> UNKNOWN                          PASS / CONTRACT
-F. no legacy runtime import                    PASS / CONTRACT
-G. Bilibili HTTP gateway                       PASS / CODE
-H. getRoomInfoOld schema correction            PASS / CODE
-I. dedicated formal-adapter contracts          PENDING / 11
-J. dedicated HTTP-gateway contracts            PENDING / 9
-K. complete Gate 1 suite                       PENDING / expected 177
-L. provider-backed Bilibili LIVE evidence      PENDING
-M. provider-backed Bilibili OFFLINE evidence   PENDING
+D. creator-live semantics corrected            PASS / CODE
+E. roundStatus cannot promote LIVE             PASS / CODE
+F. failure -> UNKNOWN                          PASS / CONTRACT
+G. no legacy runtime import                    PASS / CONTRACT
+H. Bilibili HTTP gateway                       PASS / CODE
+I. provider-backed Bilibili LIVE evidence      PASS
+J. dedicated formal-adapter contracts          PENDING / 11 rerun
+K. dedicated HTTP-gateway contracts            PENDING / 9 rerun
+L. complete Gate 1 suite                       PENDING / expected 177
+M. corrected Bilibili OFFLINE provider probe   PENDING / re-run uid 8618005
 ```
 
-Gate 1.3-4A remains CURRENT until I-M pass.
+Gate 1.3-4A remains CURRENT until J-M pass.
 
 ## 10. Stop rules
 
@@ -218,10 +224,11 @@ Stop with FAIL/BLOCKED if implementation pressure requires:
 
 ```text
 legacy platform_adapters imported into stage_letter runtime
+carousel/replay activity -> canonical LIVE
+roundStatus overriding an explicit non-live creator status
 list/recommendation absence -> OFFLINE
 provider failure / timeout / parse error -> OFFLINE
 Bilibili room id replacing stable uid identity
-missing uid echo treated as fabricated identity evidence
 Huya 0 -> OFFLINE without decisive ground-truth evidence
 Douyu 0/3/4 guessed as decisive state
 adapter mutating LiveSession / LiveEvent or notification eligibility
