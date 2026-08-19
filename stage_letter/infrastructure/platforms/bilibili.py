@@ -29,8 +29,11 @@ from .failures import (
 
 
 BILIBILI_PLATFORM = "bilibili"
-BILIBILI_LIVE_VALUES = frozenset({1, 2})
-BILIBILI_OFFLINE_VALUES = frozenset({0})
+# Stage Letter's canonical LIVE means the creator is actually broadcasting now.
+# Bilibili raw status 2 is carousel/replay activity, so it must not trigger a
+# live-start truth/event for the creator.
+BILIBILI_LIVE_VALUES = frozenset({1})
+BILIBILI_OFFLINE_VALUES = frozenset({0, 2})
 
 
 def _required(value: str, field: str) -> None:
