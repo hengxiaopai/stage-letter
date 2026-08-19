@@ -1,6 +1,6 @@
 # Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration
 
-Status: **CURRENT / 1.3-4A PASS / 1.3-4B PASS / 1.3-4C DOUYU PROVIDER CONTROLS PASS / LOCAL REGRESSION PENDING**
+Status: **CURRENT / 1.3-4A PASS / 1.3-4B PASS / 1.3-4C PASS / 1.3-4D CURRENT**
 
 Entry authority: Gate 1.3-3 PASS / CLOSED.
 
@@ -76,33 +76,32 @@ Current evidence exposes room id as the stable monitor key available to Stage
 Letter; no unproven creator uid is fabricated. If body class and eLiveStatus are
 both present they must agree or the result becomes AMBIGUOUS/UNKNOWN.
 
-The two provider controls emitted identical title metadata while their live states
-differed. Huya title extraction is therefore non-canonical metadata and must not
-participate in live-state truth or be shown as a current-live title for OFFLINE.
+Provider title metadata is non-canonical and must not participate in live-state
+truth or be shown as a current-live title for OFFLINE.
 
 Result: **Gate 1.3-4B PASS / CLOSED**.
 
-## 4. Gate 1.3-4C — Douyu CURRENT
+## 4. Gate 1.3-4C — Douyu PASS / CLOSED
 
-### Evidence authority
-
-The accepted Gate 0B record establishes decisive current-state values:
+Accepted user-local evidence:
 
 ```text
-show_status = 1 -> LIVE
-show_status = 2 -> OFFLINE
+formal Douyu adapter contracts      10 / 10 PASS
+Douyu HTTP gateway contracts        10 / 10 PASS
+complete Gate 1 suite              217 / 217 PASS
+provider-backed LIVE control             PASS
+provider-backed OFFLINE control          PASS
 ```
 
-Values `0 / 3 / 4` remain ambiguous. Directory/recommendation absence is not
-OFFLINE evidence.
+Accepted provider controls:
 
-The legacy adapter also contained generic `videoLoop=1` and `isLiveBroadcast`
-fallbacks. Those are deliberately **not** promoted into formal creator-live truth
-in Gate 1.3-4C: Stage Letter's LIVE means the creator is actually broadcasting,
-and the Bilibili false-positive already demonstrated why replay/loop activity
-must not be silently treated as creator LIVE.
+```text
+room 74751 -> expected LIVE    -> observed LIVE    -> expectation_match=true
+room 6512  -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
+source: douyu.desktop_html
+```
 
-Formal Douyu truth is therefore frozen as:
+Formal creator-live truth remains:
 
 ```text
 integer show_status 1 -> LIVE
@@ -113,107 +112,86 @@ videoLoop alone        -> no decisive truth
 provider failure       -> UNKNOWN
 ```
 
-### Formal Douyu runtime landed
+The gateway accepts only explicit `show_status` / `showStatus` numeric evidence.
+Multiple explicit state fields must agree or the result is AMBIGUOUS/UNKNOWN.
+Recommendation/directory absence and replay/loop activity do not become
+creator-live truth. Room id remains the proven monitor key available to this
+slice; no unproven provider creator uid is fabricated.
 
-```text
-stage_letter/infrastructure/platforms/douyu.py
-stage_letter/infrastructure/platforms/douyu_http.py
-scripts/gate13_douyu_provider_probe.py
-tests/gate1/test_douyu_formal_adapter.py
-tests/gate1/test_douyu_http_gateway.py
-```
+The OFFLINE control still emitted page/title metadata, reinforcing that provider
+metadata is non-canonical and must not influence state truth.
 
-Current evidence exposes Douyu room id as the stable monitor key available to
-Stage Letter, so the formal adapter uses room id as both platform_user_id and
-room_id without fabricating a separate creator uid.
+Result: **Gate 1.3-4C PASS / CLOSED**.
 
-The provider gateway reads:
-
-```text
-https://www.douyu.com/<room_id>
-```
-
-and accepts only explicit `show_status` / `showStatus` numeric evidence. Escaped
-and unescaped HTML forms are supported. If multiple explicit status fields are
-present and disagree, the result is AMBIGUOUS/UNKNOWN rather than choosing one.
-
-`videoLoop`, recommendation-list presence/absence, and generic weak fallbacks do
-not create canonical LIVE/OFFLINE truth. Transport failures, missing fields,
-HTML/schema drift, timeout and rate limiting remain provider failures.
-
-### Current provider controls — PASS
-
-On 2026-08-19 the operator independently checked one current LIVE room and one
-current OFFLINE room, then exercised the formal provider chain:
-
-```text
-room 74751
-expected            LIVE
-observed            LIVE
-expectation_match   true
-source              douyu.desktop_html
-
-room 6512
-expected            OFFLINE
-observed            OFFLINE
-expectation_match   true
-source              douyu.desktop_html
-```
-
-Result:
-
-```text
-provider-backed Douyu LIVE control     PASS
-provider-backed Douyu OFFLINE control  PASS
-```
-
-The OFFLINE control still carried page/title metadata. As with Huya, metadata is
-non-canonical and must not influence live-state truth or be rendered as a current
-live title for an OFFLINE account.
-
-### Deterministic contracts
+## 5. Gate 1.3-4D — Cross-platform registry acceptance CURRENT
 
 Landed:
 
 ```text
-test_douyu_formal_adapter.py  10 tests
-test_douyu_http_gateway.py    10 tests
+stage_letter/infrastructure/platforms/factory.py
+tests/gate1/test_platform_registry_acceptance.py
+stage_letter/infrastructure/platforms/__init__.py  # formal public surface updated
 ```
 
-Accepted complete Gate 1 baseline entering 1.3-4C is 197 tests. Expected complete
-suite after the 20 Douyu contracts is 217 tests.
-
-### Acceptance — Gate 1.3-4C
+`build_formal_adapter_registry()` constructs a fresh explicit registry containing
+exactly the four formal platforms:
 
 ```text
-A. Gate 1.3-4B Huya PASS / CLOSED               PASS
-B. formal Douyu adapter core                     PASS / CODE
-C. Douyu desktop HTML gateway                    PASS / CODE
-D. show_status 1 -> LIVE / 2 -> OFFLINE         PASS / CODE
-E. 0 / 3 / 4 / unsupported -> UNKNOWN           PASS / CODE
-F. videoLoop alone not creator-live truth        PASS / CONTRACT
-G. failure / conflicting fields -> UNKNOWN      PASS / CONTRACT
-H. no legacy runtime import                      PASS / CONTRACT
-I. current provider-backed Douyu LIVE control    PASS
-J. current provider-backed Douyu OFFLINE control PASS
-K. dedicated formal-adapter contracts            PENDING / 10
-L. dedicated HTTP-gateway contracts              PENDING / 10
-M. complete Gate 1 suite                         PENDING / expected 217
+bilibili -> BilibiliFormalAdapter(BilibiliHttpGateway)
+douyin   -> DouyinFormalAdapter(StreamGetDouyinGateway)
+douyu    -> DouyuFormalAdapter(DouyuHttpGateway)
+huya     -> HuyaFormalAdapter(HuyaHttpGateway)
 ```
 
-Gate 1.3-4C remains CURRENT until K-M pass. No additional real Douyu provider
-control is required for this slice if deterministic regression remains green.
+Construction performs no provider request. StreamGet remains lazily imported by
+the Douyin gateway, so building the registry does not require eager provider
+runtime loading.
 
-## 5. Current progression
+The cross-platform acceptance contracts verify:
+
+```text
+exact formal platform set
+all entries structurally implement LivePlatformAdapter
+registry key matches adapter.platform
+only formal concrete adapter types are registered
+StreamGet is not imported eagerly during registry construction
+fresh registry/adapter instances are returned per build
+unknown platform lookup remains explicit AdapterNotFoundError
+factory has no legacy/state/session/event/notification ownership
+```
+
+Eight dedicated contracts are landed. The accepted complete Gate 1 baseline
+entering 1.3-4D is 217 tests, so the expected complete suite is 225 tests.
+
+### Acceptance — Gate 1.3-4D
+
+```text
+A. Gate 1.3-4A Bilibili PASS / CLOSED           PASS
+B. Gate 1.3-4B Huya PASS / CLOSED               PASS
+C. Gate 1.3-4C Douyu PASS / CLOSED              PASS
+D. formal four-platform registry factory        PASS / CODE
+E. exact supported-platform set frozen          PASS / CONTRACT
+F. no eager provider I/O / StreamGet import     PASS / CONTRACT
+G. no legacy runtime import                     PASS / CONTRACT
+H. dedicated registry acceptance contracts      PENDING / 8
+I. complete Gate 1 suite                        PENDING / expected 225
+```
+
+No additional provider LIVE/OFFLINE control is required for 1.3-4D if H-I remain
+green; the per-platform provider evidence was accepted in 1.3-3 and 1.3-4A/B/C.
+
+Gate 1.3-4D remains CURRENT until H-I pass.
+
+## 6. Current progression
 
 ```text
 Gate 1.3-4A  PASS / CLOSED
 Gate 1.3-4B  PASS / CLOSED
-Gate 1.3-4C  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+217 local regression pending
-Gate 1.3-4D  NOT STARTED
+Gate 1.3-4C  PASS / CLOSED
+Gate 1.3-4D  CURRENT / formal registry factory + 8 acceptance contracts landed
 ```
 
-## 6. Stop rules
+## 7. Stop rules
 
 Stop with FAIL/BLOCKED if progress requires:
 
@@ -226,7 +204,9 @@ Huya title metadata treated as state truth
 Bilibili carousel/replay activity -> creator LIVE
 Douyu 0 / 3 / 4 guessed as decisive state
 Douyu videoLoop/replay activity -> creator LIVE
-conflicting Douyu explicit status fields silently accepted
+conflicting explicit provider state silently accepted
 fabricated provider creator uid
+registry construction performing provider I/O
+registry construction eagerly requiring StreamGet
 adapter mutating LiveSession / LiveEvent or notification eligibility
 ```
