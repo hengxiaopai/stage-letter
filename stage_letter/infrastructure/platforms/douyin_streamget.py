@@ -141,7 +141,7 @@ class StreamGetDouyinGateway:
             return self._client_factory(self._cookie)
         except ProviderOperationError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             failure = classify_exception(exc, source=STREAMGET_DOUYIN_SOURCE)
             raise ProviderOperationError(failure) from exc
 
@@ -157,7 +157,7 @@ class StreamGetDouyinGateway:
 
         explicit = {_clean_optional(value) for value in candidates}
         explicit.discard(None)
-        if explicit and sec_uid not in explicit:
+        if explicit and explicit != {sec_uid}:
             raise ProviderOperationError(
                 ProviderFailure(
                     kind=ProviderFailureKind.AMBIGUOUS,
@@ -173,7 +173,7 @@ class StreamGetDouyinGateway:
             room = await client.fetch_app_stream_data(profile_url)
         except ProviderOperationError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             failure = classify_exception(exc, source=STREAMGET_DOUYIN_SOURCE)
             raise ProviderOperationError(failure) from exc
 
