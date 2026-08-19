@@ -1,6 +1,6 @@
 # Gate 1.2-2 — SQLAlchemy Repository Implementations
 
-Status: **CURRENT / IMPLEMENTATIONS + BRIDGE LANDED / LOCAL + POSTGRES EVIDENCE PENDING**
+Status: **CURRENT / POSTGRESQL REPOSITORY PROBE PASS / STATIC ACCEPTANCE PENDING**
 
 Entry authority: Gate 1.2-1 PASS.
 
@@ -202,9 +202,9 @@ If a persisted legacy row lacks a fact required by the formal domain (for
 example a provable session origin), the repository raises a mapping error rather
 than inventing a value.
 
-## 7. PostgreSQL acceptance probe
+## 7. PostgreSQL acceptance probe — PASS
 
-New probe:
+Probe:
 
 ```text
 scripts/gate12_repository_probe.py
@@ -216,23 +216,35 @@ It creates only the isolated temporary database:
 stageletter_gate12_repo
 ```
 
-Flow:
+Accepted user-local evidence:
 
 ```text
-empty DB
--> migrate to accepted Gate 1.1 head b63e4f9a1c20
--> seed representative legacy bridge facts
--> migrate to c91e8d2f4a10
--> prove legacy facts preserved
--> use all four formal repositories for new canonical writes
--> prove obsolete bridge fields remain NULL, not fake
--> prove source-scoped observation idempotency
--> prove duplicate logical delivery is suppressed by event-key identity
--> read formal objects back through repositories
--> cleanup temporary DB
+[gate12] database created
+[gate12] seeded at Gate 1.1 head -> b63e4f9a1c20
+[gate12] bridge migration PASS -> c91e8d2f4a10
+PASS: Gate 1.2-2 SQLAlchemy repositories + legacy write bridge
+[cleanup] dropped stageletter_gate12_repo
 ```
 
-The historical Gate 1.1 DB probe is now pinned to `b63e4f9a1c20` so later Gate 1
+The probe proved:
+
+```text
+accepted Gate 1.1 schema can progress to c91e8d2f4a10
+representative legacy bridge facts survive unchanged
+new formal writes need no fake anchor/job/status/confidence/provenance facts
+all four formal repositories can write and read domain objects
+source-scoped observation idempotency works in PostgreSQL
+event-keyed logical delivery idempotency works in PostgreSQL
+temporary probe database is cleaned up
+```
+
+An earlier run was blocked before repository execution by direct-script Python
+module-path bootstrap (`stage_letter` was not importable when `scripts/` became
+`sys.path[0]`). The probe now inserts the repository root before formal imports.
+That was a harness startup defect, not a repository or migration semantic
+failure; the corrected probe subsequently completed PASS.
+
+The historical Gate 1.1 DB probe remains pinned to `b63e4f9a1c20` so later Gate 1
 migrations cannot invalidate reproducibility of accepted Gate 1.1 evidence.
 
 ## 8. Current evidence assets
@@ -253,20 +265,20 @@ Gate 1.2-2 PASS requires:
 A. Gate 1.2-1 remains PASS                                  PASS
 B. persistence identity contract frozen                     PASS
 C. identity contract tests pass                             PASS / 7/7
-D. legacy write-bridge strategy implemented safely          CODE LANDED
-E. CreatorRepository implements port                        CODE LANDED
-F. FollowRepository implements port                         CODE LANDED
-G. LiveRepository implements port                           CODE LANDED
-H. NotificationRepository implements event-key identity     CODE LANDED
+D. legacy write-bridge strategy implemented safely          PASS / real DB probe
+E. CreatorRepository implements port                        PASS / real DB probe
+F. FollowRepository implements port                         PASS / real DB probe
+G. LiveRepository implements port                           PASS / real DB probe
+H. NotificationRepository implements event-key identity     PASS / real DB probe
 I. repositories never commit independently                  CONTRACT LANDED
-J. repository tests against PostgreSQL pass                 PENDING LOCAL EVIDENCE
+J. repository tests against PostgreSQL pass                 PASS
 K. full Gate 1 suite remains green                          PENDING NEW LOCAL EVIDENCE
 L. formal boundary AST tests remain green                   PENDING NEW LOCAL EVIDENCE
 M. Alembic head == c91e8d2f4a10                            PENDING LOCAL EVIDENCE
 N. UTF-8 offline SQL compilation through new head           PENDING LOCAL EVIDENCE
 ```
 
-Gate 1.2-2 remains **CURRENT** until J-N pass.
+Gate 1.2-2 remains **CURRENT** until K-N pass.
 
 ## 10. Stop rules
 
