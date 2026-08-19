@@ -1,6 +1,6 @@
 # Gate 1.2-3 — SQLAlchemy UnitOfWork + Transaction Semantics
 
-Status: **CURRENT / CORRECTED POSTGRES PROBE PASS / STATIC ACCEPTANCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.2-2 PASS.
 
@@ -34,9 +34,8 @@ Landed implementation:
 stage_letter/infrastructure/db/uow.py
 ```
 
-`SQLAlchemyUnitOfWork` accepts a session factory and, on each entered context,
-creates exactly one session. All four repositories are bound to that exact
-session instance.
+`SQLAlchemyUnitOfWork` creates one session per entered context and binds all four
+repositories to that exact session instance.
 
 Frozen behavior:
 
@@ -52,139 +51,54 @@ nested re-entry while active -> rejected
 commit/rollback outside active context -> rejected
 ```
 
-The UnitOfWork does not auto-commit successful contexts. Application services
-must request commit explicitly.
+The UnitOfWork does not auto-commit successful contexts.
 
 ## 3. Atomicity scope
 
-Gate 0B established that one live observation may cause canonical session/event
-changes that must survive restart atomically. Gate 1.2-3 therefore preserves the
-ability for a later application service to perform:
+The accepted boundary can persist one multi-repository use-case atomically:
 
 ```text
-append LiveObservation
-+ save/update LiveSession
-+ append LiveEvent
-+ create logical NotificationDelivery when the use case requires it
+LiveObservation
++ LiveSession
++ LiveEvent
++ logical NotificationDelivery when required
 + explicit commit
 ```
 
-through one shared transaction.
+Gate 1.2-3 proves the transaction boundary only; the later state-engine,
+scheduler, and notification-runtime gates retain ownership of their semantics.
 
-This slice does not yet migrate the Gate 0 state engine into a formal application
-service; that belongs to Gate 1.2-4 and later Gate 1.4/1.5 work. Gate 1.2-3 only
-proves the transaction boundary required by those services.
+## 4. First PostgreSQL attempt — real defect found
 
-## 4. Provider/network boundary
+The first real PostgreSQL probe failed while inserting `LiveEvent` because a
+pending ORM `LiveSession` had not been flushed before FK-dependent PostgreSQL
+Core DML.
 
-No external provider/network call may be hidden inside this UnitOfWork merely
-for convenience.
-
-Required order for later notification flows remains conceptually:
+Root cause:
 
 ```text
-DB transaction creates/persists logical work
--> commit
--> queue/provider runtime performs external send in its own controlled phase
+save_session()  -> ORM pending parent
+append_event()  -> Core INSERT ... ON CONFLICT
 ```
 
-Gate 0D's `IN_FLIGHT` / `AMBIGUOUS` semantics remain authoritative for the later
-notification runtime gate.
+This was classified as a real integration defect, not an environment BLOCKED.
 
-## 5. Contract tests
+## 5. Corrective fix
 
-Landed:
-
-```text
-tests/gate1/test_uow_contract.py
-```
-
-The tests verify:
-
-```text
-structural UnitOfWork port compatibility
-one shared session across all four repositories
-explicit commit delegation
-implicit rollback on uncommitted normal exit
-rollback + exception propagation on exceptional exit
-explicit rollback is not repeated
-active-context requirement
-nested re-entry rejection
-no transport/provider/legacy imports
-```
-
-## 6. First PostgreSQL attempt — FAILED, root cause identified
-
-The first real PostgreSQL probe reached the current Alembic head and then failed
-inside the COMMIT scenario while appending a `LiveEvent`:
-
-```text
-ForeignKeyViolationError:
-live_events.live_session_id = 300
-but live_sessions.id = 300 was not yet visible to PostgreSQL
-```
-
-The shared UnitOfWork session was correct. The failure was caused by mixed SQLAlchemy
-write modes inside the same transaction:
-
-```text
-save_session()
-  -> ORM pending LiveSessionModel (session.add)
-
-append_event()
-  -> PostgreSQL Core INSERT ... ON CONFLICT
-```
-
-A Core DML execution did not provide the ORM dependency ordering guarantee that
-this write path needed. The pending parent `LiveSession` had not been flushed
-before the FK-constrained Core `live_events` INSERT.
-
-This was a real Gate 1.2-3 integration defect, not an environment failure. The
-probe correctly stopped and cleaned up its temporary database.
-
-## 7. Corrective fix — PASS IN REAL POSTGRESQL
-
-`SQLAlchemyLiveRepository` now explicitly calls:
+`SQLAlchemyLiveRepository` now explicitly performs:
 
 ```text
 await session.flush()
 ```
 
-before the two FK-sensitive Core INSERT paths:
+before FK-sensitive Core insert paths for observations/events. `flush()` keeps
+all writes inside the same transaction and does not commit.
 
-```text
-append_observation()
-append_event()
-```
+A regression contract protects this ordering requirement.
 
-This guarantees that pending ORM parent rows (for example a newly-added
-`PlatformAccount` or `LiveSession`) reach PostgreSQL before dependent Core DML.
-`flush()` does **not** commit; the enclosing UnitOfWork still owns the single
-atomic transaction.
+## 6. Accepted PostgreSQL evidence
 
-A regression contract was added to ensure these two paths retain the flush
-boundary.
-
-The UnitOfWork's explicit rollback bookkeeping also remains aligned with the
-frozen rule that an explicit rollback is not repeated again on context exit.
-
-## 8. Real PostgreSQL probe — PASS
-
-Probe:
-
-```text
-scripts/gate12_uow_probe.py
-```
-
-It creates only:
-
-```text
-stageletter_gate12_uow
-```
-
-and always attempts cleanup in `finally`.
-
-Accepted user-local evidence after the corrective flush fix:
+Corrected user-local probe:
 
 ```text
 [uow] database created
@@ -194,61 +108,56 @@ PASS: Gate 1.2-3 SQLAlchemy UnitOfWork transaction semantics
 [cleanup] dropped stageletter_gate12_uow
 ```
 
-The corrected probe therefore proves all three transaction scenarios:
+This proves:
 
 ```text
-COMMIT
-  multi-repository canonical writes
-  -> explicit commit
-  -> all facts persisted
-
-NORMAL EXIT WITHOUT COMMIT
-  canonical writes
-  -> context exit
-  -> all facts rolled back
-
-EXCEPTIONAL EXIT
-  canonical write
-  -> induced application exception
-  -> write rolled back
-  -> exception propagated
+one shared AsyncSession for all four repositories
+explicit commit persists multi-repository work
+normal exit without commit rolls back
+exceptional exit rolls back and propagates
+FK-sensitive pending ORM parents are flushed safely
+probe database cleanup succeeds
 ```
 
-It also proves all four concrete repositories share the same AsyncSession inside
-one UnitOfWork and that the temporary database is cleaned up.
+## 7. Accepted static evidence
 
-## 9. Acceptance
+User confirmed both post-fix local acceptance commands PASS:
 
-Gate 1.2-3 PASS requires:
+```text
+Dedicated UnitOfWork contract suite: PASS / 9 tests
+Full Gate 1 suite:                  PASS / 88 tests
+```
+
+## 8. Final acceptance
 
 ```text
 A. Gate 1.2-2 closed PASS                                  PASS
-B. concrete UnitOfWork implements formal port              PASS / code landed
-C. all four repositories share one AsyncSession            PASS / real DB probe
-D. explicit commit persists multi-repository work          PASS / real DB probe
-E. normal uncommitted exit rolls back                      PASS / real DB probe
-F. exceptional exit rolls back and propagates              PASS / real DB probe
-G. session always closes                                   CONTRACT LANDED
-H. UnitOfWork owns no provider/network behavior            CONTRACT LANDED
-I. FK-sensitive Core inserts flush pending ORM parents     PASS / real DB probe
-J. UnitOfWork contract tests pass                          PENDING LOCAL EVIDENCE
-K. full Gate 1 suite remains green                         PENDING LOCAL EVIDENCE
-L. PostgreSQL UnitOfWork probe passes                      PASS
+B. concrete UnitOfWork implements formal port              PASS
+C. all four repositories share one AsyncSession            PASS
+D. explicit commit persists multi-repository work          PASS
+E. normal uncommitted exit rolls back                      PASS
+F. exceptional exit rolls back and propagates              PASS
+G. session always closes                                   PASS
+H. UnitOfWork owns no provider/network behavior            PASS
+I. FK-sensitive Core inserts flush pending ORM parents     PASS
+J. UnitOfWork contract tests                               PASS / 9
+K. full Gate 1 suite                                       PASS / 88
+L. PostgreSQL UnitOfWork probe                             PASS
 ```
 
-Gate 1.2-3 remains **CURRENT** until J-K pass.
+Gate 1.2-3: **PASS / CLOSED**.
 
-## 10. Stop rules
+## 9. Preserved constraints
 
-Stop with FAIL/BLOCKED if acceptance would require:
+The Gate keeps all prior invariants intact:
 
 ```text
-repository-owned commit
-multiple unrelated sessions inside one UnitOfWork
-implicit auto-commit on context success
-swallowing application exceptions
-provider/network calls inside the DB transaction
-legacy runtime imports
-manual fake parent rows to satisfy foreign keys
-UNKNOWN -> OFFLINE or other Gate 0 semantic drift
+no repository-owned commit
+no unrelated session inside one UnitOfWork
+no implicit auto-commit
+no swallowed application exception
+no provider/network work inside DB transaction
+no legacy runtime imports
+no fabricated parent rows
+no UNKNOWN -> OFFLINE semantic drift
 ```
