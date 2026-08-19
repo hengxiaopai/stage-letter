@@ -1,6 +1,6 @@
 # Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration
 
-Status: **CURRENT / 1.3-4A PASS / 1.3-4B HUYA CURRENT**
+Status: **CURRENT / 1.3-4A PASS / 1.3-4B HUYA PROVIDER CONTROLS PASS / LOCAL REGRESSION PENDING**
 
 Entry authority: Gate 1.3-3 PASS / CLOSED.
 
@@ -106,6 +106,38 @@ The gateway deliberately does not use recommendation/list absence as OFFLINE.
 Transport failures, missing status fields, HTML drift, timeout, and rate limiting
 remain non-decisive provider failures.
 
+### Current provider controls — PASS
+
+On 2026-08-19 the operator independently checked one current LIVE room and one
+current OFFLINE room, then exercised the formal provider chain:
+
+```text
+room 30764401
+expected            LIVE
+observed            LIVE
+expectation_match   true
+source              huya.mobile_html
+
+room 30457578
+expected            OFFLINE
+observed            OFFLINE
+expectation_match   true
+source              huya.mobile_html
+```
+
+Result:
+
+```text
+provider-backed Huya LIVE control     PASS
+provider-backed Huya OFFLINE control  PASS
+```
+
+Both outputs carried the same title metadata (`【预告】1日17点iG vs LNG 德杯半决赛`)
+while their decisive live states differed. This is explicit evidence that Huya
+title extraction is **non-canonical metadata** and must never influence live-state
+truth. In later API/UI integration, OFFLINE title metadata must not be presented
+as a current-live title; title correctness remains a separate metadata concern.
+
 ### Deterministic contracts
 
 Landed:
@@ -128,14 +160,15 @@ D. 2 -> LIVE / 1 -> OFFLINE freeze              PASS / CODE
 E. 0 / 3 / unsupported -> UNKNOWN               PASS / CODE
 F. failure / body-field conflict -> UNKNOWN     PASS / CONTRACT
 G. no legacy runtime import                     PASS / CONTRACT
-H. dedicated formal-adapter contracts           PENDING / 10
-I. dedicated HTTP-gateway contracts             PENDING / 10
-J. complete Gate 1 suite                        PENDING / expected 197
-K. current provider-backed Huya LIVE control    PENDING
-L. current provider-backed Huya OFFLINE control PENDING
+H. current provider-backed Huya LIVE control    PASS
+I. current provider-backed Huya OFFLINE control PASS
+J. dedicated formal-adapter contracts           PENDING / 10
+K. dedicated HTTP-gateway contracts             PENDING / 10
+L. complete Gate 1 suite                        PENDING / expected 197
 ```
 
-Gate 1.3-4B remains CURRENT until H-L pass.
+Gate 1.3-4B remains CURRENT until J-L pass. No additional real Huya provider
+control is required for this slice if the deterministic regression remains green.
 
 ## 4. Gate 1.3-4C — Douyu boundary
 
@@ -154,7 +187,7 @@ starts only after Gate 1.3-4B closes.
 
 ```text
 Gate 1.3-4A  PASS / CLOSED
-Gate 1.3-4B  CURRENT / Huya core+HTTP gateway+probe landed; local/provider evidence pending
+Gate 1.3-4B  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+197 local regression pending
 Gate 1.3-4C  NOT STARTED
 Gate 1.3-4D  NOT STARTED
 ```
@@ -170,6 +203,7 @@ list/recommendation absence -> OFFLINE
 Huya 0 / 3 guessed as OFFLINE
 Huya body/eLiveStatus conflict silently accepted
 fabricated Huya creator uid
+Huya title metadata treated as live-state truth
 Bilibili carousel/replay activity -> creator LIVE
 Douyu 0/3/4 guessed as decisive state
 adapter mutating LiveSession / LiveEvent or notification eligibility
