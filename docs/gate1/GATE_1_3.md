@@ -101,7 +101,7 @@ failure / ambiguity          -> UNKNOWN
 
 Stable Bilibili uid/space identity remains canonical over room ids.
 
-### Gate 1.3-4B Huya — current implementation
+### Gate 1.3-4B Huya — provider controls accepted, local regression pending
 
 Landed:
 
@@ -135,6 +135,18 @@ as the stable monitor key available to Stage Letter, so the formal adapter uses 
 without fabricating a provider creator uid. Body class and `eLiveStatus` must agree
 when both are present; disagreement becomes AMBIGUOUS/UNKNOWN.
 
+Accepted provider-backed controls on 2026-08-19:
+
+```text
+room 30764401 -> expected LIVE    -> observed LIVE    -> expectation_match=true
+room 30457578 -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
+source: huya.mobile_html
+```
+
+Both controls emitted the same title metadata while the decisive states differed.
+That title is therefore non-canonical metadata and must not influence state truth
+or be presented as a current-live title for an OFFLINE account.
+
 New deterministic contracts:
 
 ```text
@@ -143,9 +155,16 @@ Huya HTTP gateway    10
 ```
 
 The accepted entering baseline is 177 tests; expected current complete Gate 1
-count is 197 tests. Gate 1.3-4B still requires 10/10 + 10/10 + 197/197 local
-regression plus one independently checked current LIVE control and one current
-OFFLINE control.
+count is 197 tests. Gate 1.3-4B now needs only the local deterministic regression:
+
+```text
+10 / 10 formal Huya adapter contracts
+10 / 10 Huya HTTP gateway contracts
+197 / 197 complete Gate 1 suite
+```
+
+No additional real Huya provider control is required for this slice if those
+regressions remain green.
 
 ### Douyu boundary
 
@@ -179,7 +198,7 @@ Gate 1.3-1   PASS
 Gate 1.3-2   PASS
 Gate 1.3-3   PASS / CLOSED
 Gate 1.3-4A  PASS / CLOSED
-Gate 1.3-4B  CURRENT / Huya core+HTTP gateway+probe landed; local/provider evidence pending
+Gate 1.3-4B  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+197 local regression pending
 Gate 1.3-4C  NOT STARTED
 Gate 1.3-4D  NOT STARTED
 Gate 1.3-5   NOT STARTED
@@ -202,6 +221,7 @@ list/recommendation absence treated as OFFLINE
 Huya 0 / 3 guessed as OFFLINE
 Huya body/eLiveStatus conflict silently accepted
 fabricated Huya creator uid
+Huya title metadata treated as live-state truth
 stale metadata overriding explicit provider status
 fabricating Gate 0A lifecycle evidence
 ```
