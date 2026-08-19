@@ -57,7 +57,7 @@ real LIVE provider probe                 PASS
 real OFFLINE provider probe              PASS
 ```
 
-Formal Douyin transport:
+Formal Douyin transport remains:
 
 ```text
 StreamGetDouyinGateway -> DouyinFormalAdapter -> LiveSnapshot
@@ -71,14 +71,12 @@ evidence gap.
 
 ```text
 Gate 1.3-4A  Bilibili  PASS / CLOSED
-Gate 1.3-4B  Huya      CURRENT
-Gate 1.3-4C  Douyu     NOT STARTED
+Gate 1.3-4B  Huya      PASS / CLOSED
+Gate 1.3-4C  Douyu     CURRENT
 Gate 1.3-4D  cross-platform acceptance NOT STARTED
 ```
 
-### Gate 1.3-4A Bilibili — accepted
-
-Accepted user-local evidence:
+### Bilibili accepted evidence
 
 ```text
 formal adapter contracts      11 / 11 PASS
@@ -88,40 +86,20 @@ provider LIVE control              PASS
 corrected provider OFFLINE control PASS
 ```
 
-The provider controls corrected a carousel false-positive. Final Bilibili
-creator-live semantics are:
+Final creator-live semantics keep replay/carousel separate from actual creator
+broadcasting.
+
+### Huya accepted evidence
 
 ```text
-actual creator live status 1 -> LIVE
-actual creator live status 0 -> OFFLINE
-carousel / replay status 2   -> OFFLINE for creator-live truth
-roundStatus=1 alone          -> never promotes to LIVE
-failure / ambiguity          -> UNKNOWN
+formal Huya adapter contracts  10 / 10 PASS
+Huya HTTP gateway contracts    10 / 10 PASS
+complete Gate 1 suite         197 / 197 PASS
+provider LIVE control               PASS
+provider OFFLINE control            PASS
 ```
 
-Stable Bilibili uid/space identity remains canonical over room ids.
-
-### Gate 1.3-4B Huya — provider controls accepted, local regression pending
-
-Landed:
-
-```text
-stage_letter/infrastructure/platforms/huya.py
-stage_letter/infrastructure/platforms/huya_http.py
-scripts/gate13_huya_provider_probe.py
-tests/gate1/test_huya_formal_adapter.py
-tests/gate1/test_huya_http_gateway.py
-```
-
-A later 2026-08-14 project correction provides stronger Huya evidence than the
-older capacity note:
-
-```text
-eLiveStatus=2 <-> body.liveStatus-on  -> LIVE
-eLiveStatus=1 <-> body.liveStatus-off -> OFFLINE
-```
-
-Formal mapping therefore freezes only:
+Formal Huya mapping remains:
 
 ```text
 2 / liveStatus-on  -> LIVE
@@ -130,46 +108,55 @@ Formal mapping therefore freezes only:
 failure/conflict   -> UNKNOWN
 ```
 
-The gateway reads `https://m.huya.com/<room_id>`. Current evidence exposes room id
-as the stable monitor key available to Stage Letter, so the formal adapter uses it
-without fabricating a provider creator uid. Body class and `eLiveStatus` must agree
-when both are present; disagreement becomes AMBIGUOUS/UNKNOWN.
+Huya room id is the proven stable monitor key available to this slice; no
+unproven creator uid is fabricated. Provider title metadata is non-canonical and
+does not participate in state truth.
 
-Accepted provider-backed controls on 2026-08-19:
+### Gate 1.3-4C Douyu — current implementation
+
+Landed:
 
 ```text
-room 30764401 -> expected LIVE    -> observed LIVE    -> expectation_match=true
-room 30457578 -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
-source: huya.mobile_html
+stage_letter/infrastructure/platforms/douyu.py
+stage_letter/infrastructure/platforms/douyu_http.py
+scripts/gate13_douyu_provider_probe.py
+tests/gate1/test_douyu_formal_adapter.py
+tests/gate1/test_douyu_http_gateway.py
 ```
 
-Both controls emitted the same title metadata while the decisive states differed.
-That title is therefore non-canonical metadata and must not influence state truth
-or be presented as a current-live title for an OFFLINE account.
+The accepted historical evidence supports only:
+
+```text
+integer show_status 1 -> LIVE
+integer show_status 2 -> OFFLINE
+0 / 3 / 4 / other     -> UNKNOWN
+failure                -> UNKNOWN
+```
+
+The formal gateway reads `https://www.douyu.com/<room_id>` and parses explicit
+`show_status` / `showStatus` numeric evidence. Escaped and unescaped HTML forms
+are supported. Multiple explicit status fields must agree or the result becomes
+AMBIGUOUS/UNKNOWN.
+
+The legacy `videoLoop=1` fallback is intentionally not promoted into creator-live
+truth: loop/replay activity is not sufficient evidence that the creator is
+actually broadcasting. Recommendation/directory absence also remains non-
+decisive.
+
+Current evidence exposes room id as the stable monitor key available to Stage
+Letter, so the formal adapter uses it without inventing a provider creator uid.
 
 New deterministic contracts:
 
 ```text
-formal Huya adapter  10
-Huya HTTP gateway    10
+formal Douyu adapter  10
+Douyu HTTP gateway    10
 ```
 
-The accepted entering baseline is 177 tests; expected current complete Gate 1
-count is 197 tests. Gate 1.3-4B now needs only the local deterministic regression:
-
-```text
-10 / 10 formal Huya adapter contracts
-10 / 10 Huya HTTP gateway contracts
-197 / 197 complete Gate 1 suite
-```
-
-No additional real Huya provider control is required for this slice if those
-regressions remain green.
-
-### Douyu boundary
-
-Existing evidence supports `show_status=1 -> LIVE` and `show_status=2 -> OFFLINE`.
-Values 0/3/4 and directory/list absence remain non-decisive until Gate 1.3-4C.
+The accepted entering baseline is 197 tests; expected current complete Gate 1
+count is 217 tests. Gate 1.3-4C still requires 10/10 + 10/10 + 217/217 local
+regression plus one independently checked current LIVE control and one current
+OFFLINE control.
 
 ## 5. Legacy treatment
 
@@ -198,8 +185,8 @@ Gate 1.3-1   PASS
 Gate 1.3-2   PASS
 Gate 1.3-3   PASS / CLOSED
 Gate 1.3-4A  PASS / CLOSED
-Gate 1.3-4B  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+197 local regression pending
-Gate 1.3-4C  NOT STARTED
+Gate 1.3-4B  PASS / CLOSED
+Gate 1.3-4C  CURRENT / Douyu core+HTTP gateway+probe landed; local/provider evidence pending
 Gate 1.3-4D  NOT STARTED
 Gate 1.3-5   NOT STARTED
 Gate 1.3     CURRENT
@@ -219,9 +206,11 @@ formal infrastructure importing legacy platform_adapters as runtime dependency
 carousel/replay activity treated as creator LIVE
 list/recommendation absence treated as OFFLINE
 Huya 0 / 3 guessed as OFFLINE
-Huya body/eLiveStatus conflict silently accepted
-fabricated Huya creator uid
 Huya title metadata treated as live-state truth
+Douyu 0 / 3 / 4 guessed as decisive state
+Douyu videoLoop/replay activity treated as creator LIVE
+conflicting explicit Douyu state silently accepted
+fabricated provider creator uid
 stale metadata overriding explicit provider status
 fabricating Gate 0A lifecycle evidence
 ```
