@@ -1,6 +1,6 @@
 # Gate 1.3 — Platform Adapter Framework
 
-Status: **CURRENT / 1.3-1 CURRENT**
+Status: **CURRENT / 1.3-1 CURRENT / CONTRACT TESTS GREEN / FULL-SUITE RE-RUN PENDING**
 
 Entry authority: Gate 1.2 PASS / CLOSED.
 
@@ -81,7 +81,32 @@ UNKNOWN
 Provider failures or ambiguity must never be encoded as OFFLINE merely because
 an adapter could not prove LIVE.
 
-## 4. Identity rule
+## 4. First local Gate 1.3-1 run
+
+The first full Gate 1 run after landing Gate 1.3-1 executed 121 tests. All ten
+`test_platform_adapter_contract.py` checks passed, but the full suite ended with
+one failure in a historical Gate 1.2 acceptance assertion.
+
+The failing assertion still expected the transient pre-close text:
+
+```text
+Gate 1.2-6  CURRENT
+```
+
+while the authoritative Gate 1.2 documentation had correctly advanced to:
+
+```text
+Gate 1.2-6  PASS
+Gate 1.2    PASS / CLOSED
+Gate 1.3    CURRENT
+```
+
+This was a stale regression-test expectation, not an adapter-contract failure.
+The Gate 1.2 acceptance contract has been corrected to assert the final closed
+state plus Gate 1.3 handoff. Gate 1.3-1 remains CURRENT until the corrected full
+suite is re-run green.
+
+## 5. Identity rule
 
 `resolve_creator()` returns provider identity only. It does not fabricate Stage
 Letter persistence ids such as `creator_id` or `account_id`.
@@ -89,7 +114,7 @@ Letter persistence ids such as `creator_id` or `account_id`.
 Internal identities remain owned by the persistence/application workflow rather
 than by third-party providers.
 
-## 5. Registry rule
+## 6. Registry rule
 
 The formal `AdapterRegistry` is an infrastructure-owned mapping from platform
 name to an implementation of `LivePlatformAdapter`.
@@ -104,7 +129,7 @@ create LiveSession / LiveEvent
 perform scheduling
 ```
 
-## 6. Legacy treatment
+## 7. Legacy treatment
 
 The existing top-level `platform_adapters/*` package remains legacy migration
 debt. Gate 1.3-1 does not import it into the formal runtime.
@@ -112,7 +137,7 @@ debt. Gate 1.3-1 does not import it into the formal runtime.
 Provider-specific migration will be explicit in later Gate 1.3 slices after the
 normalized contract and error rules are accepted.
 
-## 7. Preserved inherited status
+## 8. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / deferred lifecycle evidence gap
@@ -123,10 +148,10 @@ Gate 1.2   PASS / CLOSED
 Gate 1.3   CURRENT
 ```
 
-## 8. Current progression
+## 9. Current progression
 
 ```text
-Gate 1.3-1  CURRENT / contract + registry + tests landed; local evidence pending
+Gate 1.3-1  CURRENT / 10 adapter contracts passed in first local run; full-suite stale assertion fixed; re-run pending
 Gate 1.3-2  NOT STARTED
 Gate 1.3-3  NOT STARTED
 Gate 1.3-4  NOT STARTED
