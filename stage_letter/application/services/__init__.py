@@ -3,6 +3,11 @@
 from .creator import CreatorApplicationService
 from .follow import FollowApplicationService
 from .live import LiveObservationApplicationService
+from .live_transition import (
+    LiveTransitionPersistenceApplicationService,
+    TransitionPersistenceResult,
+    make_live_event_id,
+)
 from .monitoring import MonitoringTargetApplicationService
 from .monitoring_probe import (
     MonitoringProbeApplicationService,
@@ -18,10 +23,13 @@ __all__ = [
     "CreatorApplicationService",
     "FollowApplicationService",
     "LiveObservationApplicationService",
+    "LiveTransitionPersistenceApplicationService",
     "MonitoringProbeApplicationService",
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
+    "TransitionPersistenceResult",
+    "make_live_event_id",
 ]
