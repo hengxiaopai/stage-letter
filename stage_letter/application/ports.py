@@ -77,6 +77,18 @@ class LiveRepository(Protocol):
         """Return whether the exact source-scoped durable observation exists."""
         ...
 
+    async def get_observation(
+        self,
+        account_id: str,
+        observation_id: str,
+    ) -> LiveObservation | None:
+        """Return one durable logical observation regardless of provider source.
+
+        Gate 1.4 uses this lookup to reuse an already-persisted logical probe when
+        the scheduler retries the same probe_id.
+        """
+        ...
+
     async def append_observation(self, observation: LiveObservation) -> None: ...
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None: ...
