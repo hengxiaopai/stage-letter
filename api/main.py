@@ -18,8 +18,10 @@ import logging
 
 from fastapi import FastAPI
 
+from api.composition import build_api_services
 from api.routers import anchors, auth, health, lives, notifications, subscriptions
 from core.config import settings
+from core.db import async_session
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("stage-letter")
@@ -30,6 +32,11 @@ app = FastAPI(
     docs_url="/docs" if settings.debug else None,
     redoc_url=None,
 )
+
+# Gate 1.2 composition seam. Existing legacy routers remain operational during
+# staged cutover, while new/formal handlers must resolve orchestration through
+# this application-service bundle rather than owning domain rules themselves.
+app.state.stage_letter_services = build_api_services(async_session)
 
 
 @app.get("/health")
