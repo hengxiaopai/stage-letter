@@ -106,19 +106,11 @@ class LiveRepository(Protocol):
         account_id: str,
         observation_id: str,
     ) -> LiveObservation | None:
-        """Return one durable logical observation regardless of provider source.
-
-        Gate 1.4 uses this lookup to reuse an already-persisted logical probe when
-        the scheduler retries the same probe_id.
-        """
+        """Return one durable logical observation regardless of provider source."""
         ...
 
     async def append_observation(self, observation: LiveObservation) -> bool:
-        """Insert the observation if permitted by durable identity constraints.
-
-        Return True when this transaction inserted the row and False when a
-        concurrent/idempotent write already owns the same durable identity.
-        """
+        """Insert the observation if permitted by durable identity constraints."""
         ...
 
     async def list_monitor_observations(
@@ -128,18 +120,16 @@ class LiveRepository(Protocol):
         after_sequence: int = 0,
         limit: int = 500,
     ) -> tuple[ObservationReplayRecord, ...]:
-        """Return formal ``monitor:*`` observations in durable persistence order.
-
-        The opaque sequence exists only for restart replay/paging. Legacy and
-        manually inserted non-monitor observations are deliberately excluded from
-        Gate 1.5 canonical state reconstruction because their participation in the
-        formal scheduler pipeline is not provable.
-        """
+        """Return formal ``monitor:*`` observations in durable persistence order."""
         ...
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None: ...
 
     async def get_open_session(self, account_id: str) -> LiveSession | None: ...
+
+    async def get_session(self, session_id: str) -> LiveSession | None:
+        """Return a canonical formal session by persistence-owned identity."""
+        ...
 
     async def create_session(
         self,
@@ -178,12 +168,7 @@ class NotificationRepository(Protocol):
 
 @runtime_checkable
 class UnitOfWork(Protocol):
-    """Atomic persistence boundary for one application use-case.
-
-    Gate 0B established that observation/state/session/event mutation must survive
-    restart atomically. Implementations must therefore commit those writes as one
-    transaction where the use-case requires it.
-    """
+    """Atomic persistence boundary for one application use-case."""
 
     creators: CreatorRepository
     follows: FollowRepository
