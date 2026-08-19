@@ -7,6 +7,7 @@ Entry authority: Gate 1.1 PASS.
 Primary freezes:
 
 - [`GATE_1_2_BOUNDARY_FREEZE.md`](./GATE_1_2_BOUNDARY_FREEZE.md)
+- [`GATE_1_2_REPOSITORIES.md`](./GATE_1_2_REPOSITORIES.md)
 
 ## 1. Goal
 
@@ -98,22 +99,29 @@ NotificationRepository
 ```
 
 Repository responsibilities are limited to persistence translation and query /
-write behavior. They must not:
+write behavior. They must not commit independently, own business transitions,
+call providers, or reinterpret canonical truth.
+
+The first repository contract has landed:
 
 ```text
-commit independently
-own state-transition rules
-own notification eligibility
-call providers/network services
-import api/workers/core/platform_adapters/experiments
-reinterpret UNKNOWN as OFFLINE
+stage_letter/infrastructure/db/repositories/identity.py
+tests/gate1/test_repository_identity.py
+docs/gate1/GATE_1_2_REPOSITORIES.md
 ```
 
-A concrete identity-mapping contract must be frozen before repository acceptance
-because formal domain identifiers are strings while the expanded PostgreSQL
-schema retains legacy BigInteger primary keys plus formal string identities for
-observations/events. Repository code must translate these identities explicitly
-rather than hiding conversions or inventing IDs.
+It makes the existing Gate 1 schema/domain identity boundary explicit: domain
+ids backed only by PostgreSQL BIGINT keys use canonical positive decimal strings;
+formal observation/event evidence ids remain native strings. Lossy or implicit
+conversion is forbidden.
+
+Repository inspection also exposed transitional legacy NOT NULL bridge columns
+such as `platform_accounts.anchor_id` and
+`notification_deliveries.notification_job_id`. Gate 1.2-2 will not fabricate
+legacy anchors/jobs merely to satisfy those columns. A forward-only compatible
+write-bridge resolution must be proven before repository write acceptance.
+
+Current local evidence for the new identity tests is pending.
 
 ## 6. Preserved inherited status
 
@@ -145,6 +153,7 @@ repository method committing independently inside UnitOfWork flow
 provider/network calls hidden inside repository transactions
 implicit or lossy identity conversion
 fabricated persistence IDs or historical identities
+fake legacy anchor/job bridge rows
 UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
 
@@ -153,7 +162,7 @@ UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```text
 Gate 1.1    PASS
 Gate 1.2-1  PASS / 62-test full suite incl. 7 boundary contracts
-Gate 1.2-2  CURRENT / SQLAlchemy repository implementations
+Gate 1.2-2  CURRENT / identity + bridge contract; local evidence pending
 Gate 1.2-3  NOT STARTED
 Gate 1.2-4  NOT STARTED
 Gate 1.2-5  NOT STARTED
