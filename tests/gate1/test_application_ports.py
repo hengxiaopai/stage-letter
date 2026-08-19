@@ -46,8 +46,12 @@ class ApplicationPortContractTests(unittest.TestCase):
                 "has_observation",
                 "get_observation",
                 "append_observation",
+                "list_monitor_observations",
                 "get_latest_observation",
+                "acquire_transition_lock",
                 "get_open_session",
+                "get_session",
+                "create_session",
                 "save_session",
                 "append_event",
                 "get_event",
@@ -69,6 +73,7 @@ class ApplicationPortContractTests(unittest.TestCase):
     def test_live_repository_persists_observation_before_state_outputs(self) -> None:
         names = set(LiveRepository.__dict__)
         self.assertIn("append_observation", names)
+        self.assertIn("acquire_transition_lock", names)
         self.assertIn("save_session", names)
         self.assertIn("append_event", names)
 
