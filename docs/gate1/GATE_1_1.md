@@ -1,6 +1,6 @@
 # Gate 1.1 — Domain Model + PostgreSQL Schema
 
-Status: **CURRENT / 1.1-1 PASS / 1.1-2 PASS / 1.1-3 PASS / 1.1-4 PASS / 1.1-5 PASS / 1.1-6 CURRENT**
+Status: **PASS**
 
 Entry authority: Gate 1.0 PASS.
 
@@ -164,11 +164,9 @@ alembic heads == b63e4f9a1c20                 PASS
 offline SQL compilation through hardening     PASS
 ```
 
-Gate 1.1-5: **PASS**.
+## 7. Gate 1.1-6 — Gate 0 Regression + Golden Path Comparison — PASS
 
-## 7. Gate 1.1-6 — Gate 0 Regression + Golden Path Comparison — CURRENT
-
-Regression assets have landed:
+Regression assets:
 
 ```text
 tests/gate1/test_gate0_regression_contract.py
@@ -176,39 +174,19 @@ scripts/gate1_regression_probe.py
 docs/gate1/GATE_1_1_REGRESSION.md
 ```
 
-The formal parity tests compare accepted Gate 0 oracle vocabulary against Gate 1:
+The regression comparison preserves Gate 0B/0C/0D/0E deterministic oracle
+semantics, verifies formal Gate 1 vocabulary parity, and keeps
+`stage_letter/*` free of `experiments/*` runtime imports.
 
-```text
-ObservationStatus / CanonicalStatus -> LiveStatus
-SessionOrigin                        -> SessionOrigin
-LiveEventType / Cause                -> formal event type/cause
-Channel                              -> DeliveryChannel
-GrantState                           -> GrantState
-ExecutionState                       -> DeliveryState
-HealthState                          -> RuntimeHealthState
-```
-
-They also prove `stage_letter/*` does not import `experiments/*` at runtime.
-
-The regression probe runs accepted deterministic suites:
-
-```text
-Gate 0B >= 37 tests
-Gate 0C >= 65 tests
-Gate 0D >= 54 tests
-Gate 0E >= 15 tests
-Gate 1  >= 55 tests
-```
-
-This is a regression/oracle comparison only. It does not claim the later formal
-state/source/notification runtime integrations are already implemented, and it
-does not repeat real WeChat/provider sends.
+On 2026-08-19 the operator confirmed that the Gate 1.1-6 evidence passed and
+progression to Gate 1.2 was authorized. The checked-in probe retains the exact
+minimum suite thresholds; this document does not invent unreported exact counts.
 
 Gate 0A remains DEGRADED with its known deferred lifecycle evidence gap.
 
-## 8. Stop rules
+## 8. Stop rules preserved after closure
 
-Gate 1.1 must stop with FAIL/BLOCKED if any implementation requires:
+Later gates must still stop with FAIL/BLOCKED if an implementation requires:
 
 ```text
 UNKNOWN -> OFFLINE
@@ -223,17 +201,16 @@ provider/notification failure -> creator live truth mutation
 silent resolution of conflicting legacy rows
 ```
 
-## 9. Current progression
+## 9. Final progression
 
 ```text
 Gate 1.0    PASS
-Gate 1.1-1  PASS / pure domain + 11/11
-Gate 1.1-2  PASS / ports + 17/17 + AST dependency audit
-Gate 1.1-3  PASS / SQLAlchemy models + 25/25 + metadata 10/10
-Gate 1.1-4  PASS / EXPAND + 35/35 + head + UTF-8 offline SQL
-Gate 1.1-5  PASS / hardening + clean/legacy PostgreSQL validation
-Gate 1.1-6  CURRENT / regression harness landed; local evidence pending
-Gate 1.1    CURRENT
+Gate 1.1-1  PASS
+Gate 1.1-2  PASS
+Gate 1.1-3  PASS
+Gate 1.1-4  PASS
+Gate 1.1-5  PASS
+Gate 1.1-6  PASS
+Gate 1.1    PASS
+Gate 1.2    READY / Repository + Service Boundaries
 ```
-
-Gate 1.1 may close only after Gate 1.1-6 regression evidence passes.
