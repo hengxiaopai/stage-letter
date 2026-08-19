@@ -47,7 +47,13 @@ def make_live_event_id(
 
 
 class LiveTransitionPersistenceApplicationService:
-    """Atomically apply one already-decided reducer transition intent."""
+    """Atomically apply one already-decided reducer transition intent.
+
+    Canonical session/event mutation is serialized per account through the
+    persistence port. This closes cross-process duplicate state-output races while
+    preserving the weaker, accurate claim: worker/provider execution itself is
+    not exactly once.
+    """
 
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -70,6 +76,11 @@ class LiveTransitionPersistenceApplicationService:
                 raise ApplicationNotFoundError(
                     f"platform account {observation.account_id!r} not found"
                 )
+
+            # The transaction-scoped per-account lock is acquired before any
+            # existing-event/session decision. A concurrent consumer therefore
+            # waits, then observes the canonical winner after the first commit.
+            await uow.live.acquire_transition_lock(observation.account_id)
 
             durable = await uow.live.get_observation(
                 observation.account_id,
@@ -143,7 +154,7 @@ class LiveTransitionPersistenceApplicationService:
             inserted = await uow.live.append_event(event)
             if not inserted:
                 raise ApplicationInvariantError(
-                    "live event identity was concurrently claimed during transition"
+                    "live event identity was concurrently claimed during serialized transition"
                 )
 
             await uow.commit()
