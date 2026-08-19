@@ -1,6 +1,6 @@
 # Gate 1.5 — State / Event Persistence
 
-Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 RECONSTRUCTION LANDED / LOCAL EVIDENCE PENDING**
+Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 PASS / CLOSED / 1.5-3 ATOMIC PERSISTENCE LANDED / LOCAL+POSTGRES EVIDENCE PENDING**
 
 Entry authority: Gate 1.4 PASS / CLOSED.
 
@@ -24,142 +24,178 @@ Gate 1.5 does not call platform providers, does not reinterpret provider metadat
 
 ```text
 Gate 1.5-1  Formal State Reducer + Transition Intent Contract     PASS / CLOSED
-Gate 1.5-2  Observation Replay + Persistent State Reconstruction  CURRENT
-Gate 1.5-3  Atomic Session / Event Persistence                     NOT STARTED
+Gate 1.5-2  Observation Replay + Persistent State Reconstruction  PASS / CLOSED
+Gate 1.5-3  Atomic Session / Event Persistence                     CURRENT
 Gate 1.5-4  Worker Consumption + Idempotent Processing             NOT STARTED
 Gate 1.5-5  Restart / Concurrency Acceptance                       NOT STARTED
 ```
 
-## 3. Gate 1.5-1 — PASS / CLOSED
-
-Accepted user-local deterministic evidence:
+## 3. Accepted slices
 
 ```text
-Gate 1.5 state reducer contracts   12 / 12 PASS
-complete Gate 1 suite             295 / 295 PASS
+1.5-1  12 / 12 dedicated + 295 / 295 complete Gate 1 PASS
+1.5-2  13 / 13 dedicated + 308 / 308 complete Gate 1 PASS
 ```
 
-The pure formal reducer preserves the accepted Gate 0B vocabulary and confirmation rules without importing `experiments/*`. `UNKNOWN` remains non-decisive, duplicate/stale ordering is preserved, bootstrap LIVE remains distinct from a real transition, and the reducer emits persistence-neutral `OPEN_SESSION` / `CLOSE_SESSION` intents without allocating session/event identifiers.
+Gate 1.5-1 established the pure reducer and persistence-neutral OPEN/CLOSE intents. Gate 1.5-2 established restart reconstruction from formal `monitor:*` observations in durable row order, preserving late-arrival stale semantics without a hidden state table.
 
-Result: **Gate 1.5-1 PASS / CLOSED**.
+Result: **Gate 1.5-2 PASS / CLOSED**.
 
-## 4. Gate 1.5-2 — CURRENT
+## 4. Gate 1.5-3 — CURRENT
 
-### 4.1 Reconstruction authority
+### 4.1 Persistence-owned session identity
 
-Gate 1.5-2 does not add a hidden state table or a new canonical domain entity. Reducer process memory is disposable. After restart, state is rebuilt from already-durable formal monitoring observations.
+`LiveSession.session_id` remains a string in the formal domain boundary, but PostgreSQL owns its canonical BIGINT allocation.
 
-Only scheduler observations in the accepted namespace participate:
+The `LiveRepository` port now exposes:
 
 ```text
-monitor:<logical-id>
+create_session(account_id, opened_at, origin, source_started_at) -> LiveSession
+get_session(session_id) -> LiveSession | None
 ```
 
-Legacy/manual non-monitor observations are excluded from canonical reconstruction because their participation in the formal scheduler pipeline is not provable.
-
-### 4.2 Durable replay order
-
-The Gate 0B stale-observation rule depends on arrival order, not merely `observed_at` sorting. Therefore the repository exposes an infrastructure-free replay record:
+The SQLAlchemy implementation inserts a new `live_sessions` row **without supplying `id`** and uses:
 
 ```text
-ObservationReplayRecord(
-  sequence=<opaque persistence cursor>,
-  observation=<LiveObservation>,
-)
+RETURNING live_sessions.id
 ```
 
-`sequence` is not a domain identity and is never used as a session/event id. The SQLAlchemy repository maps the existing `live_observations.id` to this opaque cursor and pages by:
+The returned PostgreSQL identity is losslessly serialized into the formal string `session_id`. Application/domain code never derives a BIGINT session id from `monitor:*`, provider ids, hashes, timestamps, or truncation.
+
+No new migration is required for this slice; the existing PostgreSQL primary-key sequence remains the allocation authority.
+
+### 4.2 Deterministic event identity
+
+`LiveEvent.event_id` is a string idempotency identity and is intentionally separate from the BIGINT session identity.
+
+Landed helper:
 
 ```text
-platform_account_id = account
-observation_id LIKE 'monitor:%'
-id > after_sequence
-ORDER BY id ASC
-LIMIT page_size
+make_live_event_id(account_id, observation_id, event_type)
 ```
 
-This allows a late-arriving observation with an older `observed_at` timestamp to be replayed after the newer durable fact and remain stale exactly as it was classified by the reducer contract.
+It produces a bounded deterministic `live-event:<sha256>` value from the already-durable formal monitor observation identity plus account and event type. Hashing here is only for the string event idempotency key; it is never used to fabricate a session BIGINT.
 
-### 4.3 Read-only reconstruction service
+START and END event identities are type-specific and remain stable across restart/retry.
+
+### 4.3 Atomic transition persistence service
 
 Landed:
 
 ```text
-stage_letter/application/services/state_replay.py
+stage_letter/application/services/live_transition.py
 ```
 
-`StateReconstructionApplicationService`:
+`LiveTransitionPersistenceApplicationService.apply(observation, intent)` performs one transaction:
 
 ```text
-1. verifies the PlatformAccount exists
-2. starts a fresh LiveStateReducer
-3. pages formal monitor observations in durable sequence order
-4. replays each observation through the reducer
-5. discards historical transition intents
-6. returns only the reconstructed EngineSnapshot + replay metadata
+verify PlatformAccount exists
+verify exact LiveObservation is already durable
+verify monitor: namespace
+verify intent timestamp/status/provenance matches decisive observation
+check deterministic LiveEvent id for prior completion
+
+OPEN_SESSION:
+  require no existing open session
+  allocate session id in PostgreSQL
+  persist LIVE_STARTED event
+
+CLOSE_SESSION:
+  require one open session
+  close that same session
+  persist LIVE_ENDED event
+
+commit once
 ```
 
-Historical intents are deliberately not exposed for persistence. Gate 1.5-3 owns writes for newly consumed observations; replay must never duplicate historical sessions/events.
+If the deterministic event already exists, the service reloads and validates the referenced canonical session/event and returns `reused_existing=True` without another commit.
 
-The service performs no commit, no session/event write, no provider call, and no notification action.
+If event insertion loses a race after this UoW has allocated/closed a session, the service raises before commit; the UoW rollback prevents a partial session-without-event commit. Distributed concurrency acceptance remains Gate 1.5-5.
 
-### 4.4 Restart truth and current limitation
-
-For this slice, durable monitoring observations are sufficient to reconstruct reducer state, streaks, seen observation ids, watermark, and the reducer's `session_open` semantic flag.
-
-Gate 1.5-2 does **not yet** assert that an already-persisted `LiveSession` / `LiveEvent` graph matches the reconstructed reducer. That cross-check becomes meaningful only after Gate 1.5-3 begins writing canonical session/event rows and is therefore deferred to Gate 1.5-5 restart/concurrency acceptance.
-
-This avoids using nonexistent future persistence output as an input prerequisite for reconstruction.
-
-### 4.5 Landed contracts
+### 4.4 Frozen truth rules
 
 ```text
-tests/gate1/test_gate15_state_reconstruction.py  13 tests
+OPEN_SESSION requires decisive LIVE observation
+CLOSE_SESSION requires decisive OFFLINE observation
+UNKNOWN can never enter transition persistence
+intent.occurred_at == decisive observation.observed_at
+OPEN source_started_at must equal persisted observation source_started_at
+BOOTSTRAP_LIVE origin -> BOOTSTRAP_LIVE event cause
+TRANSITION origin -> TRANSITION event cause
+CLOSE cause is always TRANSITION
+no provider call
+no NotificationDelivery creation
 ```
 
-The contracts verify:
+### 4.5 Repository event contract
+
+`LiveRepository.append_event()` now returns:
 
 ```text
-positive opaque replay sequence
-async replay repository port
-monitor-only SQL filtering
-stable durable-id ordering
-empty-history reconstruction
-OFFLINE reconstruction
-bootstrap LIVE reconstruction
-OFFLINE -> LIVE reconstruction
-UNKNOWN watermark semantics
-late stale observation preservation
-multi-page replay without commits
-wrong-account/non-monitor evidence rejection
-missing-account failure + application boundary purity
+True  -> this transaction inserted the deterministic event id
+False -> that event id was already claimed
 ```
 
-Accepted entering baseline is 295 tests. Thirteen new tests raise the expected complete Gate 1 suite to:
+The SQLAlchemy implementation retains `ON CONFLICT DO NOTHING` on `uq_g11_live_event_id` and adds `RETURNING live_events.id`, allowing the application service to distinguish a successful atomic write from an idempotency/concurrency collision.
+
+### 4.6 PostgreSQL acceptance probe
+
+Landed:
 
 ```text
-308 / 308
+scripts/gate15_transition_persistence_probe.py
 ```
 
-### 4.6 Acceptance — Gate 1.5-2
+The probe uses the real local PostgreSQL database at migration head `d14e7c9a5b30`, creates an isolated formal account and two durable monitor observations, then proves:
 
 ```text
-A. Gate 1.5-1 PASS / CLOSED                         PASS
-B. no hidden canonical state table                  PASS / CONTRACT
-C. formal monitor observations are replay authority PASS / CONTRACT
-D. persistence order preserves stale semantics      PASS / CONTRACT
-E. replay is read-only                              PASS / CONTRACT
-F. historical intents are not persisted             PASS / CONTRACT
-G. application layer remains infrastructure-free    PASS / CONTRACT
-H. dedicated Gate 1.5-2 contracts                   PENDING / 13
-I. complete Gate 1 suite                            PENDING / expected 308
+OPEN allocates a real numeric session id from PostgreSQL
+replaying the same OPEN reuses the existing event/session
+CLOSE closes that same session id
+exactly one session row exists
+exactly two canonical events exist
+zero open sessions remain after close
+provider_called = false
+notification_created = false
 ```
 
-Gate 1.5-2 remains CURRENT until H-I pass.
+Probe rows are removed afterward. This is non-production evidence only.
+
+### 4.7 Landed deterministic contracts
+
+```text
+tests/gate1/test_gate15_transition_persistence.py  12 tests
+```
+
+Contracts cover deterministic event identity, persistence-owned session allocation, atomic OPEN, bootstrap provenance, atomic CLOSE, event reuse, missing/mismatched durable evidence, monitor/status gates, missing open-session failure, no partial commit after event collision, and application boundary purity.
+
+Accepted entering baseline is 308 tests. Twelve new tests raise the expected complete Gate 1 suite to:
+
+```text
+320 / 320
+```
+
+### 4.8 Acceptance — Gate 1.5-3
+
+```text
+A. Gate 1.5-2 PASS / CLOSED                         PASS
+B. PostgreSQL-owned BIGINT session allocation       PASS / CODE
+C. no derived/fabricated numeric session identity   PASS / CONTRACT
+D. deterministic string LiveEvent idempotency       PASS / CONTRACT
+E. OPEN session + LIVE_STARTED one-UoW atomicity    PASS / CONTRACT
+F. CLOSE session + LIVE_ENDED one-UoW atomicity     PASS / CONTRACT
+G. existing event reuse without duplicate commit    PASS / CONTRACT
+H. UNKNOWN/provider/notification boundaries         PASS / CONTRACT
+I. dedicated Gate 1.5-3 contracts                   PENDING / 12
+J. complete Gate 1 suite                            PENDING / expected 320
+K. real PostgreSQL transition persistence probe     PENDING / LOCAL POSTGRES
+```
+
+Gate 1.5-3 remains CURRENT until I-K pass.
 
 ## 5. Next slice
 
-Gate 1.5-3 will define persistence-owned `LiveSession` BIGINT allocation plus deterministic `LiveEvent.event_id` idempotency, then atomically apply one newly emitted transition intent with its canonical session/event mutation. It must not derive BIGINT ids from `monitor:*`, hash/truncate provider identity, or partially commit session and event output.
+Gate 1.5-4 will connect durable observation consumption, reconstruction, reducer processing, and the atomic transition persistence service into one worker use-case. It must ensure an observation that emits no intent stays read-only, a decisive transition is applied idempotently, and retries never replay historical intents into duplicate session/event output.
 
 ## 6. Stop rules
 
@@ -175,7 +211,8 @@ legacy/manual observation silently entering formal reconstruction
 replaying historical intents into duplicate session/event writes
 hashing/truncating/faking BIGINT session identity
 inventing historical session origin/event cause
-creating notification delivery from state reducer/replay
+partial commit of session without matching event
+creating notification delivery from state reducer/replay/transition persistence
 relying on process memory as the only restart truth
 formal runtime importing experiments or platform_adapters
 ```
