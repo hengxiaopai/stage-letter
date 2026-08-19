@@ -73,7 +73,7 @@ anything else / failure -> UNKNOWN
 
 Stable profile/sec_uid identity remains authoritative over historical room URLs.
 
-Provider transport is now also landed through:
+Provider transport is landed through:
 
 ```text
 stage_letter/infrastructure/platforms/douyin_streamget.py
@@ -94,16 +94,23 @@ The new gateway uses StreamGet PROFILE/sec_uid reads only, lazily imports
 StreamGet on real provider access, and does not import legacy
 `platform_adapters/*`, `experiments/*`, `core/*`, `api/*`, or `workers/*` inward.
 
-Ten new gateway contracts are landed. Starting from the accepted 144-test
-baseline, the expected full Gate 1 count is 154 tests.
+The first operator LIVE/OFFLINE probe attempts returned UNKNOWN because the CLI
+identity argument was copied as a Markdown-wrapped link rather than a raw Douyin
+profile URL. That failed before decisive provider evidence and therefore counts as
+probe-harness/input evidence only, not a LIVE/OFFLINE result.
 
-Gate 1.3-3 remains CURRENT until:
+The CLI is now hardened to unwrap a Markdown link only when its visible URL and
+target URL are identical, while the formal gateway remains strict. A mismatched
+Markdown target is rejected. Three dedicated probe-CLI contracts were added.
+
+Current pending evidence is therefore:
 
 ```text
-10 / 10 StreamGet gateway contracts PASS
-154 / 154 complete Gate 1 suite PASS
-one independently verified LIVE provider probe PASS
-one independently verified OFFLINE provider probe PASS
+10 / 10 StreamGet gateway contracts
+3 / 3 provider-probe CLI normalization contracts
+157 / 157 complete Gate 1 suite
+one independently verified LIVE provider probe
+one independently verified OFFLINE provider probe
 ```
 
 The real probes must use current independently checked creator state. They are
@@ -135,7 +142,7 @@ Gate 1.3   CURRENT
 ```text
 Gate 1.3-1  PASS
 Gate 1.3-2  PASS
-Gate 1.3-3  CURRENT / adapter core PASS; StreamGet gateway + probe landed; local/provider evidence pending
+Gate 1.3-3  CURRENT / adapter core PASS; StreamGet gateway + hardened probe landed; local/provider evidence pending
 Gate 1.3-4  NOT STARTED
 Gate 1.3-5  NOT STARTED
 Gate 1.3    CURRENT
