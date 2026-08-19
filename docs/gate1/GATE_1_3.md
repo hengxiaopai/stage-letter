@@ -1,20 +1,19 @@
 # Gate 1.3 — Platform Adapter Framework
 
-Status: **CURRENT / 1.3-1 CURRENT / CONTRACT TESTS GREEN / FULL-SUITE RE-RUN PENDING**
+Status: **CURRENT / 1.3-1 PASS / 1.3-2 CURRENT**
 
 Entry authority: Gate 1.2 PASS / CLOSED.
 
-Primary freeze:
+Primary freezes:
 
 - [`GATE_1_3_ADAPTER_CONTRACT.md`](./GATE_1_3_ADAPTER_CONTRACT.md)
+- [`GATE_1_3_FAILURE_NORMALIZATION.md`](./GATE_1_3_FAILURE_NORMALIZATION.md)
 
 ## 1. Goal
 
 Gate 1.3 introduces the formal platform-adapter boundary that converts external
 provider responses into normalized Stage Letter facts without allowing provider
 vocabulary or transport failures to become canonical domain truth.
-
-Canonical direction:
 
 ```text
 provider implementation
@@ -24,8 +23,8 @@ provider implementation
               -> later observation/state pipeline
 ```
 
-Adapters emit facts only. They do not persist canonical sessions/events or decide
-notification eligibility.
+Adapters emit normalized facts only. They do not persist canonical
+LiveSession/LiveEvent truth or decide notification eligibility.
 
 ## 2. Gate 1.3 slices
 
@@ -37,22 +36,21 @@ Gate 1.3-4  Bilibili / Huya / Douyu Formal Adapter Migration
 Gate 1.3-5  Adapter Regression / Acceptance
 ```
 
-The later slice breakdown may be refined only if implementation evidence requires
-it; Gate 0 semantics may not be weakened to make migration easier.
+## 3. Gate 1.3-1 — PASS
 
-## 3. Gate 1.3-1 — CURRENT
-
-Landed assets:
+Accepted local evidence:
 
 ```text
-stage_letter/application/platforms.py
-stage_letter/infrastructure/platforms/__init__.py
-stage_letter/infrastructure/platforms/registry.py
-tests/gate1/test_platform_adapter_contract.py
-docs/gate1/GATE_1_3_ADAPTER_CONTRACT.md
+Gate 1.2 historical acceptance contracts: 6 / 6 PASS
+Complete Gate 1 suite:                  121 / 121 PASS
+Gate 1.3-1 adapter contracts:           10 / 10 PASS (included in full suite)
 ```
 
-Formal contract:
+The earlier single full-suite failure was a stale Gate 1.2 documentation
+assertion after Gate 1.2 had correctly moved from CURRENT to PASS/CLOSED. The
+assertion was corrected and the full suite then passed.
+
+Accepted formal contract:
 
 ```text
 LivePlatformAdapter
@@ -61,16 +59,7 @@ LivePlatformAdapter
   get_live_snapshot(account)
 ```
 
-Normalized types:
-
-```text
-ResolvedCreator
-CreatorProfileSnapshot
-LiveSnapshot
-```
-
-`LiveSnapshot.status` is the already-frozen formal `LiveStatus` enum and therefore
-contains only:
+Formal live status remains exactly:
 
 ```text
 LIVE
@@ -78,66 +67,66 @@ OFFLINE
 UNKNOWN
 ```
 
-Provider failures or ambiguity must never be encoded as OFFLINE merely because
-an adapter could not prove LIVE.
+`resolve_creator()` returns external/provider identity only and does not invent
+Stage Letter persistence ids. `AdapterRegistry` remains explicit wiring only.
 
-## 4. First local Gate 1.3-1 run
+Gate 1.3-1: **PASS / CLOSED**.
 
-The first full Gate 1 run after landing Gate 1.3-1 executed 121 tests. All ten
-`test_platform_adapter_contract.py` checks passed, but the full suite ended with
-one failure in a historical Gate 1.2 acceptance assertion.
+## 4. Gate 1.3-2 — CURRENT
 
-The failing assertion still expected the transient pre-close text:
+Landed assets:
 
 ```text
-Gate 1.2-6  CURRENT
+stage_letter/infrastructure/platforms/failures.py
+tests/gate1/test_provider_failure_normalization.py
+docs/gate1/GATE_1_3_FAILURE_NORMALIZATION.md
 ```
 
-while the authoritative Gate 1.2 documentation had correctly advanced to:
+Normalized diagnostic failure categories now cover:
 
 ```text
-Gate 1.2-6  PASS
-Gate 1.2    PASS / CLOSED
-Gate 1.3    CURRENT
+TIMEOUT
+NETWORK
+FORBIDDEN
+RATE_LIMITED
+AUTH_REQUIRED
+CAPTCHA_REQUIRED
+PARSE_ERROR
+SCHEMA_DRIFT
+AMBIGUOUS
+NOT_FOUND
+UPSTREAM_ERROR
+UNKNOWN
 ```
 
-This was a stale regression-test expectation, not an adapter-contract failure.
-The Gate 1.2 acceptance contract has been corrected to assert the final closed
-state plus Gate 1.3 handoff. Gate 1.3-1 remains CURRENT until the corrected full
-suite is re-run green.
+These are infrastructure diagnostics, not new canonical live states.
 
-## 5. Identity rule
-
-`resolve_creator()` returns provider identity only. It does not fabricate Stage
-Letter persistence ids such as `creator_id` or `account_id`.
-
-Internal identities remain owned by the persistence/application workflow rather
-than by third-party providers.
-
-## 6. Registry rule
-
-The formal `AdapterRegistry` is an infrastructure-owned mapping from platform
-name to an implementation of `LivePlatformAdapter`.
-
-It provides explicit registration and lookup only. It does not:
+The frozen truth rule is:
 
 ```text
-auto-import legacy platform_adapters
-choose providers based on hidden fallback rules
-mutate live truth
-create LiveSession / LiveEvent
-perform scheduling
+provider failure / ambiguity -> UNKNOWN
 ```
 
-## 7. Legacy treatment
+including timeout, network errors, 401/403/404/429, captcha/auth challenges,
+parse errors, schema drift, ambiguous results, and upstream failures. None may be
+silently coerced to OFFLINE.
+
+Only evidence-backed provider-specific values supplied by later concrete adapters
+may map explicitly to LIVE or OFFLINE. Unrecognized/missing values remain
+UNKNOWN.
+
+Gate 1.3-2 adds eleven dedicated contracts; with the accepted 121-test baseline,
+the current complete Gate 1 target is 132 tests.
+
+## 5. Legacy treatment
 
 The existing top-level `platform_adapters/*` package remains legacy migration
-debt. Gate 1.3-1 does not import it into the formal runtime.
+debt. Formal `stage_letter/*` does not import it.
 
-Provider-specific migration will be explicit in later Gate 1.3 slices after the
-normalized contract and error rules are accepted.
+Gate 1.3-3 and 1.3-4 will migrate provider implementations explicitly rather than
+wrapping or importing the legacy package inward as an authoritative dependency.
 
-## 8. Preserved inherited status
+## 6. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / deferred lifecycle evidence gap
@@ -148,13 +137,28 @@ Gate 1.2   PASS / CLOSED
 Gate 1.3   CURRENT
 ```
 
-## 9. Current progression
+## 7. Current progression
 
 ```text
-Gate 1.3-1  CURRENT / 10 adapter contracts passed in first local run; full-suite stale assertion fixed; re-run pending
-Gate 1.3-2  NOT STARTED
+Gate 1.3-1  PASS / 10 dedicated + 121 full Gate 1 evidence
+Gate 1.3-2  CURRENT / failure normalization + 11 contracts landed; local evidence pending
 Gate 1.3-3  NOT STARTED
 Gate 1.3-4  NOT STARTED
 Gate 1.3-5  NOT STARTED
 Gate 1.3    CURRENT
+```
+
+## 8. Stop rules
+
+Stop with FAIL/BLOCKED if implementation pressure requires:
+
+```text
+adding provider-specific statuses to formal LiveStatus
+converting failure/ambiguity to OFFLINE by default
+adapter mutating canonical session/event state
+adapter generating Stage Letter persistence ids
+formal application importing provider/infrastructure code
+formal infrastructure importing legacy platform_adapters as runtime dependency
+hidden provider fallback that obscures source provenance
+failure normalization inventing live start/title facts
 ```
