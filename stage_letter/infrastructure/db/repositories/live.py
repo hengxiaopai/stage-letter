@@ -179,10 +179,10 @@ class SQLAlchemyLiveRepository:
         result = await self.session.execute(statement)
         session_pk = result.scalar_one()
         return LiveSession(
-            session_id=serialize_persistence_id(session_pk, field="session_id"),
-            account_id=account_id,
-            opened_at=opened_at,
-            origin=origin,
+            serialize_persistence_id(session_pk, field="session_id"),
+            account_id,
+            opened_at,
+            origin,
             source_started_at=source_started_at,
         )
 
