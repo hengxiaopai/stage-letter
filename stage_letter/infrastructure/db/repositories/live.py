@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from stage_letter.application.ports import ObservationReplayRecord
 from stage_letter.domain.live import (
     LiveEvent,
     LiveEventCause,
@@ -79,8 +80,6 @@ class SQLAlchemyLiveRepository:
 
     async def append_observation(self, observation: LiveObservation) -> bool:
         account_pk = parse_persistence_id(observation.account_id, field="account_id")
-        # Core DML does not guarantee unrelated pending ORM parents are flushed.
-        # Flush keeps the shared UoW transaction open while satisfying FKs.
         await self.session.flush()
         statement = (
             pg_insert(LiveObservationModel.__table__)
@@ -92,15 +91,46 @@ class SQLAlchemyLiveRepository:
                 source=observation.source,
                 source_started_at=observation.source_started_at,
             )
-            # No explicit conflict target is intentional. It preserves historical
-            # source-scoped idempotency and also catches Gate 1.4's partial unique
-            # monitor-probe identity when two independent workers race with
-            # different source strings.
             .on_conflict_do_nothing()
             .returning(LiveObservationModel.id)
         )
         result = await self.session.execute(statement)
         return result.scalar_one_or_none() is not None
+
+    async def list_monitor_observations(
+        self,
+        account_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 500,
+    ) -> tuple[ObservationReplayRecord, ...]:
+        """Page scheduler observations in persisted row order for restart replay."""
+
+        if after_sequence < 0:
+            raise ValueError("after_sequence must be >= 0")
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+
+        account_pk = parse_persistence_id(account_id, field="account_id")
+        rows = (
+            await self.session.scalars(
+                select(LiveObservationModel)
+                .where(
+                    LiveObservationModel.platform_account_id == account_pk,
+                    LiveObservationModel.observation_id.like("monitor:%"),
+                    LiveObservationModel.id > after_sequence,
+                )
+                .order_by(LiveObservationModel.id.asc())
+                .limit(limit)
+            )
+        ).all()
+        return tuple(
+            ObservationReplayRecord(
+                sequence=row.id,
+                observation=self._to_observation(row),
+            )
+            for row in rows
+        )
 
     async def get_latest_observation(self, account_id: str) -> LiveObservation | None:
         account_pk = parse_persistence_id(account_id, field="account_id")
