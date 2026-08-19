@@ -1,6 +1,6 @@
 # Gate 1.2-3 — SQLAlchemy UnitOfWork + Transaction Semantics
 
-Status: **CURRENT / CODE + CONTRACTS + POSTGRES PROBE LANDED / LOCAL EVIDENCE PENDING**
+Status: **CURRENT / FIRST POSTGRES ATTEMPT FAILED / CORRECTIVE FLUSH FIX LANDED / RE-RUN PENDING**
 
 Entry authority: Gate 1.2-2 PASS.
 
@@ -113,9 +113,64 @@ nested re-entry rejection
 no transport/provider/legacy imports
 ```
 
-## 6. Real PostgreSQL probe
+## 6. First PostgreSQL attempt — FAILED, root cause identified
 
-Landed:
+The first real PostgreSQL probe reached the current Alembic head and then failed
+inside the COMMIT scenario while appending a `LiveEvent`:
+
+```text
+ForeignKeyViolationError:
+live_events.live_session_id = 300
+but live_sessions.id = 300 was not yet visible to PostgreSQL
+```
+
+The shared UnitOfWork session was correct. The failure was caused by mixed SQLAlchemy
+write modes inside the same transaction:
+
+```text
+save_session()
+  -> ORM pending LiveSessionModel (session.add)
+
+append_event()
+  -> PostgreSQL Core INSERT ... ON CONFLICT
+```
+
+A Core DML execution does not provide the ORM dependency ordering guarantee that
+this write path needs. The pending parent `LiveSession` had not been flushed before
+the FK-constrained Core `live_events` INSERT.
+
+This is a real Gate 1.2-3 integration defect, not an environment failure. The
+probe correctly stopped and cleaned up its temporary database.
+
+## 7. Corrective fix — LANDED
+
+`SQLAlchemyLiveRepository` now explicitly calls:
+
+```text
+await session.flush()
+```
+
+before the two FK-sensitive Core INSERT paths:
+
+```text
+append_observation()
+append_event()
+```
+
+This guarantees that pending ORM parent rows (for example a newly-added
+`PlatformAccount` or `LiveSession`) reach PostgreSQL before dependent Core DML.
+`flush()` does **not** commit; the enclosing UnitOfWork still owns the single
+atomic transaction.
+
+A regression contract was added to ensure these two paths retain the flush
+boundary.
+
+The UnitOfWork's explicit rollback bookkeeping also remains aligned with the
+frozen rule that an explicit rollback is not repeated again on context exit.
+
+## 8. Real PostgreSQL probe
+
+Probe:
 
 ```text
 scripts/gate12_uow_probe.py
@@ -129,7 +184,7 @@ stageletter_gate12_uow
 
 and always attempts cleanup in `finally`.
 
-The probe performs three transaction scenarios against the current Alembic head:
+The corrected probe must still prove three transaction scenarios:
 
 ```text
 COMMIT
@@ -152,7 +207,7 @@ EXCEPTIONAL EXIT
 It also proves all four concrete repositories share the same AsyncSession inside
 one UnitOfWork.
 
-## 7. Acceptance
+## 9. Acceptance
 
 Gate 1.2-3 PASS requires:
 
@@ -160,19 +215,20 @@ Gate 1.2-3 PASS requires:
 A. Gate 1.2-2 closed PASS                                  PASS
 B. concrete UnitOfWork implements formal port              CODE LANDED
 C. all four repositories share one AsyncSession            CONTRACT + PROBE LANDED
-D. explicit commit persists multi-repository work          PROBE LANDED
-E. normal uncommitted exit rolls back                      CONTRACT + PROBE LANDED
-F. exceptional exit rolls back and propagates              CONTRACT + PROBE LANDED
+D. explicit commit persists multi-repository work          RE-RUN PENDING
+E. normal uncommitted exit rolls back                      RE-RUN PENDING
+F. exceptional exit rolls back and propagates              RE-RUN PENDING
 G. session always closes                                   CONTRACT LANDED
 H. UnitOfWork owns no provider/network behavior            CONTRACT LANDED
-I. UnitOfWork contract tests pass                          PENDING LOCAL EVIDENCE
-J. full Gate 1 suite remains green                         PENDING LOCAL EVIDENCE
-K. PostgreSQL UnitOfWork probe passes                      PENDING LOCAL EVIDENCE
+I. FK-sensitive Core inserts flush pending ORM parents      FIX + CONTRACT LANDED
+J. UnitOfWork contract tests pass                          PENDING LOCAL EVIDENCE
+K. full Gate 1 suite remains green                         PENDING LOCAL EVIDENCE
+L. PostgreSQL UnitOfWork probe passes                      PENDING RE-RUN
 ```
 
-Gate 1.2-3 remains **CURRENT** until I-K pass.
+Gate 1.2-3 remains **CURRENT** until J-L pass.
 
-## 8. Stop rules
+## 10. Stop rules
 
 Stop with FAIL/BLOCKED if acceptance would require:
 
@@ -183,5 +239,6 @@ implicit auto-commit on context success
 swallowing application exceptions
 provider/network calls inside the DB transaction
 legacy runtime imports
+manual fake parent rows to satisfy foreign keys
 UNKNOWN -> OFFLINE or other Gate 0 semantic drift
 ```
