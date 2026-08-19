@@ -148,11 +148,11 @@ async def _main() -> int:
             )
             stored_session = await connection.execute(
                 select(
-                    LiveSessionModel.id,
-                    LiveSessionModel.opened_at,
-                    LiveSessionModel.closed_at,
-                    LiveSessionModel.origin,
-                    LiveSessionModel.source_started_at,
+                    LiveSessionModel.id.label("session_id"),
+                    LiveSessionModel.opened_at.label("opened_at"),
+                    LiveSessionModel.closed_at.label("closed_at"),
+                    LiveSessionModel.origin.label("origin"),
+                    LiveSessionModel.source_started_at.label("source_started_at"),
                 ).where(LiveSessionModel.platform_account_id == account_id)
             )
             row = stored_session.one()
@@ -164,7 +164,8 @@ async def _main() -> int:
             and session_count == 1
             and event_count == 2
             and open_count == 0
-            and str(row.id) == opened.session.session_id
+            and str(row.session_id) == opened.session.session_id
+            and row.opened_at == opened_at
             and row.closed_at == closed_at
             and row.origin == SessionOrigin.TRANSITION.value
             and row.source_started_at == source_started_at
