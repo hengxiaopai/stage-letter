@@ -1,6 +1,6 @@
 # Gate 1.2-5 — API / Worker Composition Roots + Legacy Cutover
 
-Status: **CURRENT / FORMAL ROOTS LANDED / LOCAL EVIDENCE + CUTOVER ACCEPTANCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.2-4 PASS.
 
@@ -39,7 +39,7 @@ LiveObservationApplicationService
 
 through `SQLAlchemyUnitOfWork` using a supplied async session factory.
 
-The API process now exposes the formal bundle at:
+The API process exposes the formal bundle at:
 
 ```text
 app.state.stage_letter_services
@@ -47,8 +47,8 @@ app.state.stage_letter_services
 
 via `build_api_services(async_session)`.
 
-This is a dependency cutover seam, not a claim that every existing HTTP route
-already uses the formal service layer.
+This is a dependency cutover seam, not a claim that every existing HTTP route or
+worker has already been semantically migrated.
 
 ## 3. Legacy boundary inventory
 
@@ -71,9 +71,9 @@ Examples observed during Gate 1.2-5 inspection:
 - `workers/probe/worker.py` still combines scheduling, adapter invocation,
   legacy state-machine calls, health logic, and direct persistence.
 
-Those modules are **legacy boundary debt**. They remain operational during the
-staged migration but are not authoritative templates for new formal runtime
-code.
+Those modules are **legacy boundary debt**. They remain operational during staged
+migration, are not authoritative templates for new formal runtime code, and are
+not imported inward by the formal `stage_letter/*` runtime.
 
 ## 4. Cutover rule
 
@@ -129,15 +129,16 @@ The existing `workers/probe/worker.py` is deliberately not rewritten in Gate
 1.2-5 because it mixes responsibilities owned by Gates 1.3-1.5. Replacing it
 before those contracts exist would only copy legacy behavior into a new path.
 
-## 7. Contract tests
+## 7. Accepted evidence
 
-Landed:
+User-local acceptance:
 
 ```text
-tests/gate1/test_composition_roots.py
+Dedicated composition-root contracts: 7 / 7 PASS
+Full Gate 1 suite:                 105 / 105 PASS
 ```
 
-The tests verify:
+The dedicated contracts prove:
 
 ```text
 API root builds only formal application services
@@ -146,37 +147,33 @@ all services in one root share the same UnitOfWork factory
 roots do not import domain or legacy runtime packages
 API and worker roots do not depend on each other
 api/main.py exposes the formal service bundle
-legacy routers remain present during staged cutover
+legacy routers remain visible during staged cutover
 ```
 
-## 8. Acceptance
-
-Gate 1.2-5 PASS requires:
+## 8. Acceptance result
 
 ```text
 A. Gate 1.2-4 PASS                                      PASS
-B. API composition root landed                          PASS / CODE
-C. Worker composition root landed                       PASS / CODE
-D. API bootstrap exposes formal service bundle          PASS / CODE
-E. formal roots contain no domain/legacy business logic CONTRACT LANDED
-F. legacy boundary debt explicitly quarantined          PASS / DOC
-G. composition-root contract tests pass                 PENDING LOCAL EVIDENCE
-H. full Gate 1 suite remains green                      PENDING LOCAL EVIDENCE
+B. API composition root landed                          PASS
+C. Worker composition root landed                       PASS
+D. API bootstrap exposes formal service bundle          PASS
+E. formal roots contain no domain/legacy business logic PASS
+F. legacy boundary debt explicitly quarantined          PASS
+G. composition-root contract tests                      PASS / 7
+H. full Gate 1 suite                                    PASS / 105
 ```
 
-Gate 1.2-5 remains **CURRENT** until G-H pass.
+Gate 1.2-5: **PASS / CLOSED**.
 
-## 9. Stop rules
-
-Stop with FAIL/BLOCKED if progress requires:
+## 9. Preserved constraints
 
 ```text
-formal application importing concrete infrastructure
-formal stage_letter runtime importing api/workers/core/platform_adapters/experiments
-API/worker root implementing state-machine/domain rules
-copying legacy 7-state status semantics into formal LiveStatus
-UNKNOWN -> OFFLINE coercion
-provider calls inside application DB transactions
-premature rewrite of probe worker before Gate 1.3/1.4 contracts
-claiming legacy routers are migrated when they still mutate ORM directly
+formal application does not import concrete infrastructure
+formal stage_letter runtime does not import api/workers/core/platform_adapters/experiments
+API/worker roots do not own state-machine/domain rules
+legacy 7-state status semantics are not copied into formal LiveStatus
+UNKNOWN is never coerced to OFFLINE
+provider calls do not occur inside application DB transactions
+probe worker is not prematurely rewritten before Gate 1.3/1.4 contracts
+legacy routers are not falsely claimed as semantically migrated
 ```
