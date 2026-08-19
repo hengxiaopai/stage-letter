@@ -9,6 +9,7 @@ from stage_letter.application.services import (
     CreatorApplicationService,
     FollowApplicationService,
     LiveObservationApplicationService,
+    MonitoringTargetApplicationService,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 from workers.composition import WorkerServiceBundle, build_worker_services
@@ -47,6 +48,7 @@ class CompositionRootContractTests(unittest.TestCase):
         self.assertIsInstance(bundle.creators, CreatorApplicationService)
         self.assertIsInstance(bundle.follows, FollowApplicationService)
         self.assertIsInstance(bundle.live_observations, LiveObservationApplicationService)
+        self.assertIsInstance(bundle.monitoring_targets, MonitoringTargetApplicationService)
 
     def test_api_services_share_one_uow_factory_contract(self) -> None:
         session_factory = lambda: object()
@@ -62,6 +64,7 @@ class CompositionRootContractTests(unittest.TestCase):
         factory = bundle.creators._uow_factory
         self.assertIs(factory, bundle.follows._uow_factory)
         self.assertIs(factory, bundle.live_observations._uow_factory)
+        self.assertIs(factory, bundle.monitoring_targets._uow_factory)
         self.assertIsInstance(factory(), SQLAlchemyUnitOfWork)
 
     def test_composition_roots_do_not_import_domain_or_legacy_runtime(self) -> None:
