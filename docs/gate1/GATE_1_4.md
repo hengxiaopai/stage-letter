@@ -1,6 +1,6 @@
 # Gate 1.4 — Monitoring Scheduler + Observation Pipeline
 
-Status: **CURRENT / 1.4-1 PASS / 1.4-2 PASS / 1.4-3 PASS / 1.4-4 PASS / CLOSED / 1.4-5 DURABILITY LANDED / LOCAL+POSTGRES EVIDENCE PENDING**
+Status: **CURRENT / 1.4-1 PASS / 1.4-2 PASS / 1.4-3 PASS / 1.4-4 PASS / CLOSED / 1.4-5 POSTGRES DURABILITY PASS / DETERMINISTIC EVIDENCE PENDING**
 
 Entry authority: Gate 1.3 PASS / CLOSED.
 
@@ -64,7 +64,7 @@ Production monitoring requests are now required to use:
 monitor:<logical-id>
 ```
 
-`make_probe_id(cycle_id, account_id)` already emits this namespace. `MonitoringProbeRequest` now rejects non-`monitor:` ids so the application cannot accidentally bypass the durable scheduler-probe identity contract.
+`make_probe_id(cycle_id, account_id)` emits this namespace. `MonitoringProbeRequest` rejects non-`monitor:` ids so the application cannot accidentally bypass the durable scheduler-probe identity contract.
 
 ### 4.3 Forward-only migration
 
@@ -74,7 +74,7 @@ Landed:
 migrations/versions/d14e7c9a5b30_gate14_monitor_probe_identity.py
 ```
 
-New Alembic head:
+Current Alembic head:
 
 ```text
 d14e7c9a5b30
@@ -92,9 +92,11 @@ Before creating the index the migration checks for already-existing duplicate `m
 
 Legacy/non-monitor observation ids keep the historical source-scoped uniqueness semantics.
 
+Accepted user-local PostgreSQL evidence now confirms the local database was upgraded to `d14e7c9a5b30`; the durability probe itself verified that same migration head before running.
+
 ### 4.4 Race-aware repository/application contract
 
-`LiveRepository.append_observation()` now returns:
+`LiveRepository.append_observation()` returns:
 
 ```text
 True  -> this transaction inserted the durable row
@@ -105,7 +107,7 @@ The SQLAlchemy repository uses PostgreSQL `ON CONFLICT DO NOTHING` without a sin
 
 If a probe process loses the insert race, `MonitoringProbeApplicationService` re-reads `(account_id, observation_id)` and returns the durable winner with `reused_existing=True`. It does not commit a phantom local observation. If the database reports a conflict but no durable winner is readable, that is an explicit application invariant failure.
 
-### 4.5 Restart / independent-session evidence probe
+### 4.5 Restart / independent-session evidence — PASS
 
 Landed:
 
@@ -113,7 +115,24 @@ Landed:
 scripts/gate14_observation_durability_probe.py
 ```
 
-The probe requires migration head `d14e7c9a5b30`, creates an isolated temporary formal account, then starts two independent SQLAlchemy sessions racing the same `monitor:*` probe id with different source/status values. Acceptance requires exactly one insert winner and one durable row. It then disposes/recreates the engine and verifies the same single row remains after the runtime restart boundary. Test rows are removed afterward.
+Accepted user-local PostgreSQL result:
+
+```text
+gate                                  1.4-5
+status                                PASS
+migration_head                        d14e7c9a5b30
+independent_session_insert_results    one True + one False
+row_count_after_race                  1
+row_count_after_engine_restart        1
+durable_winner_source                 gate14.race.a
+durable_winner_status                 LIVE
+provider_exactly_once_claimed         false
+production_approved                   false
+```
+
+This is decisive evidence that two independent SQLAlchemy sessions competing for one formal monitor-probe identity persist exactly one observation row, and that the single durable winner remains after disposal/recreation of the database engine.
+
+The probe identifier is randomized and non-semantic evidence; acceptance depends on the formal `monitor:` namespace contract plus the migration/race/restart outcomes above.
 
 This proves durable **observation identity**, not exactly-once provider execution. Two OS processes may both perform provider I/O before one loses the DB insert race; Gate 1.4 makes no stronger claim.
 
@@ -142,15 +161,15 @@ E. insert-race loser reloads durable winner              PASS / CONTRACT
 F. scheduler-generated probe ids covered by DB predicate PASS / CONTRACT
 G. dedicated Gate 1.4-5 contracts                        PENDING / 10
 H. complete Gate 1 suite                                 PENDING / expected 283
-I. Alembic upgrade to d14e7c9a5b30                      PENDING / LOCAL POSTGRES
-J. independent-session race + engine-restart probe       PENDING / LOCAL POSTGRES
+I. Alembic upgrade to d14e7c9a5b30                      PASS / LOCAL POSTGRES
+J. independent-session race + engine-restart probe       PASS / LOCAL POSTGRES
 ```
 
-Gate 1.4 remains CURRENT until G-J pass.
+Gate 1.4 remains CURRENT only because G-H have not yet been reported as passing.
 
 ## 5. Gate 1.4 exit condition
 
-If deterministic tests, migration, and PostgreSQL durability evidence all pass:
+If the remaining deterministic tests pass:
 
 ```text
 Gate 1.4-5  PASS / CLOSED
