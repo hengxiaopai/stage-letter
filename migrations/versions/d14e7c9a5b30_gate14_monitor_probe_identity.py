@@ -14,7 +14,7 @@ probe rows only. Legacy observation ids are not rewritten or deduplicated.
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -31,24 +31,28 @@ PREDICATE = "observation_id LIKE 'monitor:%'"
 def upgrade() -> None:
     """Protect one durable row per formal scheduler probe/account pair."""
 
-    bind = op.get_bind()
-    duplicate = bind.execute(
-        sa.text(
-            """
-            SELECT platform_account_id, observation_id, COUNT(*) AS row_count
-            FROM live_observations
-            WHERE observation_id LIKE 'monitor:%'
-            GROUP BY platform_account_id, observation_id
-            HAVING COUNT(*) > 1
-            LIMIT 1
-            """
-        )
-    ).first()
-    if duplicate is not None:
-        raise RuntimeError(
-            "Gate 1.4 durability migration found duplicate formal monitor probe rows; "
-            "do not delete or rewrite evidence automatically"
-        )
+    # Offline Alembic compilation has no result-bearing DB connection. The
+    # preflight is therefore an online-only safety check; the emitted schema DDL
+    # remains identical in offline mode for deterministic review.
+    if not context.is_offline_mode():
+        bind = op.get_bind()
+        duplicate = bind.execute(
+            sa.text(
+                """
+                SELECT platform_account_id, observation_id, COUNT(*) AS row_count
+                FROM live_observations
+                WHERE observation_id LIKE 'monitor:%'
+                GROUP BY platform_account_id, observation_id
+                HAVING COUNT(*) > 1
+                LIMIT 1
+                """
+            )
+        ).first()
+        if duplicate is not None:
+            raise RuntimeError(
+                "Gate 1.4 durability migration found duplicate formal monitor probe rows; "
+                "do not delete or rewrite evidence automatically"
+            )
 
     op.create_index(
         INDEX_NAME,
