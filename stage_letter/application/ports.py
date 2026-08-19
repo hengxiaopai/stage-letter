@@ -1,4 +1,4 @@
-"""Infrastructure-free repository and transaction ports for Gate 1.1.
+"""Infrastructure-free repository and transaction ports for Gate 1.
 
 These protocols define what the application layer may ask persistence to do.
 They deliberately avoid SQLAlchemy, Redis, FastAPI, Dramatiq, provider SDKs,
@@ -59,7 +59,14 @@ class FollowRepository(Protocol):
 
 @runtime_checkable
 class LiveRepository(Protocol):
-    async def has_observation(self, observation_id: str) -> bool: ...
+    async def has_observation(
+        self,
+        account_id: str,
+        source: str,
+        observation_id: str,
+    ) -> bool:
+        """Return whether the exact source-scoped durable observation exists."""
+        ...
 
     async def append_observation(self, observation: LiveObservation) -> None: ...
 
