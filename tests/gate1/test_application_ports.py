@@ -44,6 +44,7 @@ class ApplicationPortContractTests(unittest.TestCase):
             ),
             LiveRepository: (
                 "has_observation",
+                "get_observation",
                 "append_observation",
                 "get_latest_observation",
                 "get_open_session",
