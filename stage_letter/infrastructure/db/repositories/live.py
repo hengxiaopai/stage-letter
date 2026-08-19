@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,6 +133,21 @@ class SQLAlchemyLiveRepository:
             .limit(1)
         )
         return None if row is None else self._to_observation(row)
+
+    async def acquire_transition_lock(self, account_id: str) -> None:
+        """Acquire a PostgreSQL transaction-scoped advisory lock for one account.
+
+        Canonical account ids are positive BIGINTs. Their negative value is used
+        only as an infrastructure lock namespace, keeping the mapping collision-
+        free for formal account ids without changing or hashing domain identity.
+        PostgreSQL releases this lock automatically at transaction end.
+        """
+
+        account_pk = parse_persistence_id(account_id, field="account_id")
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": -account_pk},
+        )
 
     async def get_open_session(self, account_id: str) -> LiveSession | None:
         account_pk = parse_persistence_id(account_id, field="account_id")
