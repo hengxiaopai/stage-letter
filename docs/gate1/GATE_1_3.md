@@ -37,83 +37,80 @@ Gate 1.3-4  Bilibili / Huya / Douyu Formal Adapter Migration
 Gate 1.3-5  Adapter Regression / Acceptance
 ```
 
-## 3. Gate 1.3-1 — PASS
-
-Accepted evidence:
+## 3. Accepted slices
 
 ```text
-Gate 1.3-1 adapter contracts: 10 / 10 PASS
-Complete Gate 1 suite:        121 / 121 PASS
+Gate 1.3-1  PASS / 10 dedicated + 121 full Gate 1 evidence
+Gate 1.3-2  PASS / 11 dedicated + 132 full Gate 1 evidence
 ```
 
-The accepted contract remains:
+Formal live truth remains exactly:
 
 ```text
-LivePlatformAdapter
-  resolve_creator(input)
-  get_creator_profile(account)
-  get_live_snapshot(account)
+LIVE
+OFFLINE
+UNKNOWN
 ```
 
-with formal live truth exactly `LIVE / OFFLINE / UNKNOWN` and explicit registry
-wiring only.
+Failure/ambiguity remains UNKNOWN and never silently becomes OFFLINE.
 
-Gate 1.3-1: **PASS / CLOSED**.
+## 4. Gate 1.3-3 — CURRENT
 
-## 4. Gate 1.3-2 — PASS
-
-Accepted user-local evidence:
+Accepted semantic migration evidence:
 
 ```text
-Provider failure normalization contracts: 11 / 11 PASS
-Complete Gate 1 suite:                132 / 132 PASS
+Douyin formal adapter contracts: 12 / 12 PASS
+Complete Gate 1 suite:          144 / 144 PASS
 ```
 
-The frozen rule is:
+The formal adapter preserves only Gate 0A evidence-backed semantics:
 
 ```text
-provider failure / ambiguity -> UNKNOWN
-```
-
-including timeout, network errors, 401/403/404/429, captcha/auth challenges,
-parse errors, schema drift, ambiguous results, and upstream failures. None may be
-silently coerced to OFFLINE.
-
-Gate 1.3-2: **PASS / CLOSED**.
-
-## 5. Gate 1.3-3 — CURRENT
-
-Landed assets:
-
-```text
-stage_letter/infrastructure/platforms/douyin.py
-tests/gate1/test_douyin_formal_adapter.py
-docs/gate1/GATE_1_3_DOUYIN.md
-```
-
-The formal Douyin adapter migrates only Gate 0A evidence-backed semantics:
-
-```text
-raw status 2 -> LIVE
-raw status 4 -> OFFLINE
-anything else -> UNKNOWN
+raw integer 2 -> LIVE
+raw integer 4 -> OFFLINE
+anything else / failure -> UNKNOWN
 ```
 
 Stable profile/sec_uid identity remains authoritative over historical room URLs.
-Stale title/room metadata does not override explicit state. Provider failures or
-identity mismatch remain UNKNOWN for live reads.
 
-The adapter consumes provider transport through an injected
-`DouyinProviderGateway`; it does not import the legacy top-level
-`platform_adapters/*` package or Gate 0 experiments inward.
+Provider transport is now also landed through:
 
-Twelve dedicated contracts are now landed. Starting from the accepted 132-test
-baseline, the expected full Gate 1 count is 144 tests.
+```text
+stage_letter/infrastructure/platforms/douyin_streamget.py
+tests/gate1/test_douyin_streamget_gateway.py
+scripts/gate13_douyin_provider_probe.py
+```
 
-Gate 1.3-3 remains CURRENT after the static/local contracts; provider-backed
-transport/probe evidence is still required before this slice closes PASS.
+The runtime chain is:
 
-## 6. Legacy treatment
+```text
+StreamGetDouyinGateway
+  -> DouyinProviderGateway
+      -> DouyinFormalAdapter
+          -> LiveSnapshot
+```
+
+The new gateway uses StreamGet PROFILE/sec_uid reads only, lazily imports
+StreamGet on real provider access, and does not import legacy
+`platform_adapters/*`, `experiments/*`, `core/*`, `api/*`, or `workers/*` inward.
+
+Ten new gateway contracts are landed. Starting from the accepted 144-test
+baseline, the expected full Gate 1 count is 154 tests.
+
+Gate 1.3-3 remains CURRENT until:
+
+```text
+10 / 10 StreamGet gateway contracts PASS
+154 / 154 complete Gate 1 suite PASS
+one independently verified LIVE provider probe PASS
+one independently verified OFFLINE provider probe PASS
+```
+
+The real probes must use current independently checked creator state. They are
+technical transport evidence only and do not upgrade Gate 0A lifecycle evidence
+or production authorization.
+
+## 5. Legacy treatment
 
 The existing top-level `platform_adapters/*` package remains legacy migration
 debt. Formal `stage_letter/*` does not import it.
@@ -122,7 +119,7 @@ Concrete provider migrations copy only evidence-backed semantics into the formal
 boundary; legacy runtime code is not wrapped inward as an authoritative
 dependency.
 
-## 7. Preserved inherited status
+## 6. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / deferred lifecycle evidence gap
@@ -133,18 +130,18 @@ Gate 1.2   PASS / CLOSED
 Gate 1.3   CURRENT
 ```
 
-## 8. Current progression
+## 7. Current progression
 
 ```text
-Gate 1.3-1  PASS / 10 dedicated + 121 full Gate 1 evidence
-Gate 1.3-2  PASS / 11 dedicated + 132 full Gate 1 evidence
-Gate 1.3-3  CURRENT / formal Douyin adapter + 12 contracts landed; local evidence pending
+Gate 1.3-1  PASS
+Gate 1.3-2  PASS
+Gate 1.3-3  CURRENT / adapter core PASS; StreamGet gateway + probe landed; local/provider evidence pending
 Gate 1.3-4  NOT STARTED
 Gate 1.3-5  NOT STARTED
 Gate 1.3    CURRENT
 ```
 
-## 9. Stop rules
+## 8. Stop rules
 
 Stop with FAIL/BLOCKED if implementation pressure requires:
 
@@ -157,5 +154,6 @@ formal application importing provider/infrastructure code
 formal infrastructure importing legacy platform_adapters as runtime dependency
 historical room URL replacing stable creator identity
 stale metadata overriding explicit provider status
+provider cookie/secret printed by probe
 fabricating Gate 0A lifecycle evidence
 ```
