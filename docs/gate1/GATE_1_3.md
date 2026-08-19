@@ -78,7 +78,7 @@ Gate 1.3-4C  Douyu formal adapter + provider evidence          NOT STARTED
 Gate 1.3-4D  cross-platform regression / registry acceptance   NOT STARTED
 ```
 
-### Bilibili formal runtime landed
+### Bilibili formal runtime
 
 ```text
 stage_letter/infrastructure/platforms/bilibili.py
@@ -88,30 +88,45 @@ tests/gate1/test_bilibili_formal_adapter.py
 tests/gate1/test_bilibili_http_gateway.py
 ```
 
-The formal Bilibili identity is uid/space identity rather than room id. The
-frozen evidence-backed mapping is:
+Formal identity remains Bilibili uid/space identity rather than room id.
+
+The first current provider controls established one decisive LIVE result and one
+important false-positive finding:
 
 ```text
-integer live_status 0 -> OFFLINE
-integer live_status 1 -> LIVE
-integer live_status 2 -> LIVE / carousel
-bool/string lookalikes/other -> UNKNOWN
-failure / ambiguity -> UNKNOWN
+uid 299312132 -> expected LIVE    -> observed LIVE    PASS
+uid 8618005   -> expected OFFLINE -> observed LIVE    FAIL / semantic bug found
 ```
 
-The HTTP gateway resolves a live-room URL through `room_init` to stable uid and
-uses `getRoomInfoOld` for uid-based live facts. Provider failures, nonzero codes,
-parse/schema failures, and uid mismatch do not become OFFLINE.
+The second result was caused by carousel/replay state being promoted to canonical
+LIVE. That is incompatible with Stage Letter's product truth: LIVE means the
+creator is actually broadcasting now.
 
-Twenty Bilibili contracts are now landed:
+The formal Bilibili semantics have therefore been corrected to:
+
+```text
+integer live status 1 -> LIVE
+integer live status 0 -> OFFLINE
+integer room status 2 -> OFFLINE for creator-live truth
+roundStatus=1          -> never promotes to LIVE
+bool/string/other      -> UNKNOWN
+failure / ambiguity    -> UNKNOWN
+```
+
+This correction is evidence-driven and deliberately supersedes the inherited
+legacy assumption that carousel should count as ONLINE. It prevents replay or
+loop content from eventually creating a false LIVE_STARTED notification.
+
+The deterministic contract count remains:
 
 ```text
 formal adapter  11
 HTTP gateway     9
 ```
 
-The accepted entering Gate 1 baseline is 157 tests, so the current expected full
-suite is 177 tests.
+The accepted entering Gate 1 baseline is 157 tests, so the expected full suite
+remains 177 tests. Gate 1.3-4A now needs the corrected 11/11 + 9/9 + 177/177 local
+rerun and a repeated OFFLINE provider control for uid 8618005.
 
 Huya and Douyu are deliberately not copied wholesale from legacy adapters. The
 existing Huya evidence explicitly lacks decisive OFFLINE ground truth, so
@@ -145,7 +160,7 @@ Gate 1.3   CURRENT
 Gate 1.3-1   PASS
 Gate 1.3-2   PASS
 Gate 1.3-3   PASS / CLOSED
-Gate 1.3-4A  CURRENT / Bilibili core+HTTP gateway landed; 20 local contracts + provider evidence pending
+Gate 1.3-4A  CURRENT / Bilibili carousel semantics corrected; final local+OFFLINE re-probe pending
 Gate 1.3-4B  NOT STARTED
 Gate 1.3-4C  NOT STARTED
 Gate 1.3-4D  NOT STARTED
@@ -164,6 +179,7 @@ adapter mutating canonical session/event state
 adapter generating Stage Letter persistence ids
 formal application importing provider/infrastructure code
 formal infrastructure importing legacy platform_adapters as runtime dependency
+carousel/replay activity treated as creator LIVE
 list/recommendation absence treated as OFFLINE
 Huya OFFLINE promoted without decisive evidence
 stale metadata overriding explicit provider status
