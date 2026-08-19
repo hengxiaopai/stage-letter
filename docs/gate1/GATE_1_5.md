@@ -1,6 +1,6 @@
 # Gate 1.5 — State / Event Persistence
 
-Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 PASS / CLOSED / 1.5-3 PASS / CLOSED / 1.5-4 CONSUMPTION LANDED / LOCAL EVIDENCE PENDING**
+Status: **CURRENT / 1.5-1 PASS / CLOSED / 1.5-2 PASS / CLOSED / 1.5-3 PASS / CLOSED / 1.5-4 PASS / CLOSED / 1.5-5 RESTART+CONCURRENCY LANDED / LOCAL+POSTGRES EVIDENCE PENDING**
 
 Entry authority: Gate 1.4 PASS / CLOSED.
 
@@ -25,9 +25,9 @@ Gate 1.5 does not call platform providers, does not reinterpret provider metadat
 ```text
 Gate 1.5-1  Formal State Reducer + Transition Intent Contract     PASS / CLOSED
 Gate 1.5-2  Observation Replay + Persistent State Reconstruction  PASS / CLOSED
-Gate 1.5-3  Atomic Session / Event Persistence                     PASS / CLOSED
-Gate 1.5-4  Worker Consumption + Idempotent Processing             CURRENT
-Gate 1.5-5  Restart / Concurrency Acceptance                       NOT STARTED
+Gate 1.5-3  Atomic Session / Event Persistence                    PASS / CLOSED
+Gate 1.5-4  Worker Consumption + Idempotent Processing            PASS / CLOSED
+Gate 1.5-5  Restart / Concurrency Acceptance                      CURRENT
 ```
 
 ## 3. Accepted slices
@@ -37,122 +37,167 @@ Gate 1.5-5  Restart / Concurrency Acceptance                       NOT STARTED
 1.5-2  13 / 13 dedicated + 308 / 308 complete Gate 1 PASS
 1.5-3  13 / 13 dedicated + 321 / 321 complete Gate 1 PASS
         + real PostgreSQL transition persistence probe PASS
+1.5-4  12 / 12 dedicated + 333 / 333 complete Gate 1 PASS
 ```
 
-Gate 1.5-3 accepted PostgreSQL evidence proves database-owned numeric session allocation, idempotent OPEN replay, same-session CLOSE, one session row, two canonical events, zero open sessions after close, and no provider/notification activity. The two earlier acceptance-probe defects were probe-only ORM/result-label issues and are regression-locked.
+Gate 1.5-3 accepted PostgreSQL evidence proves database-owned numeric session allocation, idempotent OPEN replay, same-session CLOSE, one session row, two canonical events, zero open sessions after close, and no provider/notification activity.
 
-Result: **Gate 1.5-3 PASS / CLOSED**.
+Gate 1.5-4 accepted user-local evidence proves the complete worker consumption use-case reconstructs state immediately before one target observation, suppresses historical intents, keeps no-intent observations read-only, and delegates exactly one new decisive intent into the accepted atomic transition persistence path.
 
-## 4. Gate 1.5-4 — CURRENT
+Result: **Gate 1.5-4 PASS / CLOSED**.
 
-### 4.1 Consumption boundary
+## 4. Gate 1.5-5 — CURRENT
 
-Gate 1.5-4 connects durable observation evidence to the accepted reducer and transition persistence services without re-emitting historical intents.
+### 4.1 Remaining concurrency risk entering this slice
+
+Gate 1.5-3 already makes event identity deterministic and preserves one-UoW session/event atomicity. Gate 1.5-4 makes retry deterministic from durable observation history.
+
+However, two independent worker executions can reconstruct the same pre-target state at the same time and both attempt the same decisive transition. Database uniqueness alone prevents some duplicates, but without serialization an OPEN race can still collide first on the one-open-session constraint and surface an infrastructure exception before the losing worker can observe and reuse the canonical event/session.
+
+Gate 1.5-5 therefore serializes **canonical state-output mutation**, not worker/provider execution.
+
+### 4.2 Transaction-scoped per-account transition lock
+
+`LiveRepository` now exposes the infrastructure-free coordination port:
+
+```text
+acquire_transition_lock(account_id) -> None
+```
+
+The PostgreSQL implementation uses:
+
+```text
+pg_advisory_xact_lock(<negative canonical account BIGINT>)
+```
+
+Formal account ids are positive PostgreSQL BIGINTs. Their negative value is used only as a collision-free infrastructure lock namespace for this transaction-scoped coordination primitive. No hashing, truncation, alternate domain identity, or new persistence entity is introduced.
+
+The lock is released automatically by PostgreSQL when the surrounding UnitOfWork commits or rolls back. The repository lock method itself never commits or rolls back.
+
+### 4.3 Serialized transition application
+
+`LiveTransitionPersistenceApplicationService.apply()` now acquires the account transition lock before reading the durable observation, deterministic event, or open-session state.
+
+The concurrent winner therefore performs the canonical session/event mutation and commits. A waiting execution acquires the same lock afterward, then sees the already-persisted deterministic event/session and returns:
+
+```text
+reused_existing = True
+```
+
+This closes duplicate canonical session/event output for the same account transition across independent database transactions while preserving the accurate boundary:
+
+```text
+canonical state output is idempotent/serialized
+worker execution is NOT exactly once
+provider execution is NOT exactly once
+```
+
+No new Alembic migration is required. The migration head remains:
+
+```text
+d14e7c9a5b30
+```
+
+### 4.4 Restart + concurrency PostgreSQL acceptance probe
 
 Landed:
 
 ```text
-stage_letter/application/services/live_consumption.py
+scripts/gate15_restart_concurrency_probe.py
 ```
 
-`LiveObservationConsumptionApplicationService.consume(account_id, observation_id)` performs:
+The real probe uses the formal worker composition and local PostgreSQL to exercise the complete path:
 
 ```text
-locate one durable formal monitor observation
-reconstruct reducer state immediately BEFORE that observation
-process exactly that target observation once in the reducer
-if no intent -> read-only result
-if one intent -> delegate to atomic transition persistence
-if more than one intent -> explicit invariant failure
+persist OFFLINE + LIVE + decisive LIVE
+  -> concurrently consume the same decisive LIVE twice
+  -> exactly one canonical session/event winner
+  -> loser reuses the same session/event
+  -> reconstruct full reducer state == LIVE_CONFIRMED/session_open
+  -> DB graph == 1 session / 1 LIVE_STARTED / 1 open session
+
+restart engine + rebuild worker services
+  -> consume same decisive LIVE again
+  -> reuse existing canonical output
+
+persist OFFLINE + decisive OFFLINE
+  -> first OFFLINE is read-only pending confirmation
+  -> second OFFLINE closes the same session + emits LIVE_ENDED
+
+restart again
+  -> consume same decisive OFFLINE again
+  -> reuse existing close output
+  -> reconstruct full reducer state == OFFLINE_CONFIRMED/session_open false
+  -> DB graph == 1 session / 2 events / 0 open sessions
 ```
 
-The target observation itself is deliberately excluded from reconstruction. This prevents it from being classified as a duplicate before the consumer gets a chance to decide its new transition.
-
-### 4.2 Point-in-time reconstruction
-
-`StateReconstructionApplicationService` now also exposes:
+The probe explicitly reports:
 
 ```text
-reconstruct_before_observation(account_id, observation_id)
+worker_exactly_once_claimed   false
+provider_exactly_once_claimed false
+production_approved           false
 ```
 
-It pages formal `monitor:*` observations in durable sequence order and stops when it reaches the requested target. The returned `ObservationConsumptionPoint` contains:
+It removes isolated probe rows afterward.
+
+### 4.5 Reducer/DB graph cross-check
+
+Gate 1.5-5 does not accept restart idempotency merely because event counts look correct. The real probe cross-checks the reconstructed reducer snapshot against the persisted canonical graph at two lifecycle points:
 
 ```text
-prior  -> EngineSnapshot reconstructed only from earlier durable observations
-target -> exact ObservationReplayRecord to consume
+LIVE_CONFIRMED + session_open=True
+  <-> exactly one open LiveSession + exactly one LIVE_STARTED
+
+OFFLINE_CONFIRMED + session_open=False
+  <-> same LiveSession closed + one LIVE_STARTED + one LIVE_ENDED
 ```
 
-Historical intents emitted while rebuilding `prior` are discarded exactly as in Gate 1.5-2. They are never forwarded to transition persistence.
-
-### 4.3 Idempotent retry semantics
-
-Retrying the same decisive target performs the same deterministic sequence:
-
-```text
-same durable prior history
-  -> same pre-target reducer state
-  -> same target observation
-  -> same transition intent
-  -> same deterministic LiveEvent.event_id
-```
-
-The Gate 1.5-3 persistence service therefore reuses the already-persisted canonical event/session on retry instead of creating duplicates.
-
-This is idempotent state-output processing. It does not claim exactly-once worker execution.
-
-### 4.4 No-intent observations stay read-only
-
-The consumer does not open a UnitOfWork or commit merely because an observation exists. `UNKNOWN`, first OFFLINE, pending confirmation samples, cancelled transitions, duplicate/stale reducer outcomes, and any other no-intent result remain read-only at the state-output layer.
-
-A historical transition that occurred before the target may be reconstructed semantically in memory, but its historical intent is not re-persisted.
-
-### 4.5 Worker composition
-
-`workers/composition.py` now exposes, from the same lazy UoW factory:
-
-```text
-state_reconstruction
-live_transitions
-live_observation_consumer
-```
-
-Construction still performs no database/provider I/O. The consumer has no adapter registry, provider gateway, notification repository, or queue dependency.
+A mismatch is FAIL even if individual inserts were successful.
 
 ### 4.6 Landed deterministic contracts
 
 ```text
-tests/gate1/test_gate15_observation_consumption.py  12 tests
+tests/gate1/test_gate15_restart_concurrency.py  12 tests
 ```
 
-The contracts cover pre-target reconstruction, missing/non-monitor target rejection, no-intent OFFLINE/UNKNOWN behavior, bootstrap and real transition OPEN emission, stale-target suppression, historical-intent discard, deterministic retry delegation, worker wiring without construction I/O, and dependency-boundary purity.
+The contracts cover the async transition-lock port, PostgreSQL transaction-scoped advisory lock, collision-free negative account lock key, no repository-owned commit/rollback, lock-before-decision ordering, application boundary purity, concurrent same-target probe shape, runtime restart boundaries, reducer/DB open-state cross-check, final closed-state cross-check, read-only first OFFLINE, same-session CLOSE, and explicit no-exactly-once claims.
 
-Accepted entering baseline is 321 tests. Twelve new tests raise the expected complete Gate 1 suite to:
+Accepted entering baseline is 333 tests. Twelve new tests raise the expected complete Gate 1 suite to:
 
 ```text
-333 / 333
+345 / 345
 ```
 
-### 4.7 Acceptance — Gate 1.5-4
+### 4.7 Acceptance — Gate 1.5-5
 
 ```text
-A. Gate 1.5-3 PASS / CLOSED                           PASS
-B. target excluded from historical reconstruction     PASS / CONTRACT
-C. historical intents never forwarded to persistence  PASS / CONTRACT
-D. no-intent observations remain read-only            PASS / CONTRACT
-E. decisive target delegates exactly one new intent   PASS / CONTRACT
-F. retry reproduces same target intent                 PASS / CONTRACT
-G. worker construction remains side-effect free        PASS / CONTRACT
-H. no provider/notification dependency                 PASS / CONTRACT
-I. dedicated Gate 1.5-4 contracts                     PENDING / 12
-J. complete Gate 1 suite                              PENDING / expected 333
+A. Gate 1.5-4 PASS / CLOSED                              PASS
+B. transaction-scoped per-account transition lock        PASS / CODE
+C. lock acquired before canonical event/session decision PASS / CONTRACT
+D. no new persistence identity or migration               PASS / CONTRACT
+E. concurrent loser reuses canonical winner               PASS / CONTRACT SHAPE
+F. reducer/open-session graph cross-check                  PASS / CONTRACT SHAPE
+G. restart retry uses durable truth, not process memory    PASS / CONTRACT SHAPE
+H. no worker/provider exactly-once claim                   PASS / CONTRACT
+I. dedicated Gate 1.5-5 contracts                         PENDING / 12
+J. complete Gate 1 suite                                  PENDING / expected 345
+K. real PostgreSQL restart/concurrency probe               PENDING / LOCAL POSTGRES
 ```
 
-Gate 1.5-4 remains CURRENT until I-J pass.
+Gate 1.5 remains CURRENT until I-K pass.
 
-## 5. Next slice
+## 5. Gate 1.5 exit
 
-Gate 1.5-5 will provide real PostgreSQL restart/concurrency acceptance for the complete consumption path. It will cross-check reconstructed reducer state against persisted open-session/event facts, exercise retry after process restart, and test concurrent consumption of the same decisive observation without claiming exactly-once worker execution.
+If the deterministic suite and real PostgreSQL restart/concurrency probe pass:
+
+```text
+Gate 1.5-5  PASS / CLOSED
+Gate 1.5    PASS / CLOSED
+Gate 1.6    CURRENT
+```
+
+Gate 1.6 then owns notification queue and WeChat delivery from already-persisted canonical `LiveEvent` facts. Gate 1.5 must not create `NotificationDelivery`.
 
 ## 6. Stop rules
 
@@ -172,7 +217,7 @@ inventing historical session origin/event cause
 partial commit of session without matching event
 creating NotificationDelivery from state reduction/consumption
 relying on process memory as the only restart truth
-claiming exactly-once worker execution from idempotent persistence
+claiming exactly-once worker/provider execution from serialization/idempotency
 formal runtime importing experiments or platform_adapters
 ```
 
