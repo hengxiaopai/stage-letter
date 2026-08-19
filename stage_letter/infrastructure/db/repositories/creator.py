@@ -60,6 +60,29 @@ class SQLAlchemyCreatorRepository:
         )
         return None if row is None else self._to_account(row)
 
+    async def list_enabled_accounts(
+        self,
+        *,
+        after_account_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[PlatformAccount, ...]:
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+
+        statement = select(PlatformAccountModel).where(
+            PlatformAccountModel.is_disabled.is_(False)
+        )
+        if after_account_id is not None:
+            after_pk = parse_persistence_id(after_account_id, field="account_id")
+            statement = statement.where(PlatformAccountModel.id > after_pk)
+
+        rows = (
+            await self.session.scalars(
+                statement.order_by(PlatformAccountModel.id.asc()).limit(limit)
+            )
+        ).all()
+        return tuple(self._to_account(row) for row in rows)
+
     async def save_creator(self, creator: Creator) -> None:
         creator_pk = parse_persistence_id(creator.creator_id, field="creator_id")
         if await self.session.get(CreatorModel, creator_pk) is None:
@@ -91,8 +114,6 @@ class SQLAlchemyCreatorRepository:
         creator_pk = parse_persistence_id(account.creator_id, field="creator_id")
         row = await self.session.get(PlatformAccountModel, account_pk)
         if row is None:
-            # Gate 1.2 bridge migration permits all non-canonical legacy fields to
-            # remain NULL for a newly created formal account.
             self.session.add(
                 PlatformAccountModel(
                     id=account_pk,
@@ -106,7 +127,6 @@ class SQLAlchemyCreatorRepository:
                 )
             )
             return
-        # Preserve any existing legacy bridge evidence; update canonical fields only.
         row.creator_id = creator_pk
         row.platform = account.platform
         row.platform_user_id = account.platform_user_id
