@@ -82,10 +82,13 @@ class Gate12AcceptanceContractTests(unittest.TestCase):
         self.assertFalse(any(m == "workers" or m.startswith("workers.") for m in _imports(API_ROOT)))
         self.assertFalse(any(m == "api" or m.startswith("api.") for m in _imports(WORKER_ROOT)))
 
-    def test_gate12_main_document_records_slice5_pass_and_slice6_current(self) -> None:
+    def test_gate12_main_document_records_final_closed_state_and_gate13_handoff(self) -> None:
         source = MAIN_DOC.read_text(encoding="utf-8")
+        self.assertIn("Status: **PASS / CLOSED**", source)
         self.assertIn("Gate 1.2-5  PASS", source)
-        self.assertIn("Gate 1.2-6  CURRENT", source)
+        self.assertIn("Gate 1.2-6  PASS", source)
+        self.assertIn("Gate 1.2   PASS / CLOSED", source)
+        self.assertIn("Gate 1.3   CURRENT", source)
         self.assertIn("Gate 0A", source)
         self.assertIn("DEGRADED", source)
 
