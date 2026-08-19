@@ -72,36 +72,51 @@ evidence gap.
 Gate 1.3-4 is internally sequenced:
 
 ```text
-Gate 1.3-4A  Bilibili formal adapter + provider evidence      CURRENT
+Gate 1.3-4A  Bilibili formal adapter + provider evidence       CURRENT
 Gate 1.3-4B  Huya formal adapter + OFFLINE evidence resolution NOT STARTED
 Gate 1.3-4C  Douyu formal adapter + provider evidence          NOT STARTED
 Gate 1.3-4D  cross-platform regression / registry acceptance   NOT STARTED
 ```
 
-### Bilibili core landed
+### Bilibili formal runtime landed
 
 ```text
 stage_letter/infrastructure/platforms/bilibili.py
+stage_letter/infrastructure/platforms/bilibili_http.py
+scripts/gate13_bilibili_provider_probe.py
 tests/gate1/test_bilibili_formal_adapter.py
+tests/gate1/test_bilibili_http_gateway.py
 ```
 
 The formal Bilibili identity is uid/space identity rather than room id. The
-currently frozen evidence-backed mapping is:
+frozen evidence-backed mapping is:
 
 ```text
 integer live_status 0 -> OFFLINE
 integer live_status 1 -> LIVE
 integer live_status 2 -> LIVE / carousel
-other / type drift / failure -> UNKNOWN
+bool/string lookalikes/other -> UNKNOWN
+failure / ambiguity -> UNKNOWN
 ```
 
-Eleven dedicated Bilibili contracts are landed. The accepted entering Gate 1
-baseline is 157 tests, so the expected complete suite is now 168 tests.
+The HTTP gateway resolves a live-room URL through `room_init` to stable uid and
+uses `getRoomInfoOld` for uid-based live facts. Provider failures, nonzero codes,
+parse/schema failures, and uid mismatch do not become OFFLINE.
+
+Twenty Bilibili contracts are now landed:
+
+```text
+formal adapter  11
+HTTP gateway     9
+```
+
+The accepted entering Gate 1 baseline is 157 tests, so the current expected full
+suite is 177 tests.
 
 Huya and Douyu are deliberately not copied wholesale from legacy adapters. The
 existing Huya evidence explicitly lacks decisive OFFLINE ground truth, so
 `eLiveStatus=0 -> OFFLINE` must be proven before becoming formal canonical truth.
-The existing Douyu record already supports decisive `show_status=1 -> LIVE` and
+The existing Douyu record supports decisive `show_status=1 -> LIVE` and
 `show_status=2 -> OFFLINE`, while 0/3/4 remain ambiguous without further evidence.
 
 ## 5. Legacy treatment
@@ -130,7 +145,7 @@ Gate 1.3   CURRENT
 Gate 1.3-1   PASS
 Gate 1.3-2   PASS
 Gate 1.3-3   PASS / CLOSED
-Gate 1.3-4A  CURRENT / Bilibili core + 11 contracts landed; local/provider evidence pending
+Gate 1.3-4A  CURRENT / Bilibili core+HTTP gateway landed; 20 local contracts + provider evidence pending
 Gate 1.3-4B  NOT STARTED
 Gate 1.3-4C  NOT STARTED
 Gate 1.3-4D  NOT STARTED
