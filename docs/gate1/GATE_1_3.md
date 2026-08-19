@@ -112,7 +112,7 @@ Huya room id is the proven stable monitor key available to this slice; no
 unproven creator uid is fabricated. Provider title metadata is non-canonical and
 does not participate in state truth.
 
-### Gate 1.3-4C Douyu — current implementation
+### Gate 1.3-4C Douyu — provider controls accepted, local regression pending
 
 Landed:
 
@@ -124,7 +124,7 @@ tests/gate1/test_douyu_formal_adapter.py
 tests/gate1/test_douyu_http_gateway.py
 ```
 
-The accepted historical evidence supports only:
+Formal Douyu mapping remains:
 
 ```text
 integer show_status 1 -> LIVE
@@ -133,18 +133,22 @@ integer show_status 2 -> OFFLINE
 failure                -> UNKNOWN
 ```
 
-The formal gateway reads `https://www.douyu.com/<room_id>` and parses explicit
-`show_status` / `showStatus` numeric evidence. Escaped and unescaped HTML forms
-are supported. Multiple explicit status fields must agree or the result becomes
-AMBIGUOUS/UNKNOWN.
+The gateway reads `https://www.douyu.com/<room_id>` and parses explicit
+`show_status` / `showStatus` numeric evidence. Multiple explicit status fields
+must agree or the result becomes AMBIGUOUS/UNKNOWN. `videoLoop`, recommendation
+absence, and generic weak fallbacks are not creator-live truth.
 
-The legacy `videoLoop=1` fallback is intentionally not promoted into creator-live
-truth: loop/replay activity is not sufficient evidence that the creator is
-actually broadcasting. Recommendation/directory absence also remains non-
-decisive.
+Accepted provider-backed controls on 2026-08-19:
 
-Current evidence exposes room id as the stable monitor key available to Stage
-Letter, so the formal adapter uses it without inventing a provider creator uid.
+```text
+room 74751 -> expected LIVE    -> observed LIVE    -> expectation_match=true
+room 6512  -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
+source: douyu.desktop_html
+```
+
+The OFFLINE control still emitted page/title metadata. That metadata remains
+non-canonical and must not influence state truth or be shown as a current-live
+title for OFFLINE.
 
 New deterministic contracts:
 
@@ -154,9 +158,16 @@ Douyu HTTP gateway    10
 ```
 
 The accepted entering baseline is 197 tests; expected current complete Gate 1
-count is 217 tests. Gate 1.3-4C still requires 10/10 + 10/10 + 217/217 local
-regression plus one independently checked current LIVE control and one current
-OFFLINE control.
+count is 217 tests. Gate 1.3-4C now needs only:
+
+```text
+10 / 10 formal Douyu adapter contracts
+10 / 10 Douyu HTTP gateway contracts
+217 / 217 complete Gate 1 suite
+```
+
+No additional real Douyu provider control is required if those regressions stay
+green.
 
 ## 5. Legacy treatment
 
@@ -186,7 +197,7 @@ Gate 1.3-2   PASS
 Gate 1.3-3   PASS / CLOSED
 Gate 1.3-4A  PASS / CLOSED
 Gate 1.3-4B  PASS / CLOSED
-Gate 1.3-4C  CURRENT / Douyu core+HTTP gateway+probe landed; local/provider evidence pending
+Gate 1.3-4C  CURRENT / provider LIVE+OFFLINE controls PASS; 10+10+217 local regression pending
 Gate 1.3-4D  NOT STARTED
 Gate 1.3-5   NOT STARTED
 Gate 1.3     CURRENT
