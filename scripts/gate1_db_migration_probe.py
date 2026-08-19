@@ -3,12 +3,14 @@
 
 Runs two isolated temporary databases against the local Stage Letter PostgreSQL:
 
-1. CLEAN: empty database -> Alembic head.
+1. CLEAN: empty database -> accepted Gate 1.1 head.
 2. LEGACY: migrate to pre-Gate-1 head, seed representative persisted facts,
-   then migrate to current head and verify deterministic backfills + constraints.
+   then migrate to the accepted Gate 1.1 head and verify deterministic backfills
+   + constraints.
 
-The probe never touches the normal ``stageletter`` database. Temporary databases
-are dropped in ``finally`` even when validation fails.
+The probe is intentionally pinned to the accepted Gate 1.1 head so later Gate 1
+migrations do not invalidate historical Gate 1.1 evidence. It never touches the
+normal ``stageletter`` database. Temporary databases are dropped in ``finally``.
 """
 from __future__ import annotations
 
@@ -233,7 +235,6 @@ async def _validate_legacy(args: argparse.Namespace, database: str) -> None:
             "WHERE user_id=1 AND platform_account_id=20 AND enabled=true"
         ) == 1
 
-        # Gate 1 never fabricates historical observations.
         assert await conn.fetchval("SELECT count(*) FROM live_observations") == 0
 
         session = await conn.fetchrow(
@@ -256,7 +257,6 @@ async def _validate_legacy(args: argparse.Namespace, database: str) -> None:
         assert delivery["channel"] == "WECHAT_SUBSCRIBE"
         assert delivery["updated_at"] is not None
 
-        # DB constraint: canonical observation vocabulary only.
         try:
             await conn.execute(
                 """
@@ -270,8 +270,6 @@ async def _validate_legacy(args: argparse.Namespace, database: str) -> None:
         else:
             raise AssertionError("invalid canonical observation status was accepted")
 
-        # DB constraint: ended_at NULL is the formal open-session invariant,
-        # independent of the legacy state column.
         try:
             await conn.execute(
                 """
@@ -289,7 +287,6 @@ async def _validate_legacy(args: argparse.Namespace, database: str) -> None:
         else:
             raise AssertionError("second ended_at=NULL session was accepted")
 
-        # DB constraint: one logical delivery per user/event/channel.
         try:
             await conn.execute(
                 """
@@ -327,7 +324,7 @@ def main() -> int:
     try:
         asyncio.run(_create_database(args, clean_db))
         print("[clean] database created")
-        _alembic_upgrade(args, clean_db, "head")
+        _alembic_upgrade(args, clean_db, EXPECTED_HEAD)
         asyncio.run(_validate_clean(args, clean_db))
         print(f"[clean] PASS -> {asyncio.run(_version(args, clean_db))}")
 
@@ -336,7 +333,7 @@ def main() -> int:
         _alembic_upgrade(args, legacy_db, PRE_GATE1_HEAD)
         asyncio.run(_seed_legacy(args, legacy_db))
         print("[legacy] representative fixture seeded")
-        _alembic_upgrade(args, legacy_db, "head")
+        _alembic_upgrade(args, legacy_db, EXPECTED_HEAD)
         asyncio.run(_validate_legacy(args, legacy_db))
         print(f"[legacy] PASS -> {asyncio.run(_version(args, legacy_db))}")
 
@@ -347,7 +344,7 @@ def main() -> int:
             try:
                 asyncio.run(_drop_database(args, database))
                 print(f"[cleanup] dropped {database}")
-            except Exception as exc:  # cleanup evidence, then preserve original failure
+            except Exception as exc:
                 print(f"[cleanup] WARN {database}: {type(exc).__name__}: {exc}")
 
 
