@@ -1,5 +1,7 @@
 """Formal platform adapter infrastructure for Stage Letter."""
 
+from .bilibili import BilibiliFormalAdapter
+from .bilibili_http import BilibiliHttpGateway
 from .douyin_streamget import STREAMGET_DOUYIN_SOURCE, StreamGetDouyinGateway
 from .failures import (
     ProviderFailure,
@@ -15,6 +17,8 @@ from .registry import AdapterNotFoundError, AdapterRegistry
 __all__ = [
     "AdapterNotFoundError",
     "AdapterRegistry",
+    "BilibiliFormalAdapter",
+    "BilibiliHttpGateway",
     "ProviderFailure",
     "ProviderFailureKind",
     "ProviderOperationError",
