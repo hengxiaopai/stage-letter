@@ -1,23 +1,22 @@
 # Gate 1.3-4 — Bilibili / Huya / Douyu Formal Adapter Migration
 
-Status: **CURRENT / 1.3-4A PASS / 1.3-4B PASS / 1.3-4C PASS / 1.3-4D CURRENT**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.3-3 PASS / CLOSED.
 
-## 1. Slice plan
+## 1. Slice result
 
 ```text
-Gate 1.3-4A  Bilibili formal adapter + provider evidence
-Gate 1.3-4B  Huya formal adapter + provider evidence
-Gate 1.3-4C  Douyu formal adapter + provider evidence
-Gate 1.3-4D  cross-platform regression / registry acceptance
+Gate 1.3-4A  Bilibili formal adapter + provider evidence       PASS / CLOSED
+Gate 1.3-4B  Huya formal adapter + provider evidence           PASS / CLOSED
+Gate 1.3-4C  Douyu formal adapter + provider evidence          PASS / CLOSED
+Gate 1.3-4D  cross-platform registry acceptance                PASS / CLOSED
+Gate 1.3-4   PASS / CLOSED
 ```
 
 No platform inherits another platform's state mapping.
 
-## 2. Gate 1.3-4A — Bilibili PASS / CLOSED
-
-Accepted user-local evidence:
+## 2. Bilibili accepted evidence
 
 ```text
 formal Bilibili adapter contracts       11 / 11 PASS
@@ -37,13 +36,9 @@ roundStatus=1 alone          -> never promotes to LIVE
 other / missing / failure    -> UNKNOWN
 ```
 
-Stable Bilibili uid/space identity remains canonical; room id is metadata.
+Stable Bilibili uid/space identity remains canonical; room id is metadata. The current provider controls corrected a real carousel false-positive before acceptance.
 
-Result: **Gate 1.3-4A PASS / CLOSED**.
-
-## 3. Gate 1.3-4B — Huya PASS / CLOSED
-
-Accepted user-local evidence:
+## 3. Huya accepted evidence
 
 ```text
 formal Huya adapter contracts      10 / 10 PASS
@@ -61,7 +56,7 @@ room 30457578 -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
 source: huya.mobile_html
 ```
 
-Formal Huya state truth is:
+Formal truth:
 
 ```text
 integer 2        -> LIVE
@@ -72,18 +67,9 @@ integer 1        -> OFFLINE
 failure/conflict -> UNKNOWN
 ```
 
-Current evidence exposes room id as the stable monitor key available to Stage
-Letter; no unproven creator uid is fabricated. If body class and eLiveStatus are
-both present they must agree or the result becomes AMBIGUOUS/UNKNOWN.
+Room id is the proven monitor key available to this slice; no unproven creator uid is fabricated. Title metadata is non-canonical and does not participate in state truth.
 
-Provider title metadata is non-canonical and must not participate in live-state
-truth or be shown as a current-live title for OFFLINE.
-
-Result: **Gate 1.3-4B PASS / CLOSED**.
-
-## 4. Gate 1.3-4C — Douyu PASS / CLOSED
-
-Accepted user-local evidence:
+## 4. Douyu accepted evidence
 
 ```text
 formal Douyu adapter contracts      10 / 10 PASS
@@ -101,7 +87,7 @@ room 6512  -> expected OFFLINE -> observed OFFLINE -> expectation_match=true
 source: douyu.desktop_html
 ```
 
-Formal creator-live truth remains:
+Formal creator-live truth:
 
 ```text
 integer show_status 1 -> LIVE
@@ -112,29 +98,19 @@ videoLoop alone        -> no decisive truth
 provider failure       -> UNKNOWN
 ```
 
-The gateway accepts only explicit `show_status` / `showStatus` numeric evidence.
-Multiple explicit state fields must agree or the result is AMBIGUOUS/UNKNOWN.
-Recommendation/directory absence and replay/loop activity do not become
-creator-live truth. Room id remains the proven monitor key available to this
-slice; no unproven provider creator uid is fabricated.
+Multiple explicit state fields must agree or the result is AMBIGUOUS/UNKNOWN. Recommendation/list absence and replay/loop activity do not become creator-live truth.
 
-The OFFLINE control still emitted page/title metadata, reinforcing that provider
-metadata is non-canonical and must not influence state truth.
-
-Result: **Gate 1.3-4C PASS / CLOSED**.
-
-## 5. Gate 1.3-4D — Cross-platform registry acceptance CURRENT
+## 5. Cross-platform registry acceptance — PASS / CLOSED
 
 Landed:
 
 ```text
 stage_letter/infrastructure/platforms/factory.py
+stage_letter/infrastructure/platforms/__init__.py
 tests/gate1/test_platform_registry_acceptance.py
-stage_letter/infrastructure/platforms/__init__.py  # formal public surface updated
 ```
 
-`build_formal_adapter_registry()` constructs a fresh explicit registry containing
-exactly the four formal platforms:
+`build_formal_adapter_registry()` constructs a fresh explicit registry containing exactly:
 
 ```text
 bilibili -> BilibiliFormalAdapter(BilibiliHttpGateway)
@@ -143,70 +119,42 @@ douyu    -> DouyuFormalAdapter(DouyuHttpGateway)
 huya     -> HuyaFormalAdapter(HuyaHttpGateway)
 ```
 
-Construction performs no provider request. StreamGet remains lazily imported by
-the Douyin gateway, so building the registry does not require eager provider
-runtime loading.
+Construction performs no provider request. StreamGet remains lazily imported by the Douyin gateway.
 
-The cross-platform acceptance contracts verify:
+Accepted user-local evidence:
 
 ```text
-exact formal platform set
-all entries structurally implement LivePlatformAdapter
-registry key matches adapter.platform
-only formal concrete adapter types are registered
-StreamGet is not imported eagerly during registry construction
-fresh registry/adapter instances are returned per build
-unknown platform lookup remains explicit AdapterNotFoundError
-factory has no legacy/state/session/event/notification ownership
+platform registry acceptance contracts   8 / 8 PASS
+complete Gate 1 suite                   225 / 225 PASS
 ```
 
-Eight dedicated contracts are landed. The accepted complete Gate 1 baseline
-entering 1.3-4D is 217 tests, so the expected complete suite is 225 tests.
+The contracts verify exact platform membership, structural `LivePlatformAdapter` compatibility, registry key/platform agreement, formal adapter types only, no eager StreamGet import, fresh instances per build, explicit unknown-platform failure, and no legacy/session/event/notification ownership.
 
-### Acceptance — Gate 1.3-4D
+Result: **Gate 1.3-4D PASS / CLOSED**.
+
+## 6. Gate 1.3-4 exit
 
 ```text
-A. Gate 1.3-4A Bilibili PASS / CLOSED           PASS
-B. Gate 1.3-4B Huya PASS / CLOSED               PASS
-C. Gate 1.3-4C Douyu PASS / CLOSED              PASS
-D. formal four-platform registry factory        PASS / CODE
-E. exact supported-platform set frozen          PASS / CONTRACT
-F. no eager provider I/O / StreamGet import     PASS / CONTRACT
-G. no legacy runtime import                     PASS / CONTRACT
-H. dedicated registry acceptance contracts      PENDING / 8
-I. complete Gate 1 suite                        PENDING / expected 225
+Gate 1.3-4  PASS / CLOSED
+Gate 1.3-5  CURRENT / final adapter-framework acceptance
 ```
 
-No additional provider LIVE/OFFLINE control is required for 1.3-4D if H-I remain
-green; the per-platform provider evidence was accepted in 1.3-3 and 1.3-4A/B/C.
+No additional provider LIVE/OFFLINE controls are required solely for Gate 1.3-5 unless deterministic acceptance reveals a material semantic or transport regression.
 
-Gate 1.3-4D remains CURRENT until H-I pass.
+## 7. Stop rules preserved
 
-## 6. Current progression
-
-```text
-Gate 1.3-4A  PASS / CLOSED
-Gate 1.3-4B  PASS / CLOSED
-Gate 1.3-4C  PASS / CLOSED
-Gate 1.3-4D  CURRENT / formal registry factory + 8 acceptance contracts landed
-```
-
-## 7. Stop rules
-
-Stop with FAIL/BLOCKED if progress requires:
+The accepted implementation must continue to reject:
 
 ```text
-legacy platform_adapters imported into stage_letter runtime
+legacy platform_adapters imported into formal runtime
 provider failure / timeout / parse error -> OFFLINE
 list/recommendation absence -> OFFLINE
+Bilibili replay/carousel -> creator LIVE
 Huya 0 / 3 guessed as OFFLINE
-Huya title metadata treated as state truth
-Bilibili carousel/replay activity -> creator LIVE
+Huya conflicting status evidence silently accepted
 Douyu 0 / 3 / 4 guessed as decisive state
-Douyu videoLoop/replay activity -> creator LIVE
-conflicting explicit provider state silently accepted
+Douyu videoLoop/replay -> creator LIVE
 fabricated provider creator uid
 registry construction performing provider I/O
-registry construction eagerly requiring StreamGet
-adapter mutating LiveSession / LiveEvent or notification eligibility
+adapter ownership of LiveSession / LiveEvent / notification eligibility
 ```
