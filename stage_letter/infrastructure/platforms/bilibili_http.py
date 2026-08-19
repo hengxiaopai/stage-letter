@@ -73,6 +73,53 @@ def _started_at(value: object) -> datetime | None:
         return None
 
 
+def _optional_provider_uid(
+    data: dict[str, object],
+    *,
+    expected_uid: str,
+    source: str,
+) -> None:
+    """Validate provider uid only when the endpoint actually returns one.
+
+    getRoomInfoOld is keyed by the requested mid and commonly omits uid from its
+    data object. Absence is therefore not schema drift. If an explicit uid is
+    present, it remains useful mismatch evidence and must agree with the request.
+    """
+
+    raw_uid = data.get("uid")
+    if raw_uid is None:
+        return
+    provider_uid = _positive_id(raw_uid, field="uid", source=source)
+    if provider_uid != expected_uid:
+        raise ProviderOperationError(
+            ProviderFailure(
+                ProviderFailureKind.AMBIGUOUS,
+                source,
+                detail="provider uid mismatch",
+            )
+        )
+
+
+def _uid_live_status(data: dict[str, object]) -> object:
+    """Read getRoomInfoOld status without guessing unsupported values.
+
+    Historical Stage Letter fixtures used ``live_status`` while the current
+    getRoomInfoOld shape uses ``liveStatus`` with ``roundStatus`` as a separate
+    carousel flag. We accept both exact field names. A decisive roundStatus=1 is
+    normalized to raw integer 2 so the formal adapter's already-frozen Bilibili
+    mapping continues to represent carousel as LIVE.
+    """
+
+    if "live_status" in data:
+        return data.get("live_status")
+
+    live_status = data.get("liveStatus")
+    round_status = data.get("roundStatus")
+    if type(round_status) is int and round_status == 1:
+        return 2
+    return live_status
+
+
 @runtime_checkable
 class BilibiliJsonTransport(Protocol):
     async def get_json(self, path: str, params: dict[str, object]) -> dict[str, object]: ...
@@ -200,15 +247,18 @@ class BilibiliHttpGateway:
     async def resolve_identity(self, input: str) -> BilibiliIdentityRecord:
         kind, value = self.parse_identity(input)
         data = await (self._by_uid(value) if kind == "uid" else self._by_room(value))
-        uid = _positive_id(data.get("uid"), field="uid", source="bilibili.resolve")
-        if kind == "uid" and uid != value:
-            raise ProviderOperationError(
-                ProviderFailure(
-                    ProviderFailureKind.AMBIGUOUS,
-                    "bilibili.resolve",
-                    detail="provider uid mismatch",
-                )
-            )
+
+        if kind == "uid":
+            # getRoomInfoOld is keyed by mid and commonly omits uid in data. The
+            # requested uid is therefore the stable identity unless the provider
+            # explicitly returns a contradictory uid.
+            _optional_provider_uid(data, expected_uid=value, source="bilibili.resolve")
+            uid = value
+        else:
+            # room_init does return the anchor uid and is the authoritative room
+            # -> stable identity bridge.
+            uid = _positive_id(data.get("uid"), field="uid", source="bilibili.resolve")
+
         room_id = _optional_text(data.get("roomid") or data.get("room_id"))
         return BilibiliIdentityRecord(
             uid=uid,
@@ -217,33 +267,19 @@ class BilibiliHttpGateway:
         )
 
     async def fetch_profile(self, uid: str) -> BilibiliProfileRecord:
+        uid = _positive_id(uid, field="uid", source=BILIBILI_UID_SOURCE)
         data = await self._by_uid(uid)
-        provider_uid = _positive_id(data.get("uid"), field="uid", source=BILIBILI_UID_SOURCE)
-        if provider_uid != uid:
-            raise ProviderOperationError(
-                ProviderFailure(
-                    ProviderFailureKind.AMBIGUOUS,
-                    BILIBILI_UID_SOURCE,
-                    detail="provider uid mismatch",
-                )
-            )
+        _optional_provider_uid(data, expected_uid=uid, source=BILIBILI_UID_SOURCE)
         return BilibiliProfileRecord(uid=uid, observed_at=self._clock())
 
     async def fetch_live(self, uid: str) -> BilibiliLiveRecord:
+        uid = _positive_id(uid, field="uid", source=BILIBILI_UID_SOURCE)
         data = await self._by_uid(uid)
-        provider_uid = _positive_id(data.get("uid"), field="uid", source=BILIBILI_UID_SOURCE)
-        if provider_uid != uid:
-            raise ProviderOperationError(
-                ProviderFailure(
-                    ProviderFailureKind.AMBIGUOUS,
-                    BILIBILI_UID_SOURCE,
-                    detail="provider uid mismatch",
-                )
-            )
+        _optional_provider_uid(data, expected_uid=uid, source=BILIBILI_UID_SOURCE)
         return BilibiliLiveRecord(
             uid=uid,
             observed_at=self._clock(),
-            raw_live_status=data.get("live_status"),
+            raw_live_status=_uid_live_status(data),
             source=BILIBILI_UID_SOURCE,
             room_id=_optional_text(data.get("roomid") or data.get("room_id")),
             title=_optional_text(data.get("title")),
