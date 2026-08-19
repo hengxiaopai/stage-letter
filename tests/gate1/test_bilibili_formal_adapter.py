@@ -105,19 +105,21 @@ class BilibiliFormalAdapterContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(LiveStatus.LIVE, snapshot.status)
         self.assertEqual(STARTED, snapshot.source_started_at)
 
-    async def test_live_status_2_carousel_maps_to_live(self) -> None:
+    async def test_live_status_2_carousel_maps_to_offline(self) -> None:
         adapter, gateway = self._build()
         gateway.live = BilibiliLiveRecord(
             uid="528738158",
             observed_at=NOW,
             raw_live_status=2,
-            source="bilibili.getRoomInfoOld",
+            source="bilibili.room_init",
             room_id="8758725",
+            title="replay/carousel title",
             source_started_at=STARTED,
         )
         snapshot = await adapter.get_live_snapshot(_account())
-        self.assertIs(LiveStatus.LIVE, snapshot.status)
-        self.assertEqual(STARTED, snapshot.source_started_at)
+        self.assertIs(LiveStatus.OFFLINE, snapshot.status)
+        self.assertIsNone(snapshot.source_started_at)
+        self.assertEqual("replay/carousel title", snapshot.title)
 
     async def test_live_status_0_maps_to_offline(self) -> None:
         adapter, gateway = self._build()
