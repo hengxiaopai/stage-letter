@@ -1,6 +1,6 @@
 # Gate 1.2-6 — Boundary Regression / Acceptance
 
-Status: **CURRENT / FINAL REGRESSION ASSETS LANDED / LOCAL EVIDENCE PENDING**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.2-5 PASS.
 
@@ -31,48 +31,41 @@ tests/gate1/test_gate12_acceptance.py
 scripts/gate12_regression_probe.py
 ```
 
-The acceptance contracts add six final checks covering:
+The final acceptance contracts cover the accepted Gate 0 oracle minimums, Gate 1
+full-suite minimum, Alembic head, UTF-8 offline SQL compilation, formal runtime
+import direction, composition-root thinness, and preservation of Gate 0A
+DEGRADED.
+
+## 4. Accepted local evidence
+
+User-local acceptance completed successfully:
 
 ```text
-accepted Gate 0 oracle minimums remain pinned
-Gate 1 full-suite minimum is pinned to the post-acceptance count
-Alembic head remains c91e8d2f4a10
-UTF-8 offline SQL compilation remains part of final regression
-formal stage_letter runtime has no inward dependency on outer/legacy packages
-application remains infrastructure/framework free
-composition roots remain thin and do not cross-import
-Gate 1.2 documentation preserves Gate 0A DEGRADED and slice progression
+Dedicated Gate 1.2 acceptance contracts: 6 / 6 PASS
+Complete Gate 1 formal suite:           111 / 111 PASS
+Gate 1.2 deterministic regression probe: PASS
 ```
 
-## 4. Deterministic regression probe
-
-Run:
-
-```text
-python scripts/gate12_regression_probe.py
-```
-
-The probe executes:
+The regression probe also verified:
 
 ```text
 Gate 0B deterministic oracle >= 37 tests
 Gate 0C deterministic oracle >= 65 tests
 Gate 0D deterministic oracle >= 54 tests
 Gate 0E deterministic oracle >= 15 tests
-Gate 1 formal contracts      >= 111 tests
-Alembic head                 == c91e8d2f4a10
+Alembic head == c91e8d2f4a10
 UTF-8 offline SQL compilation PASS
 ```
 
-It deliberately does not perform real provider/network calls, repeat WeChat
-sends, or manufacture the deferred Gate 0A lifecycle evidence.
+It deliberately performed no real provider/network resend and did not fabricate
+the deferred Gate 0A lifecycle evidence.
 
 ## 5. Legacy debt treatment
 
 Gate 1.2 final acceptance does **not** claim that every inherited API/worker file
 has already been semantically replaced.
 
-The accepted rule is narrower and enforceable:
+The accepted rule remains:
 
 ```text
 formal stage_letter runtime never imports legacy outer packages
@@ -81,39 +74,37 @@ legacy routers/workers stay quarantined migration debt
 later gates own their semantic replacement
 ```
 
-Residual debt therefore remains visible rather than being hidden or copied into
-the formal package.
+Residual debt remains visible rather than hidden or copied inward.
 
-## 6. PASS criteria
-
-Gate 1.2-6 and Gate 1.2 may close PASS only after all of the following user-local
-evidence is established:
+## 6. Final acceptance result
 
 ```text
 A. Gate 1.2-5 is PASS                                  PASS
-B. dedicated Gate 1.2 acceptance contracts            PENDING / 6 tests
-C. complete Gate 1 formal suite                       PENDING / 111 tests
-D. Gate 0B/0C/0D/0E deterministic regression          PENDING
-E. Alembic head == c91e8d2f4a10                       PENDING
-F. UTF-8 offline SQL compilation                       PENDING
+B. dedicated Gate 1.2 acceptance contracts            PASS / 6
+C. complete Gate 1 formal suite                       PASS / 111
+D. Gate 0B/0C/0D/0E deterministic regression          PASS
+E. Alembic head == c91e8d2f4a10                       PASS
+F. UTF-8 offline SQL compilation                       PASS
 G. Gate 0A remains DEGRADED                            PRESERVED
 H. no real provider resend/network dependency          PRESERVED
 ```
 
-Until B-F pass, Gate 1.2-6 remains **CURRENT** and Gate 1.2 remains **CURRENT**.
+Gate 1.2-6: **PASS / CLOSED**.
 
-## 7. Stop rules
+Gate 1.2: **PASS / CLOSED**.
 
-Stop with FAIL/BLOCKED rather than weakening acceptance if final regression
-requires any of:
+Next: Gate 1.3 — Platform Adapter Framework.
+
+## 7. Preserved stop rules
+
+The accepted Gate must not later be weakened by:
 
 ```text
-lowering an accepted Gate 0 oracle minimum to hide a regression
-removing boundary tests because legacy code conflicts with them
+lowering accepted Gate 0 oracle minimums to hide a regression
 formal runtime importing api/workers/core/platform_adapters/experiments
 application importing concrete infrastructure/framework code
 changing UNKNOWN semantics to satisfy legacy behavior
 fabricating lifecycle evidence to upgrade Gate 0A
-changing current schema history instead of fixing forward code
+rewriting accepted migration history instead of forward-fixing code
 provider/network resend merely to make deterministic regression pass
 ```
