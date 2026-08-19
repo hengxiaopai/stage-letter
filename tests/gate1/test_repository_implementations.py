@@ -61,6 +61,12 @@ class RepositoryImplementationContractTests(unittest.TestCase):
             params,
         )
 
+    def test_fk_dependent_core_live_inserts_flush_pending_orm_parents(self) -> None:
+        observation_source = inspect.getsource(SQLAlchemyLiveRepository.append_observation)
+        event_source = inspect.getsource(SQLAlchemyLiveRepository.append_event)
+        self.assertIn("await self.session.flush()", observation_source)
+        self.assertIn("await self.session.flush()", event_source)
+
     def test_legacy_bridge_columns_are_nullable_in_formal_models(self) -> None:
         self.assertTrue(PlatformAccountModel.__table__.c.anchor_id.nullable)
         self.assertTrue(PlatformAccountModel.__table__.c.canonical_url.nullable)
