@@ -1,6 +1,6 @@
 # Gate 1.2 — Repository / Service Boundaries
 
-Status: **CURRENT / 1.2-1 PASS / 1.2-2 PASS / 1.2-3 PASS / 1.2-4 PASS / 1.2-5 PASS / 1.2-6 CURRENT**
+Status: **PASS / CLOSED**
 
 Entry authority: Gate 1.1 PASS.
 
@@ -29,18 +29,7 @@ api/workers composition roots
 Infrastructure may depend on application ports and domain. Application may not
 depend on infrastructure. Domain depends only on itself/stdlib.
 
-## 2. Gate 1.2 slices
-
-```text
-Gate 1.2-1  Boundary Freeze + AST Contracts
-Gate 1.2-2  SQLAlchemy Repository Implementations
-Gate 1.2-3  SQLAlchemy UnitOfWork + transaction semantics
-Gate 1.2-4  Application Services
-Gate 1.2-5  API/Worker Composition Roots + legacy cutover
-Gate 1.2-6  Boundary Regression / acceptance
-```
-
-## 3. Accepted slices
+## 2. Final slice status
 
 ```text
 Gate 1.2-1  PASS / boundary contracts
@@ -48,45 +37,30 @@ Gate 1.2-2  PASS / repositories + PostgreSQL + migration evidence
 Gate 1.2-3  PASS / 9 UoW tests + 88 full tests + PostgreSQL probe
 Gate 1.2-4  PASS / 10 service tests + 98 full tests
 Gate 1.2-5  PASS / 7 composition-root tests + 105 full tests
+Gate 1.2-6  PASS / 6 acceptance tests + 111 full tests + regression probe
 ```
 
-The accepted slices preserve the intended separation: domain truth is formal,
-repositories translate persistence only, UnitOfWork owns transactions,
-application services own use-case orchestration, and API/workers are outer
-composition roots.
+The accepted architecture keeps domain truth inward, repositories as persistence
+translators, UnitOfWork as transaction owner, application services as use-case
+orchestrators, and API/workers as outer composition roots.
 
-## 4. Gate 1.2-6 — CURRENT
+## 3. Final acceptance evidence
 
-Final regression assets now landed:
+User-local final acceptance:
 
 ```text
-tests/gate1/test_gate12_acceptance.py
-scripts/gate12_regression_probe.py
-docs/gate1/GATE_1_2_ACCEPTANCE.md
+Gate 1.2 acceptance contracts: 6 / 6 PASS
+Complete Gate 1 suite:         111 / 111 PASS
+Gate 1.2 regression probe:     PASS
 ```
 
-The final acceptance contracts add six checks. With the accepted 105-test Gate 1
-baseline, the full formal suite should therefore contain 111 tests.
+The deterministic probe also preserves accepted Gate 0B/0C/0D/0E oracle
+minimums, Alembic head `c91e8d2f4a10`, and UTF-8 offline SQL compilation.
 
-The deterministic final probe verifies:
+Gate 0A remains **DEGRADED** with its known deferred lifecycle evidence gap.
+No provider resend or fabricated lifecycle evidence was used to close Gate 1.2.
 
-```text
-Gate 0B oracle >= 37
-Gate 0C oracle >= 65
-Gate 0D oracle >= 54
-Gate 0E oracle >= 15
-Gate 1 formal contracts >= 111
-Alembic head == c91e8d2f4a10
-UTF-8 offline SQL compilation PASS
-```
-
-It does not repeat real provider/network calls or WeChat sends and does not
-fabricate the deferred Gate 0A lifecycle evidence.
-
-Gate 1.2-6 remains CURRENT until the dedicated six acceptance contracts, the
-111-test Gate 1 suite, and the deterministic regression probe all pass locally.
-
-## 5. Legacy debt remains explicit
+## 4. Legacy debt remains explicit
 
 Inherited modules such as `api/routers/*`, `api/services/*`,
 `workers/probe/worker.py`, `workers/notify/*`, `core/*`, and
@@ -101,7 +75,7 @@ new orchestration enters through formal services/ports
 later gates own provider/scheduler/state/notification/API semantic cutover
 ```
 
-## 6. Preserved inherited status
+## 5. Preserved inherited status
 
 ```text
 Gate 0A    DEGRADED / known deferred lifecycle evidence gap
@@ -111,40 +85,26 @@ Gate 0D    PASS
 Gate 0E    PASS
 Gate 1.0   PASS
 Gate 1.1   PASS
-Gate 1.2   CURRENT
+Gate 1.2   PASS / CLOSED
+Gate 1.3   CURRENT
 ```
 
 Gate 1.2 does not alter Gate 0A, rewrite accepted historical migrations, or
 fabricate historical truth.
 
-## 7. Stop rules
+## 6. Handoff to Gate 1.3
 
-Stop with FAIL/BLOCKED if acceptance pressure requires any of:
+Gate 1.3 owns the formal Platform Adapter Framework. It must introduce an
+infrastructure-independent adapter contract and normalized snapshots before any
+legacy provider implementation is migrated inward.
 
-```text
-domain importing ORM/framework/provider code
-application importing concrete infrastructure
-formal stage_letter runtime importing api/workers/core/platform_adapters/experiments
-API/worker composition root becoming a domain-rule owner
-repository-owned commit or unrelated sessions inside one UnitOfWork
-provider/network calls inside application DB transactions
-implicit/lossy identity conversion or fabricated ids
-Follow and NotificationPreference collapsing
-raw observation being treated as canonical composed state
-UNKNOWN -> OFFLINE semantic drift
-lowering accepted regression minimums to hide failures
-fabricating Gate 0A lifecycle evidence
-```
-
-## 8. Current progression
+Gate 1.3 must preserve:
 
 ```text
-Gate 1.1    PASS
-Gate 1.2-1  PASS
-Gate 1.2-2  PASS
-Gate 1.2-3  PASS
-Gate 1.2-4  PASS
-Gate 1.2-5  PASS / 7 dedicated + 105 full Gate 1 tests
-Gate 1.2-6  CURRENT / final acceptance assets landed; local evidence pending
-Gate 1.2    CURRENT
+LIVE / OFFLINE / UNKNOWN only at the formal live-status boundary
+UNKNOWN != OFFLINE
+adapters emit normalized facts only
+adapters do not mutate canonical LiveSession/LiveEvent truth
+provider/network errors normalize conservatively rather than invent OFFLINE
+legacy platform_adapters package remains quarantine debt until explicitly migrated
 ```
