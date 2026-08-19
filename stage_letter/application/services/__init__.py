@@ -9,6 +9,10 @@ from .monitoring_probe import (
     MonitoringProbeRequest,
     MonitoringProbeResult,
 )
+from .state_replay import (
+    StateReconstructionApplicationService,
+    StateReconstructionResult,
+)
 
 __all__ = [
     "CreatorApplicationService",
@@ -18,4 +22,6 @@ __all__ = [
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "StateReconstructionApplicationService",
+    "StateReconstructionResult",
 ]
