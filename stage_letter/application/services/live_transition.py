@@ -13,6 +13,7 @@ from stage_letter.domain.live import (
     LiveEventType,
     LiveObservation,
     LiveSession,
+    LiveStatus,
 )
 from stage_letter.domain.state_engine import TransitionIntent, TransitionIntentType
 
@@ -21,8 +22,6 @@ UnitOfWorkFactory = Callable[[], UnitOfWork]
 
 @dataclass(frozen=True)
 class TransitionPersistenceResult:
-    """Canonical session/event output for one decisive observation transition."""
-
     session: LiveSession
     event: LiveEvent
     reused_existing: bool
@@ -33,11 +32,7 @@ def make_live_event_id(
     observation_id: str,
     event_type: LiveEventType,
 ) -> str:
-    """Return a deterministic bounded string event identity.
-
-    Hashing is used only for the string-valued LiveEvent.event_id idempotency key.
-    LiveSession BIGINT identity remains exclusively database allocated.
-    """
+    """Return a deterministic bounded string event id; session ids remain DB-owned."""
 
     account = account_id.strip()
     observation = observation_id.strip()
@@ -52,13 +47,7 @@ def make_live_event_id(
 
 
 class LiveTransitionPersistenceApplicationService:
-    """Apply exactly one reducer transition intent in one UnitOfWork.
-
-    This service does not reconstruct state, call providers, or decide whether an
-    intent should exist. It verifies that the triggering observation is already
-    durable, then atomically mutates the canonical LiveSession and appends the
-    matching LiveEvent before one commit.
-    """
+    """Atomically apply one already-decided reducer transition intent."""
 
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -109,11 +98,7 @@ class LiveTransitionPersistenceApplicationService:
                     existing_event,
                     event_type,
                 )
-                return TransitionPersistenceResult(
-                    session=session,
-                    event=existing_event,
-                    reused_existing=True,
-                )
+                return TransitionPersistenceResult(session, existing_event, True)
 
             if intent.intent_type is TransitionIntentType.OPEN_SESSION:
                 if await uow.live.get_open_session(observation.account_id) is not None:
@@ -157,19 +142,12 @@ class LiveTransitionPersistenceApplicationService:
             )
             inserted = await uow.live.append_event(event)
             if not inserted:
-                # No commit means a session allocation/close performed by this UoW
-                # is rolled back. Cross-transaction contention is accepted only
-                # after Gate 1.5-5 supplies explicit restart/concurrency evidence.
                 raise ApplicationInvariantError(
                     "live event identity was concurrently claimed during transition"
                 )
 
             await uow.commit()
-            return TransitionPersistenceResult(
-                session=session,
-                event=event,
-                reused_existing=False,
-            )
+            return TransitionPersistenceResult(session, event, False)
 
     @staticmethod
     def _validate_intent(
@@ -186,6 +164,8 @@ class LiveTransitionPersistenceApplicationService:
             )
 
         if intent.intent_type is TransitionIntentType.OPEN_SESSION:
+            if observation.status is not LiveStatus.LIVE:
+                raise ApplicationInvariantError("OPEN_SESSION requires decisive LIVE evidence")
             if intent.origin is None:
                 raise ApplicationInvariantError("OPEN_SESSION intent requires origin")
             expected_cause = (
@@ -203,6 +183,8 @@ class LiveTransitionPersistenceApplicationService:
                 )
             return LiveEventType.LIVE_STARTED
 
+        if observation.status is not LiveStatus.OFFLINE:
+            raise ApplicationInvariantError("CLOSE_SESSION requires decisive OFFLINE evidence")
         if intent.cause is not LiveEventCause.TRANSITION:
             raise ApplicationInvariantError("CLOSE_SESSION cause must be TRANSITION")
         if intent.origin is not None or intent.source_started_at is not None:
