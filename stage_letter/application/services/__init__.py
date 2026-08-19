@@ -3,6 +3,10 @@
 from .creator import CreatorApplicationService
 from .follow import FollowApplicationService
 from .live import LiveObservationApplicationService
+from .live_consumption import (
+    LiveObservationConsumptionApplicationService,
+    LiveObservationConsumptionResult,
+)
 from .live_transition import (
     LiveTransitionPersistenceApplicationService,
     TransitionPersistenceResult,
@@ -15,6 +19,7 @@ from .monitoring_probe import (
     MonitoringProbeResult,
 )
 from .state_replay import (
+    ObservationConsumptionPoint,
     StateReconstructionApplicationService,
     StateReconstructionResult,
 )
@@ -23,11 +28,14 @@ __all__ = [
     "CreatorApplicationService",
     "FollowApplicationService",
     "LiveObservationApplicationService",
+    "LiveObservationConsumptionApplicationService",
+    "LiveObservationConsumptionResult",
     "LiveTransitionPersistenceApplicationService",
     "MonitoringProbeApplicationService",
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "ObservationConsumptionPoint",
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
     "TransitionPersistenceResult",
