@@ -1,6 +1,8 @@
 """SQLAlchemy implementation of the formal LiveRepository port."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,8 +52,6 @@ class SQLAlchemyLiveRepository:
         account_id: str,
         observation_id: str,
     ) -> LiveObservation | None:
-        """Resolve one logical probe observation across provider source values."""
-
         account_pk = parse_persistence_id(account_id, field="account_id")
         rows = (
             await self.session.scalars(
@@ -98,8 +98,6 @@ class SQLAlchemyLiveRepository:
         after_sequence: int = 0,
         limit: int = 500,
     ) -> tuple[ObservationReplayRecord, ...]:
-        """Page scheduler observations in persisted row order for restart replay."""
-
         if after_sequence < 0:
             raise ValueError("after_sequence must be >= 0")
         if limit < 1 or limit > 1000:
@@ -146,13 +144,18 @@ class SQLAlchemyLiveRepository:
         )
         return None if row is None else self._to_session(row)
 
+    async def get_session(self, session_id: str) -> LiveSession | None:
+        session_pk = parse_persistence_id(session_id, field="session_id")
+        row = await self.session.get(LiveSessionModel, session_pk)
+        return None if row is None else self._to_session(row)
+
     async def create_session(
         self,
         account_id: str,
         *,
-        opened_at,
+        opened_at: datetime,
         origin: SessionOrigin,
-        source_started_at=None,
+        source_started_at: datetime | None = None,
     ) -> LiveSession:
         """Let PostgreSQL allocate the BIGINT session id; never derive it in app code."""
 
