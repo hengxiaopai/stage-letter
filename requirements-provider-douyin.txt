@@ -3,4 +3,7 @@
 # package lazily imports StreamGet only when Douyin provider access is exercised.
 #
 # Gate 0A evidence baseline: StreamGet 4.0.10.
+# StreamGet's Node installer uses httpx and must support SOCKS when the local
+# environment exposes an ALL_PROXY/HTTP(S)_PROXY socks:// URL.
 streamget==4.0.10
+httpx[socks]>=0.27
