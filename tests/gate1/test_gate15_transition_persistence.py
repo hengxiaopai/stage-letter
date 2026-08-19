@@ -101,6 +101,12 @@ class _Live:
         self.created = 0
         self.saved = 0
         self.append_result = True
+        self.lock_count = 0
+
+    async def acquire_transition_lock(self, account_id: str) -> None:
+        if account_id != "101":
+            raise AssertionError("unexpected account lock")
+        self.lock_count += 1
 
     async def get_observation(self, account_id: str, observation_id: str):
         if (
@@ -187,6 +193,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
 
     def test_repository_port_allocates_session_and_reports_event_insert(self) -> None:
         self.assertIn("create_session", LiveRepository.__dict__)
+        self.assertIn("acquire_transition_lock", LiveRepository.__dict__)
         self.assertEqual("LiveSession", inspect.signature(LiveRepository.create_session).return_annotation)
         self.assertEqual("bool", inspect.signature(LiveRepository.append_event).return_annotation)
         concrete = inspect.getsource(SQLAlchemyLiveRepository.create_session)
@@ -208,6 +215,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(LiveEventType.LIVE_STARTED, result.event.event_type)
         self.assertEqual(result.session.session_id, result.event.session_id)
         self.assertEqual(1, live.created)
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(1, uow.commit_count)
 
     async def test_bootstrap_open_preserves_origin_and_cause(self) -> None:
@@ -242,6 +250,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observation.observed_at, result.session.closed_at)
         self.assertEqual(LiveEventType.LIVE_ENDED, result.event.event_type)
         self.assertEqual(1, live.saved)
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(1, uow.commit_count)
 
     async def test_existing_event_is_reused_without_second_commit(self) -> None:
@@ -273,6 +282,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.reused_existing)
         self.assertEqual(event, result.event)
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(0, live.created)
         self.assertEqual(0, uow.commit_count)
 
@@ -282,6 +292,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         service = LiveTransitionPersistenceApplicationService(lambda: uow)  # type: ignore[arg-type]
         with self.assertRaises(ApplicationNotFoundError):
             await service.apply(_live_observation(), _open_intent())
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(0, uow.commit_count)
 
     async def test_non_monitor_or_wrong_decisive_status_is_rejected(self) -> None:
@@ -322,6 +333,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         service = LiveTransitionPersistenceApplicationService(lambda: uow)  # type: ignore[arg-type]
         with self.assertRaises(ApplicationInvariantError):
             await service.apply(requested, _open_intent())
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(0, uow.commit_count)
 
     async def test_close_without_open_session_is_explicit_failure(self) -> None:
@@ -331,6 +343,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         service = LiveTransitionPersistenceApplicationService(lambda: uow)  # type: ignore[arg-type]
         with self.assertRaises(ApplicationInvariantError):
             await service.apply(observation, _close_intent())
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(0, uow.commit_count)
 
     async def test_event_insert_conflict_prevents_partial_commit(self) -> None:
@@ -342,6 +355,7 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ApplicationInvariantError):
             await service.apply(observation, _open_intent())
         self.assertEqual(1, live.created)
+        self.assertEqual(1, live.lock_count)
         self.assertEqual(0, uow.commit_count)
         self.assertEqual(1, uow.rollback_count)
 
