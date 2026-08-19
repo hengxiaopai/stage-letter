@@ -7,9 +7,10 @@ Create Date: 2026-08-19
 The Gate 1.1 EXPAND path intentionally preserved legacy columns while the formal
 schema was proven. Gate 1.2 now needs to write canonical domain rows without
 fabricating obsolete anchor/job/status/provenance facts. This forward-only
-compatibility revision therefore relaxes legacy-only NOT NULL requirements; it
-does not drop columns, rewrite historical rows, or weaken canonical Gate 1
-constraints.
+compatibility revision therefore relaxes legacy-only NOT NULL requirements and
+removes the obsolete session-keyed delivery uniqueness that conflicts with the
+accepted event-keyed identity. It does not drop data columns or rewrite
+historical rows.
 """
 from typing import Sequence, Union
 
@@ -111,6 +112,17 @@ def upgrade() -> None:
         "notification_job_id",
         existing_type=sa.BigInteger(),
         nullable=True,
+    )
+
+    # The old session-keyed uniqueness is strictly weaker/wrong for the formal
+    # event-keyed model: two distinct LIVE_STARTED events may belong to the same
+    # session across recovery/reconciliation scenarios. Gate 1.1 already created
+    # uq_g11_delivery_user_event_channel, so the obsolete legacy uniqueness can
+    # now be removed without losing the canonical idempotency guarantee.
+    op.drop_constraint(
+        "uq_nd_user_session_channel",
+        "notification_deliveries",
+        type_="unique",
     )
 
 
