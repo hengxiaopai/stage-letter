@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate 1.2-6 deterministic boundary regression probe.
+"""Gate 1 deterministic boundary regression probe.
 
 This probe re-runs the accepted deterministic Gate 0B-0E oracle suites and the
 entire formal Gate 1 contract suite, then verifies the current Alembic head and
@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RAN_RE = re.compile(r"Ran\s+(\d+)\s+tests?")
-EXPECTED_HEAD = "c91e8d2f4a10"
+EXPECTED_HEAD = "d14e7c9a5b30"
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ def _run_command(args: list[str]) -> tuple[bool, str]:
 
 
 def main() -> int:
-    print("Gate 1.2-6 deterministic boundary regression probe")
+    print("Gate 1 deterministic boundary regression probe")
     print(f"python: {sys.executable}")
 
     failures: list[str] = []
@@ -119,21 +119,20 @@ def main() -> int:
         [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"]
     )
     if sql_ok:
-        print("PASS: UTF-8 offline SQL compilation through Gate 1.2 head")
+        print("PASS: UTF-8 offline SQL compilation through current Gate 1 head")
     else:
         failures.append("offline SQL compilation")
         print("FAIL: UTF-8 offline SQL compilation")
         print(sql_output.rstrip())
 
     if failures:
-        print("FAIL: Gate 1.2-6 deterministic boundary regression probe")
+        print("FAIL: Gate 1 deterministic boundary regression probe")
         print("failed checks:", ", ".join(failures))
         return 1
 
     print("PASS: Gate 0B/0C/0D/0E deterministic oracles remain green")
     print("PASS: Gate 1 formal contracts remain green")
-    print("PASS: Gate 1.2 schema head/offline SQL remain green")
-    print("PASS: Gate 1.2-6 deterministic boundary regression probe")
+    print("PASS: current Gate 1 schema head/offline SQL remain green")
     return 0
 
 
