@@ -101,23 +101,17 @@ def _optional_provider_uid(
 
 
 def _uid_live_status(data: dict[str, object]) -> object:
-    """Read getRoomInfoOld status without guessing unsupported values.
+    """Read creator-live status without conflating carousel/replay activity.
 
-    Historical Stage Letter fixtures used ``live_status`` while the current
-    getRoomInfoOld shape uses ``liveStatus`` with ``roundStatus`` as a separate
-    carousel flag. We accept both exact field names. A decisive roundStatus=1 is
-    normalized to raw integer 2 so the formal adapter's already-frozen Bilibili
-    mapping continues to represent carousel as LIVE.
+    Current getRoomInfoOld responses expose creator-live status and carousel state
+    as separate fields. Stage Letter's canonical LIVE means the creator is
+    actually broadcasting, so roundStatus must never promote an otherwise
+    non-live creator into LIVE.
     """
 
     if "live_status" in data:
         return data.get("live_status")
-
-    live_status = data.get("liveStatus")
-    round_status = data.get("roundStatus")
-    if type(round_status) is int and round_status == 1:
-        return 2
-    return live_status
+    return data.get("liveStatus")
 
 
 @runtime_checkable
@@ -249,14 +243,9 @@ class BilibiliHttpGateway:
         data = await (self._by_uid(value) if kind == "uid" else self._by_room(value))
 
         if kind == "uid":
-            # getRoomInfoOld is keyed by mid and commonly omits uid in data. The
-            # requested uid is therefore the stable identity unless the provider
-            # explicitly returns a contradictory uid.
             _optional_provider_uid(data, expected_uid=value, source="bilibili.resolve")
             uid = value
         else:
-            # room_init does return the anchor uid and is the authoritative room
-            # -> stable identity bridge.
             uid = _positive_id(data.get("uid"), field="uid", source="bilibili.resolve")
 
         room_id = _optional_text(data.get("roomid") or data.get("room_id"))
