@@ -24,9 +24,6 @@ NOW = datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc)
 class _Transport:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
-        # Current getRoomInfoOld shape is keyed by requested mid and does not
-        # require uid to be echoed in the data object. Its status fields are
-        # camelCase; formal transport must not treat missing uid as schema drift.
         self.uid_payload: dict[str, object] = {
             "code": 0,
             "data": {
@@ -95,7 +92,7 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(BILIBILI_ROOM_SOURCE, "bilibili.room_init")
         self.assertTrue(transport.calls[0][0].endswith("room_init"))
 
-    async def test_fetch_live_reads_current_camelcase_status_and_carousel(self) -> None:
+    async def test_fetch_live_uses_creator_live_status_not_round_status(self) -> None:
         gateway, transport = self._build()
         transport.uid_payload["data"] = {
             "roomStatus": 1,
@@ -115,9 +112,11 @@ class BilibiliHttpGatewayContractTests(unittest.IsolatedAsyncioTestCase):
             "roundStatus": 1,
             "liveStatus": 0,
             "roomid": 8758725,
+            "title": "replay/carousel title",
         }
-        carousel = await gateway.fetch_live("528738158")
-        self.assertEqual(2, carousel.raw_live_status)
+        replay = await gateway.fetch_live("528738158")
+        self.assertEqual(0, replay.raw_live_status)
+        self.assertEqual("replay/carousel title", replay.title)
 
     async def test_legacy_snake_case_status_and_live_time_remain_supported(self) -> None:
         gateway, transport = self._build()
