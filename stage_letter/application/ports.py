@@ -7,6 +7,7 @@ and imports from experiments/*.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Protocol, runtime_checkable
 
@@ -14,6 +15,23 @@ from stage_letter.domain.creators import Creator, CreatorProfile, PlatformAccoun
 from stage_letter.domain.follows import Follow, NotificationPreference
 from stage_letter.domain.live import LiveEvent, LiveObservation, LiveSession
 from stage_letter.domain.notifications import DeliveryKey, NotificationDelivery
+
+
+@dataclass(frozen=True)
+class ObservationReplayRecord:
+    """Persistence-order cursor plus one durable formal monitoring observation.
+
+    ``sequence`` is an opaque replay cursor, not a domain identity. Gate 1.5 uses
+    it only to reproduce durable arrival order across process restart without
+    inventing a new canonical state entity.
+    """
+
+    sequence: int
+    observation: LiveObservation
+
+    def __post_init__(self) -> None:
+        if self.sequence < 1:
+            raise ValueError("observation replay sequence must be positive")
 
 
 @runtime_checkable
@@ -94,6 +112,22 @@ class LiveRepository(Protocol):
 
         Return True when this transaction inserted the row and False when a
         concurrent/idempotent write already owns the same durable identity.
+        """
+        ...
+
+    async def list_monitor_observations(
+        self,
+        account_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 500,
+    ) -> tuple[ObservationReplayRecord, ...]:
+        """Return formal ``monitor:*`` observations in durable persistence order.
+
+        The opaque sequence exists only for restart replay/paging. Legacy and
+        manually inserted non-monitor observations are deliberately excluded from
+        Gate 1.5 canonical state reconstruction because their participation in the
+        formal scheduler pipeline is not provable.
         """
         ...
 
