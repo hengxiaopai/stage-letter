@@ -14,6 +14,7 @@ from stage_letter.application.services import (
     CreatorApplicationService,
     FollowApplicationService,
     LiveObservationApplicationService,
+    MonitoringTargetApplicationService,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 
@@ -26,6 +27,7 @@ class WorkerServiceBundle:
     creators: CreatorApplicationService
     follows: FollowApplicationService
     live_observations: LiveObservationApplicationService
+    monitoring_targets: MonitoringTargetApplicationService
 
 
 def build_worker_services(session_factory: SessionFactory) -> WorkerServiceBundle:
@@ -38,4 +40,5 @@ def build_worker_services(session_factory: SessionFactory) -> WorkerServiceBundl
         creators=CreatorApplicationService(uow_factory),
         follows=FollowApplicationService(uow_factory),
         live_observations=LiveObservationApplicationService(uow_factory),
+        monitoring_targets=MonitoringTargetApplicationService(uow_factory),
     )
