@@ -164,19 +164,19 @@ class WeChatSubscribeFormalAdapter:
         data = build_live_start_template_data(message)
         try:
             raw = await self._gateway.send(message, data)
-        except WeChatTokenUnavailableError as exc:
+        except WeChatTokenUnavailableError:
             return ProviderOutcome(
                 ProviderOutcomeKind.RETRYABLE,
                 GrantEffect.PRESERVE,
                 provider_code="TOKEN_UNAVAILABLE",
-                provider_message=str(exc)[:255] or "wechat token unavailable",
+                provider_message="wechat token unavailable",
             )
-        except WeChatSendAmbiguousError as exc:
+        except WeChatSendAmbiguousError:
             return ProviderOutcome(
                 ProviderOutcomeKind.AMBIGUOUS,
                 GrantEffect.PRESERVE,
                 provider_code="SEND_TRANSPORT_AMBIGUOUS",
-                provider_message=str(exc)[:255] or "wechat send outcome ambiguous",
+                provider_message="wechat send outcome ambiguous",
             )
         return normalize_wechat_response(raw)
 
