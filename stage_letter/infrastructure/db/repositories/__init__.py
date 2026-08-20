@@ -8,6 +8,7 @@ repository classes.
 from .common import RepositoryMappingError
 from .creator import SQLAlchemyCreatorRepository
 from .follow import SQLAlchemyFollowRepository
+from .grant import SQLAlchemyGrantRepository
 from .identity import (
     MAX_POSTGRES_BIGINT,
     PersistenceIdentityError,
@@ -23,6 +24,7 @@ __all__ = [
     "RepositoryMappingError",
     "SQLAlchemyCreatorRepository",
     "SQLAlchemyFollowRepository",
+    "SQLAlchemyGrantRepository",
     "SQLAlchemyLiveRepository",
     "SQLAlchemyNotificationRepository",
     "parse_persistence_id",

@@ -2,8 +2,8 @@
 
 This module is the worker-side composition boundary. It wires formal application
 services, the accepted four-platform AdapterRegistry, monitoring, state replay,
-and idempotent observation consumption without performing provider or database
-I/O during construction.
+idempotent observation consumption, and durable notification enqueue without
+performing provider or database I/O during construction.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from stage_letter.application.services import (
     LiveTransitionPersistenceApplicationService,
     MonitoringProbeApplicationService,
     MonitoringTargetApplicationService,
+    NotificationEnqueueApplicationService,
     StateReconstructionApplicationService,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
@@ -45,6 +46,7 @@ class WorkerServiceBundle:
     state_reconstruction: StateReconstructionApplicationService
     live_transitions: LiveTransitionPersistenceApplicationService
     live_observation_consumer: LiveObservationConsumptionApplicationService
+    notification_enqueue: NotificationEnqueueApplicationService
 
 
 def build_worker_services(
@@ -57,7 +59,8 @@ def build_worker_services(
 
     SQLAlchemy UnitOfWork instances are created lazily when a use-case enters a
     transaction. Provider requests happen only inside adapter operations. State
-    reconstruction/consumption likewise performs no work until explicitly called.
+    reconstruction/consumption and notification enqueue likewise perform no work
+    until explicitly called.
     """
 
     def uow_factory() -> SQLAlchemyUnitOfWork:
@@ -85,6 +88,7 @@ def build_worker_services(
         state_reconstruction,
         live_transitions,
     )
+    notification_enqueue = NotificationEnqueueApplicationService(uow_factory)
 
     return WorkerServiceBundle(
         creators=creators,
@@ -97,4 +101,5 @@ def build_worker_services(
         state_reconstruction=state_reconstruction,
         live_transitions=live_transitions,
         live_observation_consumer=live_observation_consumer,
+        notification_enqueue=notification_enqueue,
     )

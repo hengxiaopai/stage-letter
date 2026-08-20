@@ -94,6 +94,7 @@ class FollowModel(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "platform_account_id", name="uq_follows_user_account"),
         Index("idx_g11_follows_creator", "creator_id"),
+        Index("idx_g16_follows_account_user", "platform_account_id", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -118,6 +119,25 @@ class NotificationPreferenceModel(Base):
     silent_start: Mapped[time | None] = mapped_column(Time)
     silent_end: Mapped[time | None] = mapped_column(Time)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WeChatSubscriptionGrantModel(Base):
+    """Formal mapping of the existing optimistic WeChat grant ledger table."""
+
+    __tablename__ = "wechat_subscription_grants"
+    __table_args__ = (
+        UniqueConstraint("user_id", "template_id", name="uq_grant_user_template"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    template_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    granted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consumed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_send_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_send_error: Mapped[str | None] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

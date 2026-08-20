@@ -23,6 +23,43 @@ class GrantState(str, Enum):
     EXHAUSTED = "EXHAUSTED"
 
 
+@dataclass(frozen=True)
+class WeChatGrantLedger:
+    """Optimistic local ledger for one user's one-time WeChat template grants.
+
+    This ledger is not provider truth. A positive local balance is sufficient to
+    plan a WeChat attempt, while zero/negative availability is conservatively
+    treated as EXHAUSTED. The ledger never infers DENIED or UNKNOWN.
+    """
+
+    user_id: str
+    template_id: str
+    granted_count: int
+    consumed_count: int
+
+    def __post_init__(self) -> None:
+        _required(self.user_id, "user_id")
+        _required(self.template_id, "template_id")
+        if self.granted_count < 0:
+            raise ValueError("granted_count must be non-negative")
+        if self.consumed_count < 0:
+            raise ValueError("consumed_count must be non-negative")
+
+    @property
+    def available(self) -> int:
+        return max(0, self.granted_count - self.consumed_count)
+
+
+def resolve_wechat_grant_state(
+    ledger: WeChatGrantLedger | None,
+) -> GrantState:
+    """Resolve enqueue-time grant truth from the optimistic local ledger only."""
+
+    if ledger is not None and ledger.available > 0:
+        return GrantState.GRANTED
+    return GrantState.EXHAUSTED
+
+
 class DeliveryState(str, Enum):
     PENDING = "PENDING"
     IN_FLIGHT = "IN_FLIGHT"

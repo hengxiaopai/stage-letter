@@ -25,6 +25,8 @@ from .notifications import (
     DeliveryState,
     GrantState,
     NotificationDelivery,
+    WeChatGrantLedger,
+    resolve_wechat_grant_state,
 )
 from .state_engine import (
     EngineConfig,
@@ -66,6 +68,8 @@ __all__ = [
     "TransitionIntent",
     "TransitionIntentType",
     "User",
+    "WeChatGrantLedger",
     "build_pending_delivery",
     "evaluate_notification_eligibility",
+    "resolve_wechat_grant_state",
 ]

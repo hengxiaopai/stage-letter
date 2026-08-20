@@ -20,7 +20,11 @@ from stage_letter.domain.live import (
     LiveSession,
     SessionOrigin,
 )
-from stage_letter.domain.notifications import DeliveryKey, NotificationDelivery
+from stage_letter.domain.notifications import (
+    DeliveryKey,
+    NotificationDelivery,
+    WeChatGrantLedger,
+)
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,17 @@ class CreatorRepository(Protocol):
 @runtime_checkable
 class FollowRepository(Protocol):
     async def get_follow(self, user_id: str, account_id: str) -> Follow | None: ...
+
+    async def list_follows_for_account(
+        self,
+        account_id: str,
+        *,
+        created_at_lte: datetime | None = None,
+        after_user_id: str | None = None,
+        limit: int = 500,
+    ) -> tuple[Follow, ...]:
+        """Return followers in stable user-id order, optionally event-time bounded."""
+        ...
 
     async def save_follow(self, follow: Follow) -> None: ...
 
@@ -176,6 +191,17 @@ class NotificationRepository(Protocol):
 
 
 @runtime_checkable
+class GrantRepository(Protocol):
+    async def get_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+    ) -> WeChatGrantLedger | None:
+        """Return the optimistic local WeChat grant ledger, or None when absent."""
+        ...
+
+
+@runtime_checkable
 class UnitOfWork(Protocol):
     """Atomic persistence boundary for one application use-case."""
 
@@ -183,6 +209,7 @@ class UnitOfWork(Protocol):
     follows: FollowRepository
     live: LiveRepository
     notifications: NotificationRepository
+    grants: GrantRepository
 
     async def __aenter__(self) -> UnitOfWork: ...
 

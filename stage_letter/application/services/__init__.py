@@ -18,6 +18,10 @@ from .monitoring_probe import (
     MonitoringProbeRequest,
     MonitoringProbeResult,
 )
+from .notification_enqueue import (
+    NotificationEnqueueApplicationService,
+    NotificationEnqueueResult,
+)
 from .state_replay import (
     ObservationConsumptionPoint,
     StateReconstructionApplicationService,
@@ -35,6 +39,8 @@ __all__ = [
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "NotificationEnqueueApplicationService",
+    "NotificationEnqueueResult",
     "ObservationConsumptionPoint",
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
