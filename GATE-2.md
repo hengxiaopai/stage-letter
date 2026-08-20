@@ -55,7 +55,7 @@ accepted Gate 1 live-truth or notification semantics.
 
 ## Gate 2.1 — Due Selection + HOT/WARM/COLD Scheduling Policy
 
-Status: CURRENT
+Status: PASS / CLOSED
 
 ### Contract
 
@@ -93,15 +93,60 @@ DB transaction and every provider result still enters through durable
 
 ### Gate 2.1 acceptance
 
-- Dedicated due-selection tests PASS.
+- Complete Gate 1 + Gate 2 regression: `452 passed, 173 subtests passed`.
+- Read-only PostgreSQL due-selection probe PASS over 15 enabled accounts.
+- All 15 existing accounts normalized to WARM and were due because no formal
+  `monitor:` observation had yet been persisted for them.
+- Accepted cadence remained HOT=30s, WARM=60s, COLD=300s.
+- Alembic head remained `a63f4b2d9e71`; Gate 2.1 added no migration.
+- Probe made no provider/notification calls and performed no DB writes.
+
+## Gate 2.2 — Per-Platform Runtime Isolation + Rate Limits + Retry Classification
+
+Status: CURRENT
+
+### Contract
+
+Gate 2.2 controls **how a due provider operation is allowed to execute**. It does
+not decide live truth and does not own platform-health persistence yet.
+
+- Global execution concurrency is bounded.
+- Every platform has its own semaphore; waiting work from one saturated platform
+  does not occupy all global execution capacity.
+- Provider start rate is limited independently per platform. Waiting for the next
+  rate window happens before execution semaphores are acquired.
+- Default formal start rate is 1 request/second/platform and is configurable by
+  explicit per-platform policy.
+- Retries preserve the exact same `MonitoringProbeRequest` / `monitor:` probe ID.
+- Exponential backoff remains bounded.
+- Only explicit transient failures retry automatically:
+  `TIMEOUT`, `NETWORK`, `RATE_LIMITED`, `UPSTREAM_ERROR`, plus Python
+  `TimeoutError` / `ConnectionError`.
+- `AUTH_REQUIRED`, `FORBIDDEN`, `CAPTCHA_REQUIRED`, `PARSE_ERROR`,
+  `SCHEMA_DRIFT`, `AMBIGUOUS`, `NOT_FOUND`, `UNKNOWN` stop without blind retry.
+- Cancellation is never swallowed by the retry loop.
+- Retry exhaustion returns the original failure and never fabricates OFFLINE or
+  another live-state value.
+
+### Formal runtime
+
+`workers/detection_runtime.py` combines Gate 2.1 due targets with the Gate 2.2
+execution coordinator, while retaining Gate 1.4's
+`MonitoringProbeApplicationService` as the only provider-to-durable-observation
+ingress. `UNKNOWN` remains a valid durable observation and is not treated as a
+transport failure.
+
+### Gate 2.2 acceptance
+
+- Dedicated runtime-isolation/retry tests PASS.
 - Complete Gate 1 + Gate 2 regression remains green.
-- Read-only PostgreSQL due-selection probe PASS.
-- Alembic head remains `a63f4b2d9e71`; Gate 2.1 adds no migration.
-- Probe does not call providers or notification delivery and does not write DB.
+- Deterministic Gate 2.2 runtime policy probe PASS.
+- Alembic head remains `a63f4b2d9e71`; Gate 2.2 adds no migration.
+- Acceptance probe performs no provider/notification call and no database write.
+- No exactly-once or Gate 0A lifecycle claim is introduced.
 
 ### Remaining Gate 2 slices
 
-- **2.2** Per-Platform Runtime Isolation + Rate Limits + Retry Classification.
 - **2.3** Probe Telemetry + Platform Health Persistence.
 - **2.4** Degrade / Circuit-Breaker Policy + Recovery + Administrative Disable.
 - **2.5** Restart / Multi-Worker / Capacity Acceptance.
