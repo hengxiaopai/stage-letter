@@ -36,6 +36,11 @@ from .wechat_delivery import (
     WeChatDeliveryAttemptResult,
     WeChatRetryPolicy,
 )
+from .wechat_finalize import (
+    WeChatAtomicDeliveryAttemptApplicationService,
+    WeChatAtomicFinalizationResult,
+    WeChatDeliveryFinalizationApplicationService,
+)
 
 __all__ = [
     "CreatorApplicationService",
@@ -56,8 +61,11 @@ __all__ = [
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
     "TransitionPersistenceResult",
+    "WeChatAtomicDeliveryAttemptApplicationService",
+    "WeChatAtomicFinalizationResult",
     "WeChatDeliveryAttemptApplicationService",
     "WeChatDeliveryAttemptResult",
+    "WeChatDeliveryFinalizationApplicationService",
     "WeChatRetryPolicy",
     "make_live_event_id",
 ]
