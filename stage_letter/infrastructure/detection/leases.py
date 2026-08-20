@@ -2,14 +2,14 @@
 
 This is an independent operational SQLAlchemy Core boundary. A lease guards
 provider execution for one platform account; it never represents canonical live
-truth and is deliberately absent from the frozen Gate 1 ORM Base.
+truth and is deliberately absent from the frozen Gate 1 ORM Base. Lease timing is
+anchored to PostgreSQL time so worker clock skew cannot cause premature takeover.
 """
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import BigInteger, Column, DateTime, MetaData, String, Table, delete
+from sqlalchemy import BigInteger, Column, DateTime, MetaData, String, Table, delete, func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,12 +42,6 @@ def _account_pk(account_id: str) -> int:
     return value
 
 
-def _utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        raise ValueError("lease timestamp must be timezone-aware")
-    return value.astimezone(timezone.utc)
-
-
 class SQLAlchemyDetectionLeaseRepository:
     """Atomically acquire an account lease or take over an expired lease."""
 
@@ -60,26 +54,26 @@ class SQLAlchemyDetectionLeaseRepository:
         account_id: str,
         probe_id: str,
         owner_token: str,
-        now: datetime,
         lease_seconds: int,
     ) -> DetectionLeaseAcquireResult:
         account_pk = _account_pk(account_id)
-        now_utc = _utc(now)
         if not probe_id.startswith("monitor:"):
             raise ValueError("probe_id must use the formal monitor: namespace")
         if not owner_token.strip() or len(owner_token) > 64:
             raise ValueError("owner_token must be 1-64 characters")
         if lease_seconds < 1:
             raise ValueError("lease_seconds must be at least 1")
-        expires_at = now_utc + timedelta(seconds=lease_seconds)
 
+        # lease_seconds is validated as an integer before interpolation. PostgreSQL
+        # transaction time is authoritative across every worker/process.
+        expires_at = func.now() + text(f"INTERVAL '{lease_seconds} seconds'")
         statement = (
             pg_insert(_detection_probe_leases)
             .values(
                 platform_account_id=account_pk,
                 probe_id=probe_id,
                 owner_token=owner_token,
-                acquired_at=now_utc,
+                acquired_at=func.now(),
                 lease_expires_at=expires_at,
             )
             .on_conflict_do_update(
@@ -87,13 +81,13 @@ class SQLAlchemyDetectionLeaseRepository:
                 set_={
                     "probe_id": probe_id,
                     "owner_token": owner_token,
-                    "acquired_at": now_utc,
+                    "acquired_at": func.now(),
                     "lease_expires_at": expires_at,
                 },
                 # A live lease is never re-entrant, even for the same owner token.
                 # This suppresses duplicate tasks inside one worker as well as
                 # overlapping work across independent workers/processes.
-                where=_detection_probe_leases.c.lease_expires_at <= now_utc,
+                where=_detection_probe_leases.c.lease_expires_at <= func.now(),
             )
             .returning(
                 _detection_probe_leases.c.platform_account_id,
