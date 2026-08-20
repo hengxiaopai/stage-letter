@@ -1,8 +1,8 @@
-"""Separate operational scheduling persistence for Gate 2.1.
+"""Separate operational scheduling persistence for Gate 2 Detection Engine.
 
-This module deliberately does not register operational polling columns on the
-frozen Gate 1 canonical Base. It reads the existing physical columns with a
-separate SQLAlchemy Core MetaData boundary.
+This module deliberately does not register operational polling/health columns on
+the frozen Gate 1 canonical Base. It reads existing physical columns/tables with
+a separate SQLAlchemy Core MetaData boundary.
 """
 from __future__ import annotations
 
@@ -29,6 +29,12 @@ _detection_accounts = Table(
     Column("canonical_url", Text),
     Column("is_disabled", Boolean, nullable=False),
     Column("polling_tier", String(16)),
+)
+_detection_health = Table(
+    "platform_health",
+    _detection_metadata,
+    Column("platform", String(32), primary_key=True),
+    Column("state", String(16), nullable=False),
 )
 
 
@@ -65,8 +71,13 @@ class SQLAlchemyDetectionScheduleRepository:
                 _detection_accounts.c.canonical_url,
                 _detection_accounts.c.polling_tier,
                 latest_probe.c.last_probe_at,
+                _detection_health.c.state.label("platform_health_state"),
             )
             .outerjoin(latest_probe, latest_probe.c.account_id == _detection_accounts.c.id)
+            .outerjoin(
+                _detection_health,
+                _detection_health.c.platform == _detection_accounts.c.platform,
+            )
             .where(_detection_accounts.c.is_disabled.is_(False))
             .order_by(_detection_accounts.c.id.asc())
             .limit(limit)
@@ -94,6 +105,7 @@ class SQLAlchemyDetectionScheduleRepository:
                 ),
                 polling_tier_raw=row["polling_tier"],
                 last_probe_at=row["last_probe_at"],
+                platform_health_state_raw=row["platform_health_state"],
             )
             for row in rows
         )
