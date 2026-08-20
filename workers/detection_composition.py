@@ -1,11 +1,12 @@
 """Gate 2 detection composition root.
 
 Construction is I/O-free. Gate 2.1 due selection, Gate 2.2 runtime coordination,
-Gate 1.4 durable provider ingress, Gate 2.3 operational telemetry, and Gate 2.4
-circuit-breaker state are wired without reviving the legacy probe worker.
+Gate 1.4 durable provider ingress, Gate 2.3 telemetry, Gate 2.4 health state, and
+Gate 2.5 durable cross-worker leases are wired without reviving the legacy worker.
 """
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -16,13 +17,16 @@ from stage_letter.application.services.detection_health import (
     DetectionHealthAdministrationApplicationService,
     HealthAwareDetectionTelemetryApplicationService,
 )
+from stage_letter.application.services.detection_lease import DetectionLeaseApplicationService
 from stage_letter.application.services.detection_telemetry import DetectionTelemetryApplicationService
 from stage_letter.application.services.monitoring_probe import MonitoringProbeApplicationService
 from stage_letter.detection.due import DetectionCadencePolicy
 from stage_letter.detection.health import CircuitBreakerPolicy
+from stage_letter.detection.lease import DetectionLeasePolicy
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 from stage_letter.infrastructure.detection import (
     SQLAlchemyDetectionHealthRepository,
+    SQLAlchemyDetectionLeaseRepository,
     SQLAlchemyDetectionScheduleRepository,
     SQLAlchemyDetectionTelemetryRepository,
 )
@@ -50,6 +54,8 @@ class DetectionRuntimeBundle:
     scheduling: DetectionSchedulingBundle
     telemetry: HealthAwareDetectionTelemetryApplicationService
     health_administration: DetectionHealthAdministrationApplicationService
+    leases: DetectionLeaseApplicationService
+    worker_token: str
     coordinator: DetectionRuntimeCoordinator
     runtime: DetectionCycleRuntime
 
@@ -74,7 +80,7 @@ def build_detection_scheduling(
     adapter_registry = build_formal_adapter_registry(douyin_cookie=douyin_cookie)
     monitoring_probe = MonitoringProbeApplicationService(uow_factory, adapter_registry.get)
     monitoring_scheduler = MonitoringScheduler(
-        due_targets,  # same accepted list_targets paging contract
+        due_targets,
         monitoring_probe,
         policy=scheduler_policy,
     )
@@ -92,11 +98,13 @@ def build_detection_runtime(
     douyin_cookie: str | None = None,
     cadence_policy: DetectionCadencePolicy | None = None,
     circuit_breaker_policy: CircuitBreakerPolicy | None = None,
+    lease_policy: DetectionLeasePolicy | None = None,
+    worker_token: str | None = None,
     runtime_policy: PlatformRuntimePolicy | None = None,
     platform_runtime_policies: dict[str, PlatformRuntimePolicy] | None = None,
     page_size: int = 100,
 ) -> DetectionRuntimeBundle:
-    """Build the formal Gate 2.4 runtime without opening DB/provider I/O."""
+    """Build the formal Gate 2.5 runtime without opening DB/provider I/O."""
 
     policy = circuit_breaker_policy or CircuitBreakerPolicy()
     scheduling = build_detection_scheduling(
@@ -117,6 +125,11 @@ def build_detection_runtime(
     health_administration = DetectionHealthAdministrationApplicationService(
         health_repository
     )
+    leases = DetectionLeaseApplicationService(
+        SQLAlchemyDetectionLeaseRepository(session_factory),
+        policy=lease_policy,
+    )
+    token = worker_token or uuid.uuid4().hex
     coordinator = DetectionRuntimeCoordinator(
         default_policy=runtime_policy,
         platform_policies=platform_runtime_policies,
@@ -125,13 +138,17 @@ def build_detection_runtime(
         scheduling.due_targets,
         scheduling.monitoring_probe,
         coordinator,
-        telemetry=telemetry,  # same record() contract as Gate 2.3 service
+        telemetry=telemetry,
+        leases=leases,
+        owner_token=token,
         page_size=page_size,
     )
     return DetectionRuntimeBundle(
         scheduling=scheduling,
         telemetry=telemetry,
         health_administration=health_administration,
+        leases=leases,
+        worker_token=token,
         coordinator=coordinator,
         runtime=runtime,
     )
