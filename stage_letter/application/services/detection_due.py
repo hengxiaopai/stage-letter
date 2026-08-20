@@ -1,10 +1,15 @@
-"""Gate 2.1 due-target selection for formal monitoring."""
+"""Gate 2 due-target selection for formal monitoring."""
 from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
 
 from stage_letter.detection.due import DetectionCadencePolicy, is_due, normalize_polling_tier
+from stage_letter.detection.health import (
+    CircuitBreakerPolicy,
+    cadence_multiplier,
+    normalize_platform_health_state,
+)
 from stage_letter.detection.ports import DetectionScheduleRepository
 from stage_letter.domain.creators import PlatformAccount
 
@@ -15,7 +20,9 @@ class DueMonitoringTargetApplicationService:
     """Return only enabled accounts whose operational cadence is due.
 
     The public paging shape intentionally matches Gate 1's monitoring-target
-    service so the accepted MonitoringScheduler can be reused unchanged.
+    service so the accepted MonitoringScheduler can be reused unchanged. Gate
+    2.4 additionally applies platform health: DEGRADED slows cadence and DISABLED
+    removes the platform from automatic discovery.
     """
 
     MAX_PAGE_SIZE = 1000
@@ -26,10 +33,12 @@ class DueMonitoringTargetApplicationService:
         repository: DetectionScheduleRepository,
         *,
         cadence: DetectionCadencePolicy | None = None,
+        circuit_breaker: CircuitBreakerPolicy | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._repository = repository
         self.cadence = cadence or DetectionCadencePolicy()
+        self.circuit_breaker = circuit_breaker or CircuitBreakerPolicy()
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     async def list_targets(
@@ -61,12 +70,17 @@ class DueMonitoringTargetApplicationService:
                 cursor = row.account.account_id
                 if not row.account.enabled:
                     continue
+                health_state = normalize_platform_health_state(row.platform_health_state_raw)
+                multiplier = cadence_multiplier(health_state, policy=self.circuit_breaker)
+                if multiplier is None:
+                    continue
                 tier = normalize_polling_tier(row.polling_tier_raw)
                 if is_due(
                     now=now,
                     tier=tier,
                     last_probe_at=row.last_probe_at,
                     policy=self.cadence,
+                    interval_multiplier=multiplier,
                 ):
                     selected.append(row.account)
                     if len(selected) >= limit:
