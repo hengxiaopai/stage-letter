@@ -87,8 +87,8 @@ Gate 3 therefore owns these remaining capabilities:
 - **3.0** Baseline / Gap Freeze. **PASS / CLOSED**
 - **3.1** Multi-Channel Delivery + Durable In-App Fallback. **PASS / CLOSED**
 - **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **PASS / CLOSED**
-- **3.3** Grant Intake + Reconciliation + User-Facing Grant API. **CURRENT**
-- **3.4** Notification Read Model + Anchor Detail Routing Contract.
+- **3.3** Grant Intake + Reconciliation + User-Facing Grant API. **PASS / CLOSED**
+- **3.4** Notification Read Model + Anchor Detail Routing Contract. **CURRENT**
 - **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance.
 
 ### Gate 3.0 acceptance
@@ -192,3 +192,52 @@ Gate 3.2 acceptance: Gate 3 `32 passed`; Gate 1 + Gate 2 + Gate 3
 `530 passed, 173 subtests passed`; migration head `c32a1d7e9b40`; controlled
 PostgreSQL registry probe `PASS` with `cleanup_complete=true` and
 `database_restored=true`. No provider request or notification send was made.
+
+## Gate 3.3 — Grant Intake + Reconciliation + User-Facing Grant API
+
+Status: PASS / CLOSED
+
+### Accepted design
+
+1. The Mini Program sends the exact per-template result returned by
+   `wx.requestSubscribeMessage`: `accept`, `reject`, or `ban`. It can no longer
+   submit an arbitrary aggregate `accept_count`.
+2. Each client callback carries a client-generated `request_id`.
+   `wechat_grant_intakes` durably keys evidence by
+   `(user_id, request_id, template_id)`: an exact replay is idempotent, while a
+   changed decision for the same key is rejected and the transaction rolls back.
+3. A newly recorded `accept` atomically increments the optimistic ledger by
+   exactly one. `reject` and `ban` are evidence only; they never consume or erase
+   an earlier grant.
+4. Intake is not provider truth. WeChat exposes no server-side grant-balance
+   query used by this project. Existing provider send outcomes remain the
+   authoritative reconciliation input for `consumed_count` through the Gate 1.6
+   atomic finalizer.
+5. The user-facing read returns `available=max(0, granted-consumed)` and exposes
+   `ledger_drift_detected` when provider-authoritative consumption exceeds local
+   intake evidence. It never fabricates a negative user balance.
+6. V1 accepts only the configured live-start template at the public API boundary,
+   and requires an existing logged-in user. The current direct `openid` query is
+   still explicitly a development identity seam; production token hardening is
+   not claimed by Gate 3.3.
+7. `wechat_grant_intakes` is notification operational evidence outside the
+   frozen Gate 1 canonical `Base`. It cannot create/close live sessions/events.
+
+### Gate 3.3 acceptance
+
+- PostgreSQL observes new accept -> `+1`, exact replay -> no increment,
+  reject -> evidence only, changed-decision replay -> conflict/rollback;
+- a newly composed service after transaction restart reads the same durable
+  ledger and intake evidence;
+- the controlled probe deletes its synthetic intake, grant, and user rows;
+- public API and Mini Program contracts carry `request_id` plus exact decisions,
+  with no `accept_count` input;
+- migration extends `c32a1d7e9b40` with a constrained evidence table while the
+  canonical Base stays frozen;
+- no provider request, notification send, provider-balance query, live mutation,
+  or exactly-once claim is performed.
+
+Gate 3.3 acceptance: Gate 3 `40 passed`; Gate 1 + Gate 2 + Gate 3
+`538 passed, 173 subtests passed`; migration head `d33c4e8a1b60`; controlled
+PostgreSQL grant-intake probe `PASS` with `cleanup_complete=true` and
+`database_restored=true`.

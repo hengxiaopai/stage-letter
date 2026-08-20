@@ -37,6 +37,9 @@ class WeChatGrantLedger:
     template_id: str
     granted_count: int
     consumed_count: int
+    last_granted_at: datetime | None = None
+    last_send_at: datetime | None = None
+    last_send_error: str | None = None
 
     def __post_init__(self) -> None:
         _required(self.user_id, "user_id")

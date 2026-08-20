@@ -3,6 +3,11 @@
 from .creator import CreatorApplicationService
 from .detection_lease import DetectionLeaseApplicationService
 from .follow import FollowApplicationService
+from .grant_intake import (
+    GrantIntakeConflictError,
+    GrantIntakeResult,
+    WeChatGrantApplicationService,
+)
 from .in_app_delivery import (
     InAppDeliveryApplicationService,
     InAppFallbackApplicationService,
@@ -56,6 +61,8 @@ __all__ = [
     "DeliveryRecoveryResult",
     "DetectionLeaseApplicationService",
     "FollowApplicationService",
+    "GrantIntakeConflictError",
+    "GrantIntakeResult",
     "InAppDeliveryApplicationService",
     "InAppFallbackApplicationService",
     "InAppFallbackResult",
@@ -76,6 +83,7 @@ __all__ = [
     "StateReconstructionResult",
     "TransitionPersistenceResult",
     "WeChatAtomicDeliveryAttemptApplicationService",
+    "WeChatGrantApplicationService",
     "WeChatAtomicFinalizationResult",
     "WeChatDeliveryAttemptApplicationService",
     "WeChatDeliveryAttemptResult",

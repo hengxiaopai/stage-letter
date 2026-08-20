@@ -301,42 +301,63 @@ Query:
   "available": 3,
   "last_granted_at": "2026-08-01T20:00:00Z",
   "last_send_at": "2026-08-01T20:30:00Z",
-  "last_send_error": null
+  "last_send_error": null,
+  "ledger_drift_detected": false
 }
 ```
 
-> **available = granted - consumed**(应用层计算)。
+> **available = max(0, granted - consumed)**(应用层计算)。若 provider-authoritative
+> `consumed_count` 超过本地乐观授权证据，则返回 `ledger_drift_detected=true`，而不是
+> 向用户展示负数。
 > 注意:`available` 不是配额,是**用户行为产生的余额**。
 
 ### POST /api/v1/notifications/request-grant
 
-记录用户 grant 请求(客户端收到 `wx.requestSubscribeMessage` 返回 accept 后调用)。
+记录 `wx.requestSubscribeMessage` 的逐模板原始结果。客户端生成 `request_id`；服务端
+以 `(user_id, request_id, template_id)` 持久化幂等证据。同一 key 的完全重放不会重复
+累计，变更 decision 的重放返回冲突。
 
 请求:
 ```json
 {
-  "template_id": "wx_template_live_start",
-  "accept_count": 1
+  "request_id": "wx-1724140800000-a1b2c3",
+  "results": [
+    {
+      "template_id": "configured-template-id",
+      "decision": "accept"
+    }
+  ]
 }
 ```
 
-> `accept_count` 是 `wx.requestSubscribeMessage` 返回中 `accept` 的模板数量。
-> 通常是 1(用户只勾了一个模板),也可能是用户勾了多个(API 返回 `accept` 的 template 数)。
+> `decision` 只允许微信原始值 `accept | reject | ban`。`accept` 为该模板累计一次本地
+> 乐观 grant；`reject/ban` 只留证，不扣减既有 grant。客户端不得直接提交累计数量。
 
 响应(200):
 ```json
 {
-  "template_id": "wx_template_live_start",
-  "granted_count": 6,
-  "consumed_count": 2,
-  "available": 4,
-  "refreshed_at": "2026-08-01T20:30:00Z"
+  "request_id": "wx-1724140800000-a1b2c3",
+  "items": [
+    {
+      "template_id": "configured-template-id",
+      "decision": "accept",
+      "recorded": true,
+      "granted_count": 6,
+      "consumed_count": 2,
+      "available": 4
+    }
+  ],
+  "received_at": "2026-08-01T20:30:00Z"
 }
 ```
 
 错误:
-- `42902`: 同 user 5min 内重复请求
-- `42903`: 同 user 1h 内 > 5 次
+- HTTP `409`: 同一幂等 key 携带了不同 decision
+- HTTP `422`: 模板未注册、批内模板重复或请求结构非法
+
+> Intake 是客户端回调证据，不是微信 provider 余额查询。发送结果 `errcode=0` 和
+> `43101` 等既有 provider-authoritative 结果仍通过原子 finalizer 推进
+> `consumed_count`；V1 不声称可主动查询微信余额或实现 exactly-once。
 
 ### GET /api/v1/notifications/history
 

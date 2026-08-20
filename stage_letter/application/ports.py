@@ -26,6 +26,7 @@ from stage_letter.domain.notifications import (
     NotificationDelivery,
     WeChatGrantLedger,
 )
+from stage_letter.domain.grant_intake import WeChatGrantIntake
 from stage_letter.domain.notification_templates import WeChatTemplateRegistration
 
 
@@ -241,6 +242,30 @@ class GrantRepository(Protocol):
         evidence than the local ledger and Gate 0A explicitly permits drift.
         None means the expected ledger row is missing.
         """
+        ...
+
+    async def create_wechat_grant_intake(
+        self,
+        intake: WeChatGrantIntake,
+    ) -> bool:
+        """Insert client evidence iff its user/request/template key is absent."""
+        ...
+
+    async def get_wechat_grant_intake(
+        self,
+        user_id: str,
+        request_id: str,
+        template_id: str,
+    ) -> WeChatGrantIntake | None: ...
+
+    async def increment_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+        *,
+        granted_at: datetime,
+    ) -> WeChatGrantLedger:
+        """Atomically add one accepted client-reported grant opportunity."""
         ...
 
 

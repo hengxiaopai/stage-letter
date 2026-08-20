@@ -59,8 +59,10 @@ Page({
       if (!res) return
       const keys = Object.keys(res).filter((k) => k !== 'errMsg')
       const acceptCount = keys.filter((k) => res[k] === 'accept').length
+      if (keys.length > 0) {
+        await requestGrant(openid, res)
+      }
       if (acceptCount > 0) {
-        await requestGrant(openid, acceptCount)
         wx.showToast({ title: `已补充 ${acceptCount} 次提醒`, icon: 'success' })
         this.load()
       }
