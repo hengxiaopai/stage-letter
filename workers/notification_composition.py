@@ -1,4 +1,4 @@
-"""Composition root for the formal Gate 1.6 WeChat notification runtime.
+"""Composition root for the formal multi-channel notification runtimes.
 
 It is intentionally separate from ``workers/composition.py`` so Gate 1.4's
 live-monitoring composition freeze remains unchanged.
@@ -15,12 +15,33 @@ from stage_letter.infrastructure.notifications.wechat import (
     HttpxWeChatProviderGateway,
     WeChatSubscribeFormalAdapter,
 )
-from workers.notification_runtime import WeChatNotificationRuntime
+from workers.notification_runtime import (
+    InAppNotificationRuntime,
+    WeChatNotificationRuntime,
+)
 
 
 @dataclass(frozen=True)
 class WeChatNotificationRuntimeBundle:
     runtime: WeChatNotificationRuntime
+
+
+@dataclass(frozen=True)
+class InAppNotificationRuntimeBundle:
+    runtime: InAppNotificationRuntime
+
+
+def build_in_app_notification_runtime(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> InAppNotificationRuntimeBundle:
+    """Build the DB-only in-app publisher without provider configuration."""
+
+    def uow_factory():
+        return SQLAlchemyUnitOfWork(session_factory)
+
+    return InAppNotificationRuntimeBundle(
+        runtime=InAppNotificationRuntime(uow_factory=uow_factory)
+    )
 
 
 def build_wechat_notification_runtime(

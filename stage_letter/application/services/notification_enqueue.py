@@ -13,6 +13,7 @@ from stage_letter.domain.notification_policy import (
 )
 from stage_letter.domain.notifications import (
     DeliveryChannel,
+    GrantState,
     resolve_wechat_grant_state,
 )
 
@@ -54,6 +55,9 @@ class NotificationEnqueueApplicationService:
         self._uow_factory = uow_factory
         self._batch_size = batch_size
         self._channel = channel
+
+    def _select_channel(self, grant_state: GrantState) -> DeliveryChannel:
+        return self._channel
 
     async def enqueue_live_event(
         self,
@@ -102,17 +106,18 @@ class NotificationEnqueueApplicationService:
                         follow.user_id,
                         template_id,
                     )
+                    grant_state = resolve_wechat_grant_state(ledger)
                     target = NotificationTarget(
                         user_id=follow.user_id,
                         account_id=event.account_id,
                         following=True,
                         notification_enabled=preference.enabled,
-                        grant_state=resolve_wechat_grant_state(ledger),
+                        grant_state=grant_state,
                     )
                     decision = evaluate_notification_eligibility(
                         event,
                         target,
-                        channel=self._channel,
+                        channel=self._select_channel(grant_state),
                     )
                     delivery = build_pending_delivery(decision, event, target)
                     if delivery is None:
@@ -139,3 +144,31 @@ class NotificationEnqueueApplicationService:
             skipped_missing_preference=skipped_missing_preference,
             skipped_ineligible=skipped_ineligible,
         )
+
+
+class MultiChannelNotificationEnqueueApplicationService(
+    NotificationEnqueueApplicationService
+):
+    """Route each eligible recipient to WeChat or durable in-app delivery.
+
+    A positive optimistic grant selects WECHAT_SUBSCRIBE. Missing or exhausted
+    grant evidence selects IN_APP instead of silently dropping the notification.
+    Gate 1.6's WeChat-only enqueue service remains available unchanged.
+    """
+
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        *,
+        batch_size: int = 500,
+    ) -> None:
+        super().__init__(
+            uow_factory,
+            batch_size=batch_size,
+            channel=DeliveryChannel.WECHAT_SUBSCRIBE,
+        )
+
+    def _select_channel(self, grant_state: GrantState) -> DeliveryChannel:
+        if grant_state is GrantState.GRANTED:
+            return DeliveryChannel.WECHAT_SUBSCRIBE
+        return DeliveryChannel.IN_APP

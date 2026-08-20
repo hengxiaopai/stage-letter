@@ -3,6 +3,12 @@
 from .creator import CreatorApplicationService
 from .detection_lease import DetectionLeaseApplicationService
 from .follow import FollowApplicationService
+from .in_app_delivery import (
+    InAppDeliveryApplicationService,
+    InAppFallbackApplicationService,
+    InAppFallbackResult,
+    requires_in_app_fallback,
+)
 from .live import LiveObservationApplicationService
 from .live_consumption import (
     LiveObservationConsumptionApplicationService,
@@ -24,6 +30,7 @@ from .notification_delivery import (
     NotificationDeliveryApplicationService,
 )
 from .notification_enqueue import (
+    MultiChannelNotificationEnqueueApplicationService,
     NotificationEnqueueApplicationService,
     NotificationEnqueueResult,
 )
@@ -48,6 +55,9 @@ __all__ = [
     "DeliveryRecoveryResult",
     "DetectionLeaseApplicationService",
     "FollowApplicationService",
+    "InAppDeliveryApplicationService",
+    "InAppFallbackApplicationService",
+    "InAppFallbackResult",
     "LiveObservationApplicationService",
     "LiveObservationConsumptionApplicationService",
     "LiveObservationConsumptionResult",
@@ -56,6 +66,7 @@ __all__ = [
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "MultiChannelNotificationEnqueueApplicationService",
     "NotificationDeliveryApplicationService",
     "NotificationEnqueueApplicationService",
     "NotificationEnqueueResult",
@@ -70,4 +81,5 @@ __all__ = [
     "WeChatDeliveryFinalizationApplicationService",
     "WeChatRetryPolicy",
     "make_live_event_id",
+    "requires_in_app_fallback",
 ]

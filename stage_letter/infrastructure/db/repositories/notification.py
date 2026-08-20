@@ -109,25 +109,29 @@ class SQLAlchemyNotificationRepository:
         now: datetime,
         *,
         limit: int = 100,
+        channel: DeliveryChannel | None = None,
     ) -> tuple[DeliveryKey, ...]:
         if limit < 1 or limit > 500:
             raise ValueError("limit must be between 1 and 500")
+        conditions = [
+            LiveEventModel.event_id.is_not(None),
+            or_(
+                NotificationDeliveryModel.state == DeliveryState.PENDING.value,
+                and_(
+                    NotificationDeliveryModel.state
+                    == DeliveryState.WAITING_RETRY.value,
+                    NotificationDeliveryModel.next_attempt_at.is_not(None),
+                    NotificationDeliveryModel.next_attempt_at <= now,
+                ),
+            ),
+        ]
+        if channel is not None:
+            conditions.append(NotificationDeliveryModel.channel == channel.value)
         rows = (
             await self.session.execute(
                 select(NotificationDeliveryModel, LiveEventModel)
                 .join(LiveEventModel, NotificationDeliveryModel.live_event_id == LiveEventModel.id)
-                .where(
-                    LiveEventModel.event_id.is_not(None),
-                    or_(
-                        NotificationDeliveryModel.state == DeliveryState.PENDING.value,
-                        and_(
-                            NotificationDeliveryModel.state
-                            == DeliveryState.WAITING_RETRY.value,
-                            NotificationDeliveryModel.next_attempt_at.is_not(None),
-                            NotificationDeliveryModel.next_attempt_at <= now,
-                        ),
-                    ),
-                )
+                .where(*conditions)
                 .order_by(NotificationDeliveryModel.id.asc())
                 .limit(limit)
             )
@@ -139,19 +143,23 @@ class SQLAlchemyNotificationRepository:
         stale_before: datetime,
         *,
         limit: int = 100,
+        channel: DeliveryChannel | None = None,
     ) -> tuple[DeliveryKey, ...]:
         if limit < 1 or limit > 500:
             raise ValueError("limit must be between 1 and 500")
+        conditions = [
+            LiveEventModel.event_id.is_not(None),
+            NotificationDeliveryModel.state == DeliveryState.IN_FLIGHT.value,
+            NotificationDeliveryModel.in_flight_at.is_not(None),
+            NotificationDeliveryModel.in_flight_at <= stale_before,
+        ]
+        if channel is not None:
+            conditions.append(NotificationDeliveryModel.channel == channel.value)
         rows = (
             await self.session.execute(
                 select(NotificationDeliveryModel, LiveEventModel)
                 .join(LiveEventModel, NotificationDeliveryModel.live_event_id == LiveEventModel.id)
-                .where(
-                    LiveEventModel.event_id.is_not(None),
-                    NotificationDeliveryModel.state == DeliveryState.IN_FLIGHT.value,
-                    NotificationDeliveryModel.in_flight_at.is_not(None),
-                    NotificationDeliveryModel.in_flight_at <= stale_before,
-                )
+                .where(*conditions)
                 .order_by(NotificationDeliveryModel.id.asc())
                 .limit(limit)
             )

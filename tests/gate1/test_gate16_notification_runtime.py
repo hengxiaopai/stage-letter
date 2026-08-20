@@ -107,6 +107,9 @@ class Gate16NotificationRuntimeTests(unittest.IsolatedAsyncioTestCase):
             mark_waiting_auth=AsyncMock(return_value=waiting),
         )
         runtime._get_openid = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        runtime._fallback_service = SimpleNamespace(
+            ensure_for_wechat=AsyncMock(return_value=SimpleNamespace(delivery=None))
+        )
         result = await runtime.run_once(now=T0)
         self.assertEqual("WAITING_AUTH", result.action)
         self.assertEqual(DeliveryState.WAITING_AUTH, result.delivery.state)  # type: ignore[union-attr]
@@ -131,6 +134,9 @@ class Gate16NotificationRuntimeTests(unittest.IsolatedAsyncioTestCase):
         runtime._build_message = AsyncMock(return_value=None)  # type: ignore[method-assign]
         runtime._attempt_service = SimpleNamespace(
             execute=AsyncMock(side_effect=AssertionError("provider must not run"))
+        )
+        runtime._fallback_service = SimpleNamespace(
+            ensure_for_wechat=AsyncMock(return_value=SimpleNamespace(delivery=None))
         )
         result = await runtime.run_once(now=T0)
         self.assertEqual("FAILED_TERMINAL", result.action)

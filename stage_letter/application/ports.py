@@ -21,6 +21,7 @@ from stage_letter.domain.live import (
     SessionOrigin,
 )
 from stage_letter.domain.notifications import (
+    DeliveryChannel,
     DeliveryKey,
     NotificationDelivery,
     WeChatGrantLedger,
@@ -194,6 +195,7 @@ class NotificationRepository(Protocol):
         now: datetime,
         *,
         limit: int = 100,
+        channel: DeliveryChannel | None = None,
     ) -> tuple[DeliveryKey, ...]:
         """Return PENDING / due WAITING_RETRY keys in stable persistence order."""
         ...
@@ -203,6 +205,7 @@ class NotificationRepository(Protocol):
         stale_before: datetime,
         *,
         limit: int = 100,
+        channel: DeliveryChannel | None = None,
     ) -> tuple[DeliveryKey, ...]:
         """Return stale IN_FLIGHT keys for conservative crash recovery."""
         ...

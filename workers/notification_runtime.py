@@ -1,8 +1,9 @@
-"""Formal WeChat notification execution runtime for Gate 1.6-5.
+"""Formal multi-channel notification execution runtimes.
 
 This is intentionally separate from the Gate 1.4 live-monitoring composition
-freeze. It consumes already-enqueued logical deliveries and never mutates live
-truth. Provider I/O occurs only after a durable IN_FLIGHT claim.
+freeze. They consume already-enqueued logical deliveries and never mutate live
+truth. WeChat provider I/O occurs only after a durable IN_FLIGHT claim; IN_APP
+publication is DB-only.
 """
 from __future__ import annotations
 
@@ -24,11 +25,19 @@ from stage_letter.application.services.notification_delivery import (
     DeliveryRecoveryResult,
     NotificationDeliveryApplicationService,
 )
+from stage_letter.application.services.in_app_delivery import (
+    InAppDeliveryApplicationService,
+    InAppFallbackApplicationService,
+)
 from stage_letter.application.services.wechat_finalize import (
     WeChatAtomicDeliveryAttemptApplicationService,
     WeChatDeliveryFinalizationApplicationService,
 )
-from stage_letter.domain.notifications import DeliveryState, NotificationDelivery
+from stage_letter.domain.notifications import (
+    DeliveryChannel,
+    DeliveryState,
+    NotificationDelivery,
+)
 from stage_letter.infrastructure.db.models import UserModel
 
 
@@ -42,6 +51,26 @@ class WeChatNotificationRunResult:
     delivery: NotificationDelivery | None
     provider_outcome: ProviderOutcome | None = None
     grant_consumed: bool = False
+    in_app_fallback: NotificationDelivery | None = None
+
+
+@dataclass(frozen=True)
+class InAppNotificationRunResult:
+    action: str
+    delivery: NotificationDelivery | None
+
+
+class InAppNotificationRuntime:
+    """Publish at most one due in-app delivery without external provider I/O."""
+
+    def __init__(self, *, uow_factory: UnitOfWorkFactory) -> None:
+        self._delivery_service = InAppDeliveryApplicationService(uow_factory)
+
+    async def run_once(self, *, now: datetime) -> InAppNotificationRunResult:
+        delivered = await self._delivery_service.deliver_next(now=now)
+        if delivered is None:
+            return InAppNotificationRunResult("IDLE", None)
+        return InAppNotificationRunResult("SENT", delivered)
 
 
 class WeChatNotificationRuntime:
@@ -60,7 +89,11 @@ class WeChatNotificationRuntime:
         self._uow_factory = uow_factory
         self._session_factory = session_factory
         self._template_id = template_id
-        self._delivery_service = NotificationDeliveryApplicationService(uow_factory)
+        self._delivery_service = NotificationDeliveryApplicationService(
+            uow_factory,
+            channel=DeliveryChannel.WECHAT_SUBSCRIBE,
+        )
+        self._fallback_service = InAppFallbackApplicationService(uow_factory)
         self._finalizer = WeChatDeliveryFinalizationApplicationService(uow_factory)
         self._attempt_service = WeChatAtomicDeliveryAttemptApplicationService(
             provider,
@@ -93,7 +126,12 @@ class WeChatNotificationRuntime:
                 error_code="OPENID_MISSING",
                 error_message="WeChat recipient address is unavailable",
             )
-            return WeChatNotificationRunResult("WAITING_AUTH", updated)
+            fallback = await self._fallback_service.ensure_for_wechat(updated)
+            return WeChatNotificationRunResult(
+                "WAITING_AUTH",
+                updated,
+                in_app_fallback=None if fallback is None else fallback.delivery,
+            )
 
         message = await self._build_message(claimed, openid=openid)
         if message is None:
@@ -103,14 +141,21 @@ class WeChatNotificationRuntime:
                 error_code="DELIVERY_CONTEXT_INVALID",
                 error_message="canonical delivery context is missing or inconsistent",
             )
-            return WeChatNotificationRunResult("FAILED_TERMINAL", updated)
+            fallback = await self._fallback_service.ensure_for_wechat(updated)
+            return WeChatNotificationRunResult(
+                "FAILED_TERMINAL",
+                updated,
+                in_app_fallback=None if fallback is None else fallback.delivery,
+            )
 
         result = await self._attempt_service.execute(claimed, message, now=now)
+        fallback = await self._fallback_service.ensure_for_wechat(result.delivery)
         return WeChatNotificationRunResult(
             action=result.delivery.state.value,
             delivery=result.delivery,
             provider_outcome=result.provider_outcome,
             grant_consumed=result.grant_consumed,
+            in_app_fallback=None if fallback is None else fallback.delivery,
         )
 
     async def _get_openid(self, user_id: str) -> str | None:

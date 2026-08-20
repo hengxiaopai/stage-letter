@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from stage_letter.application.errors import ApplicationInvariantError, ApplicationNotFoundError
 from stage_letter.application.ports import UnitOfWork
 from stage_letter.domain.notifications import (
+    DeliveryChannel,
     DeliveryKey,
     DeliveryState,
     NotificationDelivery,
@@ -39,8 +40,14 @@ class NotificationDeliveryApplicationService:
     processing mechanics without claiming external exactly-once delivery.
     """
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        *,
+        channel: DeliveryChannel | None = None,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._channel = channel
 
     async def claim_next_due(
         self,
@@ -49,10 +56,17 @@ class NotificationDeliveryApplicationService:
         scan_limit: int = 100,
     ) -> NotificationDelivery | None:
         async with self._uow_factory() as uow:
-            keys = await uow.notifications.list_due_delivery_keys(
-                now,
-                limit=scan_limit,
-            )
+            if self._channel is None:
+                keys = await uow.notifications.list_due_delivery_keys(
+                    now,
+                    limit=scan_limit,
+                )
+            else:
+                keys = await uow.notifications.list_due_delivery_keys(
+                    now,
+                    limit=scan_limit,
+                    channel=self._channel,
+                )
             for key in keys:
                 delivery = await uow.notifications.lock_delivery(key)
                 if delivery is None:
@@ -181,10 +195,17 @@ class NotificationDeliveryApplicationService:
         stale_before = now - timedelta(seconds=stale_after_seconds)
 
         async with self._uow_factory() as uow:
-            keys = await uow.notifications.list_stale_in_flight_keys(
-                stale_before,
-                limit=limit,
-            )
+            if self._channel is None:
+                keys = await uow.notifications.list_stale_in_flight_keys(
+                    stale_before,
+                    limit=limit,
+                )
+            else:
+                keys = await uow.notifications.list_stale_in_flight_keys(
+                    stale_before,
+                    limit=limit,
+                    channel=self._channel,
+                )
             recovered = 0
             for key in keys:
                 delivery = await uow.notifications.lock_delivery(key)

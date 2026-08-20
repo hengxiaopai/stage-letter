@@ -14,6 +14,7 @@ def _required(value: str, field: str) -> None:
 
 class DeliveryChannel(str, Enum):
     WECHAT_SUBSCRIBE = "WECHAT_SUBSCRIBE"
+    IN_APP = "IN_APP"
 
 
 class GrantState(str, Enum):

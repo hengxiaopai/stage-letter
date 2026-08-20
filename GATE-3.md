@@ -2,7 +2,7 @@
 
 ## Gate 3.0 — Baseline / Gap Freeze
 
-Status: CURRENT
+Status: PASS / CLOSED
 
 Gate 2 closed with `498 passed, 173 subtests passed` and migration head
 `b25d4e9c7a12`. The project ROADMAP names **Gate 3 — Notification Engine** as the
@@ -84,9 +84,9 @@ Gate 3 therefore owns these remaining capabilities:
 
 ### Gate 3 slices
 
-- **3.0** Baseline / Gap Freeze. **CURRENT**
-- **3.1** Multi-Channel Delivery + Durable In-App Fallback.
-- **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery.
+- **3.0** Baseline / Gap Freeze. **PASS / CLOSED**
+- **3.1** Multi-Channel Delivery + Durable In-App Fallback. **PASS / CLOSED**
+- **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **CURRENT**
 - **3.3** Grant Intake + Reconciliation + User-Facing Grant API.
 - **3.4** Notification Read Model + Anchor Detail Routing Contract.
 - **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance.
@@ -99,3 +99,52 @@ Gate 3 therefore owns these remaining capabilities:
 - Gate 3.0 performs no provider call and no real WeChat resend.
 - Gate 3.0 adds no migration; expected head remains `b25d4e9c7a12`.
 - No exactly-once or Gate 0A lifecycle claim is introduced.
+
+Gate 3.0 acceptance: `7 / 7 PASS`; Gate 1 + Gate 2 + Gate 3 regression
+`505 / 505 PASS`; migration head `b25d4e9c7a12`.
+
+## Gate 3.1 — Multi-Channel Delivery + Durable In-App Fallback
+
+Status: PASS / CLOSED
+
+### Accepted design
+
+1. `DeliveryChannel.IN_APP` is a formal channel. Its logical identity remains
+   `(user_id, live_event_id, channel)`, so it is distinct from the corresponding
+   `WECHAT_SUBSCRIBE` delivery and durably idempotent under the existing unique
+   constraint.
+2. Multi-channel enqueue prefers `WECHAT_SUBSCRIBE` only while the optimistic
+   local grant ledger has positive availability. Missing or exhausted grant
+   evidence routes directly to `IN_APP`; it is no longer silent notification
+   loss.
+3. An active WeChat retry remains `WAITING_RETRY` without premature fallback.
+   `WAITING_AUTH`, `BLOCKED_CONFIG`, `FAILED_TERMINAL`, and `AMBIGUOUS` require a
+   separate durable `IN_APP` fallback. Retry exhaustion first becomes
+   `FAILED_TERMINAL`, then follows the same fallback rule.
+4. `AMBIGUOUS` still never permits a blind WeChat resend. Creating a different
+   internal channel does not reinterpret the external result as failed or
+   accepted.
+5. WeChat due-selection and restart recovery are restricted to
+   `WECHAT_SUBSCRIBE`. The in-app publisher selects only `IN_APP`, completes its
+   DB-only transition atomically, and performs no provider I/O.
+6. The old `workers/notify/in_app.py` lowercase-channel implementation remains
+   legacy reference code. It is not imported into the formal Gate 3.1 path.
+
+### Gate 3.1 acceptance
+
+- grant available -> one durable `WECHAT_SUBSCRIBE` delivery;
+- grant missing/exhausted -> one durable `IN_APP` delivery;
+- terminal/blocked/auth/ambiguous WeChat outcomes -> idempotent `IN_APP`
+  fallback for the same user/event;
+- active retry and accepted WeChat outcomes do not create fallback;
+- channel-scoped workers cannot claim the other channel;
+- in-app publication performs no external provider call;
+- notification work does not import or mutate live-truth persistence services;
+- Gate 1 + Gate 2 + Gate 3 regression remains green;
+- no schema change is required because the existing channel column and
+  `(user_id, live_event_id, channel)` unique key already support `IN_APP`;
+  expected migration head remains `b25d4e9c7a12`.
+
+Gate 3.1 acceptance: Gate 3 `20 passed`; Gate 1 + Gate 2 + Gate 3
+`518 passed, 173 subtests passed`; migration head `b25d4e9c7a12`. No provider
+request or live-truth mutation was performed by the Gate 3.1 acceptance suite.
