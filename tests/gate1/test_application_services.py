@@ -31,12 +31,14 @@ class _FakeUoW:
             save_account=AsyncMock(),
         )
         self.follows = SimpleNamespace(
+            get_notification_preference=AsyncMock(return_value=None),
             save_follow=AsyncMock(),
             delete_follow=AsyncMock(),
             save_notification_preference=AsyncMock(),
         )
         self.live = SimpleNamespace(append_observation=AsyncMock())
         self.notifications = SimpleNamespace()
+        self.grants = SimpleNamespace()
         self.commit = AsyncMock()
         self.rollback = AsyncMock()
         self.enter_calls = 0
@@ -94,6 +96,10 @@ class ApplicationServiceContractTests(unittest.IsolatedAsyncioTestCase):
         expected = Follow("1", "100", "200", starred=True)
         self.assertEqual(expected, result)
         uow.follows.save_follow.assert_awaited_once_with(expected)
+        uow.follows.get_notification_preference.assert_awaited_once_with("1", "200")
+        uow.follows.save_notification_preference.assert_awaited_once_with(
+            NotificationPreference("1", "200", enabled=True)
+        )
         uow.commit.assert_awaited_once()
 
     async def test_follow_missing_account_fails_without_write_or_commit(self) -> None:

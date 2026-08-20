@@ -301,52 +301,72 @@ Query:
   "available": 3,
   "last_granted_at": "2026-08-01T20:00:00Z",
   "last_send_at": "2026-08-01T20:30:00Z",
-  "last_send_error": null
+  "last_send_error": null,
+  "ledger_drift_detected": false
 }
 ```
 
-> **available = granted - consumed**(应用层计算)。
+> **available = max(0, granted - consumed)**(应用层计算)。若 provider-authoritative
+> `consumed_count` 超过本地乐观授权证据，则返回 `ledger_drift_detected=true`，而不是
+> 向用户展示负数。
 > 注意:`available` 不是配额,是**用户行为产生的余额**。
 
 ### POST /api/v1/notifications/request-grant
 
-记录用户 grant 请求(客户端收到 `wx.requestSubscribeMessage` 返回 accept 后调用)。
+记录 `wx.requestSubscribeMessage` 的逐模板原始结果。客户端生成 `request_id`；服务端
+以 `(user_id, request_id, template_id)` 持久化幂等证据。同一 key 的完全重放不会重复
+累计，变更 decision 的重放返回冲突。
 
 请求:
 ```json
 {
-  "template_id": "wx_template_live_start",
-  "accept_count": 1
+  "request_id": "wx-1724140800000-a1b2c3",
+  "results": [
+    {
+      "template_id": "configured-template-id",
+      "decision": "accept"
+    }
+  ]
 }
 ```
 
-> `accept_count` 是 `wx.requestSubscribeMessage` 返回中 `accept` 的模板数量。
-> 通常是 1(用户只勾了一个模板),也可能是用户勾了多个(API 返回 `accept` 的 template 数)。
+> `decision` 只允许微信原始值 `accept | reject | ban`。`accept` 为该模板累计一次本地
+> 乐观 grant；`reject/ban` 只留证，不扣减既有 grant。客户端不得直接提交累计数量。
 
 响应(200):
 ```json
 {
-  "template_id": "wx_template_live_start",
-  "granted_count": 6,
-  "consumed_count": 2,
-  "available": 4,
-  "refreshed_at": "2026-08-01T20:30:00Z"
+  "request_id": "wx-1724140800000-a1b2c3",
+  "items": [
+    {
+      "template_id": "configured-template-id",
+      "decision": "accept",
+      "recorded": true,
+      "granted_count": 6,
+      "consumed_count": 2,
+      "available": 4
+    }
+  ],
+  "received_at": "2026-08-01T20:30:00Z"
 }
 ```
 
 错误:
-- `42902`: 同 user 5min 内重复请求
-- `42903`: 同 user 1h 内 > 5 次
+- HTTP `409`: 同一幂等 key 携带了不同 decision
+- HTTP `422`: 模板未注册、批内模板重复或请求结构非法
+
+> Intake 是客户端回调证据，不是微信 provider 余额查询。发送结果 `errcode=0` 和
+> `43101` 等既有 provider-authoritative 结果仍通过原子 finalizer 推进
+> `consumed_count`；V1 不声称可主动查询微信余额或实现 exactly-once。
 
 ### GET /api/v1/notifications/history
 
-通知历史记录。
-
-通知历史记录。
+读取正式 `notification_deliveries` 的用户通知历史。只返回具备 formal event/session
+上下文的 Gate 1.6+ delivery；不再依赖 legacy `notification_jobs`。
 
 Query：
-- `cursor` / `limit`
-- `state` (optional): `SENT` / `FAILED` / `PENDING`
+- `limit`：1–50，默认 20
+- `cursor`：上一页返回的 delivery-id keyset cursor；不是 offset
 
 响应（200）：
 ```json
@@ -354,27 +374,31 @@ Query：
   "items": [
     {
       "id": 1,
-      "anchor": { "id": 1, "display_name": "小杨哥", "avatar": "..." },
+      "anchor_id": 1,
+      "account_id": 101,
+      "display_name": "小杨哥",
+      "avatar": "...",
       "platform": "douyin",
+      "live_event_id": "live-event:...",
       "live_session_id": 92839,
       "started_at": "2026-08-01T20:31:00Z",
-      "channel": "wechat",
+      "ended_at": null,
+      "channel": "WECHAT_SUBSCRIBE",
       "state": "SENT",
-      "sent_at": "2026-08-01T20:32:00Z"
-    },
-    {
-      "id": 2,
-      "anchor": { "id": 2, "display_name": "..." },
-      "platform": "bilibili",
-      "live_session_id": null,
-      "channel": "in_app",
-      "state": "PENDING_FALLBACK",
-      "reason": "no_credit"
+      "error_code": null,
+      "created_at": "2026-08-01T20:31:02Z",
+      "sent_at": "2026-08-01T20:32:00Z",
+      "miniapp_path": "pages/detail/index?id=1",
+      "api_path": "/api/v1/anchors/1"
     }
   ],
-  "next_cursor": "..."
+  "next_cursor": "1"
 }
 ```
+
+`miniapp_path` 是 Gate 3.4 唯一主播详情路由契约，同一路径也写入微信订阅消息的
+`page` 字段。小程序内部导航时在其前面补 `/`。微信 accepted、设备收到、用户点击和
+详情页读取仍是四种不同证据，本接口不声称用户已读。
 
 ### GET /api/v1/notifications/inbox
 

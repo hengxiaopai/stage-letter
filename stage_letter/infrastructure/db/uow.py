@@ -1,6 +1,6 @@
 """SQLAlchemy UnitOfWork for the formal Stage Letter runtime.
 
-The UnitOfWork owns one AsyncSession boundary and exposes all four formal
+The UnitOfWork owns one AsyncSession boundary and exposes all formal
 repositories over that same session. Repository methods never commit; the
 application layer explicitly chooses commit or rollback through this object.
 """
@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .repositories import (
     SQLAlchemyCreatorRepository,
     SQLAlchemyFollowRepository,
+    SQLAlchemyGrantRepository,
     SQLAlchemyLiveRepository,
     SQLAlchemyNotificationRepository,
+    SQLAlchemyWeChatTemplateRepository,
 )
 
 
@@ -42,6 +44,8 @@ class SQLAlchemyUnitOfWork:
         self.follows: SQLAlchemyFollowRepository | None = None
         self.live: SQLAlchemyLiveRepository | None = None
         self.notifications: SQLAlchemyNotificationRepository | None = None
+        self.grants: SQLAlchemyGrantRepository | None = None
+        self.templates: SQLAlchemyWeChatTemplateRepository | None = None
         self._committed = False
         self._rolled_back = False
 
@@ -55,6 +59,8 @@ class SQLAlchemyUnitOfWork:
         self.follows = SQLAlchemyFollowRepository(session)
         self.live = SQLAlchemyLiveRepository(session)
         self.notifications = SQLAlchemyNotificationRepository(session)
+        self.grants = SQLAlchemyGrantRepository(session)
+        self.templates = SQLAlchemyWeChatTemplateRepository(session)
         self._committed = False
         self._rolled_back = False
         return self
@@ -79,6 +85,8 @@ class SQLAlchemyUnitOfWork:
             self.follows = None
             self.live = None
             self.notifications = None
+            self.grants = None
+            self.templates = None
             self._committed = False
             self._rolled_back = False
         return False

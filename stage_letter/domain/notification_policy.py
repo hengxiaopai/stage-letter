@@ -1,10 +1,10 @@
-"""Pure notification eligibility policy for Gate 1.6.
+"""Pure notification eligibility policy for Gate 1.6 and Gate 3.1.
 
 This module carries the accepted Gate 0D notification truth into formal runtime
 without importing experiments/* or provider code. It decides only whether one
 canonical LiveEvent and one already-resolved user target are eligible to enter
-the WeChat subscribe-message delivery pipeline, then builds the logical pending
-delivery value. Durable idempotency remains the NotificationRepository boundary.
+a notification channel, then builds the logical pending delivery value. Durable
+idempotency remains the NotificationRepository boundary.
 """
 from __future__ import annotations
 
@@ -82,7 +82,11 @@ def evaluate_notification_eligibility(
       * TRANSITION cause
       * active Follow truth
       * enabled notification preference
-      * GRANTED channel/provider grant truth
+      * GRANTED channel/provider grant truth for WECHAT_SUBSCRIBE only
+
+    IN_APP is an internal delivery channel and therefore never requires a
+    WeChat grant. It still requires the same canonical event, Follow, and
+    notification-preference truth.
     """
 
     if target.account_id != event.account_id:
@@ -96,7 +100,10 @@ def evaluate_notification_eligibility(
         reason = EligibilityReason.NOT_FOLLOWING
     elif not target.notification_enabled:
         reason = EligibilityReason.NOTIFICATION_DISABLED
-    elif target.grant_state is not GrantState.GRANTED:
+    elif (
+        channel is DeliveryChannel.WECHAT_SUBSCRIBE
+        and target.grant_state is not GrantState.GRANTED
+    ):
         reason = EligibilityReason.GRANT_NOT_GRANTED
     else:
         reason = EligibilityReason.ELIGIBLE

@@ -19,12 +19,27 @@ from .notification_policy import (
     build_pending_delivery,
     evaluate_notification_eligibility,
 )
+from .notification_templates import (
+    WeChatTemplateRegistration,
+    WeChatTemplateState,
+    WeChatTemplateStateSource,
+)
 from .notifications import (
     DeliveryChannel,
     DeliveryKey,
     DeliveryState,
     GrantState,
     NotificationDelivery,
+    WeChatGrantLedger,
+    claim_delivery,
+    mark_delivery_ambiguous,
+    mark_delivery_blocked_config,
+    mark_delivery_failed_terminal,
+    mark_delivery_sent,
+    mark_delivery_waiting_auth,
+    recover_delivery_as_ambiguous,
+    resolve_wechat_grant_state,
+    schedule_delivery_retry,
 )
 from .state_engine import (
     EngineConfig,
@@ -66,6 +81,19 @@ __all__ = [
     "TransitionIntent",
     "TransitionIntentType",
     "User",
+    "WeChatGrantLedger",
+    "WeChatTemplateRegistration",
+    "WeChatTemplateState",
+    "WeChatTemplateStateSource",
     "build_pending_delivery",
+    "claim_delivery",
     "evaluate_notification_eligibility",
+    "mark_delivery_ambiguous",
+    "mark_delivery_blocked_config",
+    "mark_delivery_failed_terminal",
+    "mark_delivery_sent",
+    "mark_delivery_waiting_auth",
+    "recover_delivery_as_ambiguous",
+    "resolve_wechat_grant_state",
+    "schedule_delivery_retry",
 ]

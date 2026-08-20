@@ -14,27 +14,31 @@
 
 ## 项目状态
 
-**当前阶段:Gate 0(验证)与 Gate 1-3(实现)并行推进**
+**当前阶段：Gate 3 — Notification Engine（3.5 进行中）**
 
 ```
-Gate 0A 微信 grant 实测   ✅ PASS(6 实验全绿,2026-08-12)
-Gate 0B 4 平台适配器      ⏳ B站/抖音 PASS;虎牙缺 OFFLINE ground truth + 转换,斗鱼缺转换(8/13 13:21 4h soak 收)
-Gate 0C 压测              🟢 C6 B站/抖音 14 条零限流已分析(规则 v0.1);虎牙/斗鱼 C6 待跑
-Gate 1 Domain Core        ✅ 全验收(alembic + 状态机 + 1000 事件去重)
-Gate 2 Detection Engine   🟢 Probe worker 运行中(4 平台真实探测,自动确认开播)
-Gate 3 Notification       ✅ 核心完成(grant 决策树,14 组测试全绿)
-Gate 4 小程序              📝 待启动
+Gate 0  Feasibility Evidence  ⚠️ DEGRADED（历史实测保留；不补写缺失生命周期证据）
+Gate 1  Domain Core          ✅ PASS / CLOSED
+Gate 2  Detection Engine     ✅ PASS / CLOSED
+Gate 3  Notification Engine  🚧 3.0–3.4 CLOSED；3.5 CURRENT
+Gate 4  微信小程序             📝 待 Gate 3 完整封板后进入
 ```
 
-> **2026-08-13 里程碑**:项目更名 StageLetter(开场信)+ Gate 1-3 核心代码完成。Probe worker 已自动检测到 3 个真实直播间开播(bilibili/douyu/huya),创建 OPEN session + CONFIRMED_ONLINE 事件。
+最新已验收基线：Gate 1–3 回归 `546 passed, 173 subtests passed`，Alembic
+head `e34d7a2c1b50`。Gate 3.4 已完成多通道 fallback、微信模板级禁用/恢复、
+grant intake 对账、正式通知历史和主播详情路由契约。详细冻结证据见
+[GATE-2.md](./GATE-2.md) 与 [GATE-3.md](./GATE-3.md)。
 
-### Gate 0A(等用户实测)
+> GitHub 默认分支必须通过 PR 才会更新；push 功能分支不等于合并。README 中以下
+> Gate 0 内容是历史验证记录，不代表当前研发阶段。
+
+### Gate 0A 历史验证记录
 - 脚手架完成,等用户完成模板审核后跑 `wechat_grant_demo.py`(预计 1-3 工作日)
 - 实测结论填到 [reports/wechat_grant.md](./reports/wechat_grant.md)
 - **v0.2 修正**:A3-5 已改名为"微信服务端是否强制验证真实订阅授权",**不再**声称后端可证明 `wx.requestSubscribeMessage` 弹窗真实发生;**真实 authority = `subscribeMessage.send` 返回码**,客户端 accept 仅作 optimistic ledger 输入;**已删**"前端签名 + 后端验签"方案
 - **v0.2 修正**:A3-4 N>1 标 `UNEXPECTED_POSITIVE`,触发 ADR-002 增量更新,**不**自动降级到多通道;仅"无法可靠后台触达 / 用户必须不可接受地频繁操作"才触发通知架构降级
 
-### Gate 0B — IN PROGRESS(7-state 框架已落地,多轮短浸泡 + 快照抽查)
+### Gate 0B 历史验证记录（非当前研发状态）
 
 **已完成**:
 - ✅ 4 平台 adapter 升级到 7-state 返回:`ONLINE / OFFLINE / NOT_FOUND / RATE_LIMITED / BLOCKED / PARSE_ERROR / UNKNOWN`
@@ -133,29 +137,27 @@ Gate 4 小程序              📝 待启动
 
 ## 技术栈
 
-- **微信端**：Taro 3 + React + TypeScript（待 Gate 0 验证后再定）
+- **微信端**：原生微信小程序（WXML / WXSS / JavaScript）
 - **服务端**：Python 3.13 + FastAPI
-- **数据库**：PostgreSQL 15+
+- **数据库**：PostgreSQL 15+ + SQLAlchemy 2 + Alembic
 - **队列 / 缓存**：Redis + Dramatiq
-- **任务调度**：APScheduler（单实例 → 分布式锁）
+- **检测运行时**：HOT / WARM / COLD 调度、PostgreSQL lease、平台隔离容量控制
 - **部署**：Docker Compose
 
 详细选型见 [ARCHITECTURE.md §4](./ARCHITECTURE.md)。
 
-## 开始 Gate 0A(当前阶段)
+## 当前开发入口
 
-如果你正在准备 / 跑 Gate 0A 实验,按以下顺序:
-
-1. [WECHAT-TEST-ACCOUNT.md](./WECHAT-TEST-ACCOUNT.md) — 注册测试号 + 申请订阅模板 + 配置 .env
-2. [experiments/README.md](./experiments/README.md) — 实验脚本使用说明
-3. 跑完后回填 [reports/wechat_grant.md](./reports/wechat_grant.md)
-
-实验通过后,在 [GATE-0.md](./GATE-0.md) §Gate 0A 验收处勾选,即可进入 Gate 0B(单平台 adapter prototype,不依赖微信,可以并行启动)。
+1. 阅读 [GATE-3.md](./GATE-3.md) 的冻结边界和当前 slice。
+2. 使用 `python -m alembic upgrade head` 将本地 PostgreSQL 升到当前 head。
+3. 运行 `python -m pytest -q tests/gate1 tests/gate2 tests/gate3` 验证累计 Gate。
+4. Gate 0 实验材料仅用于追溯历史证据，不应重新作为当前开发入口。
 
 ## 快速开始
 
-> 当前阶段没有可运行的产品代码。  
-> 先读 [GATE-0.md](./GATE-0.md),按任务清单做完技术验证再进入正式开发。
+项目已有 FastAPI、PostgreSQL migration、四平台检测运行时、正式通知状态机与微信
+小程序代码。开发环境配置通过 `.env` 注入；不得将 AppSecret、数据库口令或真实用户
+标识提交到 Git。
 
 ## 参考项目
 

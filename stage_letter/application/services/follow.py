@@ -32,6 +32,20 @@ class FollowApplicationService:
                 starred=starred,
             )
             await uow.follows.save_follow(follow)
+
+            preference = await uow.follows.get_notification_preference(
+                user_id,
+                account_id,
+            )
+            if preference is None:
+                await uow.follows.save_notification_preference(
+                    NotificationPreference(
+                        user_id=user_id,
+                        account_id=account_id,
+                        enabled=True,
+                    )
+                )
+
             await uow.commit()
             return follow
 

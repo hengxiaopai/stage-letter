@@ -83,8 +83,8 @@ class Gate0RegressionContractTests(unittest.TestCase):
             _runtime_values(LiveEventCause),
         )
 
-    def test_gate0d_channel_matches_formal_delivery_channel(self) -> None:
-        self.assertEqual(
+    def test_gate0d_channel_remains_in_formal_delivery_channels(self) -> None:
+        self.assertLessEqual(
             _enum_values("experiments/gate0d/notification_truth.py", "Channel"),
             _runtime_values(DeliveryChannel),
         )

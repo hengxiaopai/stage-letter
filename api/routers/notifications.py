@@ -1,36 +1,23 @@
-"""通知相关路由: grant 查询 / request-grant / 历史记录。
-
-契约见 API-SPEC.md §7(grant 模型,ADR-001/002):
-- available = granted - consumed(应用层计算)
-- request-grant: 客户端收到 wx.requestSubscribeMessage accept 后调用
-- 限频: 同 user 5min 内重复 → 42902;同 user 1h 内 > 5 次 → 42903
-"""
+"""Notification grant intake and legacy history routes."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.composition import ApiServiceBundle
 from core.config import settings
 from core.db import get_db
 from core.models import (
-    Anchor,
-    LiveSession,
-    NotificationDelivery,
-    NotificationJob,
     User,
-    WechatSubscriptionGrant,
 )
+from stage_letter.application.services import GrantIntakeConflictError
+from stage_letter.domain.grant_intake import GrantIntakeDecision
 
 router = APIRouter()
-
-DEFAULT_TEMPLATE = "wx_template_live_start"
-GRANT_MIN_INTERVAL_S = 300   # 5min
-GRANT_MAX_PER_HOUR = 5
-
 
 class GrantResponse(BaseModel):
     template_id: str
@@ -40,146 +27,152 @@ class GrantResponse(BaseModel):
     last_granted_at: datetime | None = None
     last_send_at: datetime | None = None
     last_send_error: str | None = None
+    ledger_drift_detected: bool = False
+
+
+class GrantIntakeItem(BaseModel):
+    template_id: str = Field(min_length=1, max_length=64)
+    decision: GrantIntakeDecision
 
 
 class RequestGrantRequest(BaseModel):
-    template_id: str = DEFAULT_TEMPLATE
-    accept_count: int = 1
+    request_id: str = Field(min_length=8, max_length=64)
+    results: list[GrantIntakeItem] = Field(min_length=1, max_length=5)
 
 
-class RequestGrantResponse(BaseModel):
+class GrantIntakeItemResponse(BaseModel):
     template_id: str
+    decision: GrantIntakeDecision
+    recorded: bool
     granted_count: int
     consumed_count: int
     available: int
-    refreshed_at: datetime
 
 
-async def _get_or_create_user(db: AsyncSession, openid: str) -> User:
-    r = await db.execute(select(User).where(User.openid == openid))
-    user = r.scalar_one_or_none()
+class RequestGrantResponse(BaseModel):
+    request_id: str
+    items: list[GrantIntakeItemResponse]
+    received_at: datetime
+
+
+async def _get_existing_user(db: AsyncSession, openid: str) -> User:
+    user = (
+        await db.execute(select(User).where(User.openid == openid))
+    ).scalar_one_or_none()
     if user is None:
-        user = User(openid=openid)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        raise HTTPException(status_code=404, detail="user must login before grant intake")
     return user
 
 
-async def _get_grant(db: AsyncSession, user_id: int, template_id: str) -> WechatSubscriptionGrant | None:
-    r = await db.execute(
-        select(WechatSubscriptionGrant).where(
-            WechatSubscriptionGrant.user_id == user_id,
-            WechatSubscriptionGrant.template_id == template_id,
-        )
-    )
-    return r.scalar_one_or_none()
+def _configured_template_id() -> str:
+    template_id = settings.wx_template_live_start.strip()
+    if not template_id:
+        raise HTTPException(status_code=503, detail="WeChat template is not configured")
+    return template_id
 
 
-def _to_grant_response(template_id: str, g: WechatSubscriptionGrant | None) -> GrantResponse:
-    if g is None:
-        return GrantResponse(
-            template_id=template_id,
-            granted_count=0,
-            consumed_count=0,
-            available=0,
-        )
+def _grant_response(
+    template_id: str,
+    granted: int,
+    consumed: int,
+    *,
+    last_granted_at: datetime | None = None,
+    last_send_at: datetime | None = None,
+    last_send_error: str | None = None,
+) -> GrantResponse:
     return GrantResponse(
         template_id=template_id,
-        granted_count=g.granted_count,
-        consumed_count=g.consumed_count,
-        available=g.granted_count - g.consumed_count,
-        last_granted_at=g.last_granted_at,
-        last_send_at=g.last_send_at,
-        last_send_error=g.last_send_error,
+        granted_count=granted,
+        consumed_count=consumed,
+        available=max(0, granted - consumed),
+        last_granted_at=last_granted_at,
+        last_send_at=last_send_at,
+        last_send_error=last_send_error,
+        ledger_drift_detected=consumed > granted,
     )
 
 
 @router.get("/notifications/grants", response_model=GrantResponse)
 async def get_grants(
+    request: Request,
     openid: str = Query(..., description="微信 openid(dev 阶段直接传,生产换 token)"),
-    template_id: str = Query(DEFAULT_TEMPLATE),
+    template_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> GrantResponse:
-    user = await _get_or_create_user(db, openid)
-    grant = await _get_grant(db, user.id, template_id)
-    return _to_grant_response(template_id, grant)
+    resolved_template = template_id or _configured_template_id()
+    if resolved_template != _configured_template_id():
+        raise HTTPException(status_code=422, detail="template is not registered for grant intake")
+    user = await _get_existing_user(db, openid)
+    services: ApiServiceBundle = request.app.state.stage_letter_services
+    ledger = await services.grants.get_ledger(str(user.id), resolved_template)
+    return _grant_response(
+        resolved_template,
+        ledger.granted_count,
+        ledger.consumed_count,
+        last_granted_at=ledger.last_granted_at,
+        last_send_at=ledger.last_send_at,
+        last_send_error=ledger.last_send_error,
+    )
 
 
 @router.post("/notifications/request-grant", response_model=RequestGrantResponse)
 async def request_grant(
     req: RequestGrantRequest,
+    request: Request,
     openid: str = Query(..., description="微信 openid"),
     db: AsyncSession = Depends(get_db),
 ) -> RequestGrantResponse:
-    user = await _get_or_create_user(db, openid)
+    configured_template = _configured_template_id()
+    if any(item.template_id != configured_template for item in req.results):
+        raise HTTPException(status_code=422, detail="template is not registered for grant intake")
+    user = await _get_existing_user(db, openid)
     now = datetime.now(timezone.utc)
-    template_id = req.template_id
-
-    # 限频检查
-    r = await db.execute(
-        select(WechatSubscriptionGrant).where(
-            WechatSubscriptionGrant.user_id == user.id,
-            WechatSubscriptionGrant.template_id == template_id,
+    services: ApiServiceBundle = request.app.state.stage_letter_services
+    try:
+        results = await services.grants.record_intake(
+            user_id=str(user.id),
+            request_id=req.request_id,
+            results=tuple((item.template_id, item.decision) for item in req.results),
+            received_at=now,
         )
-    )
-    grant = r.scalar_one_or_none()
-
-    if grant and grant.last_granted_at:
-        # 5min 内重复
-        if now - grant.last_granted_at < timedelta(seconds=GRANT_MIN_INTERVAL_S):
-            raise HTTPException(status_code=429, detail="重复请求,请 5 分钟后再试")
-        # 1h 内 > 5 次
-        hour_ago = now - timedelta(hours=1)
-        recent_count = await db.execute(
-            select(func.count())
-            .select_from(WechatSubscriptionGrant)
-            .where(
-                WechatSubscriptionGrant.user_id == user.id,
-                WechatSubscriptionGrant.template_id == template_id,
-                WechatSubscriptionGrant.last_granted_at >= hour_ago,
-            )
-        )
-        if recent_count.scalar() >= GRANT_MAX_PER_HOUR:
-            raise HTTPException(status_code=429, detail="请求过于频繁,请稍后再试")
-
-    # ADR-002: granted_count 可累积储备
-    if grant is None:
-        grant = WechatSubscriptionGrant(
-            user_id=user.id,
-            template_id=template_id,
-            granted_count=req.accept_count,
-            consumed_count=0,
-            last_granted_at=now,
-        )
-        db.add(grant)
-    else:
-        grant.granted_count += req.accept_count
-        grant.last_granted_at = now
-
-    await db.commit()
-    await db.refresh(grant)
+    except GrantIntakeConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return RequestGrantResponse(
-        template_id=template_id,
-        granted_count=grant.granted_count,
-        consumed_count=grant.consumed_count,
-        available=grant.granted_count - grant.consumed_count,
-        refreshed_at=now,
+        request_id=req.request_id,
+        received_at=now,
+        items=[
+            GrantIntakeItemResponse(
+                template_id=result.intake.template_id,
+                decision=result.intake.decision,
+                recorded=result.created,
+                granted_count=result.ledger.granted_count,
+                consumed_count=result.ledger.consumed_count,
+                available=result.ledger.available,
+            )
+            for result in results
+        ],
     )
 
 
 class HistoryItem(BaseModel):
     id: int
     anchor_id: int
+    account_id: int
     display_name: str | None = None
+    avatar: str | None = None
     platform: str | None = None
+    live_event_id: str
     live_session_id: int | None = None
     started_at: datetime | None = None
+    ended_at: datetime | None = None
     channel: str | None = None
     state: str
     error_code: str | None = None
+    created_at: datetime
     sent_at: datetime | None = None
+    miniapp_path: str
+    api_path: str
 
 
 class HistoryResponse(BaseModel):
@@ -189,41 +182,43 @@ class HistoryResponse(BaseModel):
 
 @router.get("/notifications/history", response_model=HistoryResponse)
 async def notification_history(
+    request: Request,
     openid: str = Query(...),
     limit: int = Query(20, ge=1, le=50),
-    cursor: int = Query(0, ge=0),
+    cursor: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> HistoryResponse:
-    user = await _get_or_create_user(db, openid)
-
-    rows = (
-        await db.execute(
-            select(NotificationDelivery, NotificationJob, LiveSession, Anchor)
-            .join(NotificationJob, NotificationDelivery.notification_job_id == NotificationJob.id)
-            .outerjoin(LiveSession, NotificationDelivery.live_session_id == LiveSession.id)
-            .join(Anchor, NotificationJob.anchor_id == Anchor.id)
-            .where(NotificationDelivery.user_id == user.id)
-            .order_by(NotificationDelivery.id.desc())
-            .offset(cursor)
-            .limit(limit)
+    user = await _get_existing_user(db, openid)
+    services: ApiServiceBundle = request.app.state.stage_letter_services
+    try:
+        page = await services.notification_history.list_for_user(
+            str(user.id),
+            limit=limit,
+            cursor=cursor,
         )
-    ).all()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     items = [
         HistoryItem(
-            id=d.id,
-            anchor_id=a.id,
-            display_name=a.display_name,
-            platform=ls.platform if ls else None,
-            live_session_id=d.live_session_id,
-            started_at=ls.started_at if ls else None,
-            channel=d.channel,
-            state=d.state,
-            error_code=d.error_code,
-            sent_at=d.sent_at,
+            id=item.delivery_id,
+            anchor_id=int(item.anchor_id),
+            account_id=int(item.account_id),
+            display_name=item.display_name,
+            avatar=item.avatar_url,
+            platform=item.platform,
+            live_event_id=item.live_event_id,
+            live_session_id=int(item.session_id),
+            started_at=item.started_at,
+            ended_at=item.ended_at,
+            channel=item.channel.value,
+            state=item.state.value,
+            error_code=item.error_code,
+            created_at=item.created_at,
+            sent_at=item.sent_at,
+            miniapp_path=item.target.miniapp_path,
+            api_path=item.target.api_path,
         )
-        for d, nj, ls, a in rows
+        for item in page.items
     ]
-
-    next_cursor = str(cursor + limit) if len(items) == limit else None
-    return HistoryResponse(items=items, next_cursor=next_cursor)
+    return HistoryResponse(items=items, next_cursor=page.next_cursor)

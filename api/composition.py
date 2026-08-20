@@ -15,6 +15,8 @@ from stage_letter.application.services import (
     CreatorApplicationService,
     FollowApplicationService,
     LiveObservationApplicationService,
+    NotificationHistoryApplicationService,
+    WeChatGrantApplicationService,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 
@@ -27,6 +29,8 @@ class ApiServiceBundle:
     creators: CreatorApplicationService
     follows: FollowApplicationService
     live_observations: LiveObservationApplicationService
+    grants: WeChatGrantApplicationService
+    notification_history: NotificationHistoryApplicationService
 
 
 def build_api_services(session_factory: SessionFactory) -> ApiServiceBundle:
@@ -39,4 +43,6 @@ def build_api_services(session_factory: SessionFactory) -> ApiServiceBundle:
         creators=CreatorApplicationService(uow_factory),
         follows=FollowApplicationService(uow_factory),
         live_observations=LiveObservationApplicationService(uow_factory),
+        grants=WeChatGrantApplicationService(uow_factory),
+        notification_history=NotificationHistoryApplicationService(uow_factory),
     )

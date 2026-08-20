@@ -1,7 +1,19 @@
 """Infrastructure-free application services for Stage Letter."""
 
 from .creator import CreatorApplicationService
+from .detection_lease import DetectionLeaseApplicationService
 from .follow import FollowApplicationService
+from .grant_intake import (
+    GrantIntakeConflictError,
+    GrantIntakeResult,
+    WeChatGrantApplicationService,
+)
+from .in_app_delivery import (
+    InAppDeliveryApplicationService,
+    InAppFallbackApplicationService,
+    InAppFallbackResult,
+    requires_in_app_fallback,
+)
 from .live import LiveObservationApplicationService
 from .live_consumption import (
     LiveObservationConsumptionApplicationService,
@@ -18,15 +30,46 @@ from .monitoring_probe import (
     MonitoringProbeRequest,
     MonitoringProbeResult,
 )
+from .notification_delivery import (
+    DeliveryRecoveryResult,
+    NotificationDeliveryApplicationService,
+)
+from .notification_enqueue import (
+    MultiChannelNotificationEnqueueApplicationService,
+    NotificationEnqueueApplicationService,
+    NotificationEnqueueResult,
+)
+from .notification_history import (
+    NotificationHistoryApplicationService,
+    NotificationHistoryPage,
+)
 from .state_replay import (
     ObservationConsumptionPoint,
     StateReconstructionApplicationService,
     StateReconstructionResult,
 )
+from .wechat_delivery import (
+    WeChatDeliveryAttemptApplicationService,
+    WeChatDeliveryAttemptResult,
+    WeChatRetryPolicy,
+)
+from .wechat_finalize import (
+    WeChatAtomicDeliveryAttemptApplicationService,
+    WeChatAtomicFinalizationResult,
+    WeChatDeliveryFinalizationApplicationService,
+)
+from .wechat_template import WeChatTemplateRegistryApplicationService
 
 __all__ = [
     "CreatorApplicationService",
+    "DeliveryRecoveryResult",
+    "DetectionLeaseApplicationService",
     "FollowApplicationService",
+    "GrantIntakeConflictError",
+    "GrantIntakeResult",
+    "InAppDeliveryApplicationService",
+    "InAppFallbackApplicationService",
+    "InAppFallbackResult",
     "LiveObservationApplicationService",
     "LiveObservationConsumptionApplicationService",
     "LiveObservationConsumptionResult",
@@ -35,9 +78,24 @@ __all__ = [
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "MultiChannelNotificationEnqueueApplicationService",
+    "NotificationDeliveryApplicationService",
+    "NotificationEnqueueApplicationService",
+    "NotificationEnqueueResult",
+    "NotificationHistoryApplicationService",
+    "NotificationHistoryPage",
     "ObservationConsumptionPoint",
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
     "TransitionPersistenceResult",
+    "WeChatAtomicDeliveryAttemptApplicationService",
+    "WeChatGrantApplicationService",
+    "WeChatAtomicFinalizationResult",
+    "WeChatDeliveryAttemptApplicationService",
+    "WeChatDeliveryAttemptResult",
+    "WeChatDeliveryFinalizationApplicationService",
+    "WeChatRetryPolicy",
+    "WeChatTemplateRegistryApplicationService",
     "make_live_event_id",
+    "requires_in_app_fallback",
 ]

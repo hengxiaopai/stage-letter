@@ -460,6 +460,13 @@ Page({
     const rejected = tmplResults.some((k) => res[k] === 'reject' || res[k] === 'ban')
     console.log('[subscribe] permission result:', tmplResults.map((k) => res[k]).join(','))
 
+    // 逐模板结果先作为幂等 evidence 入账；失败不伪造额度，也不重放微信授权。
+    try {
+      await requestGrant(openid, res)
+    } catch (e) {
+      console.log('[subscribe] grant intake fail(不阻塞订阅):', e.message)
+    }
+
     // ── reject / ban → 用户未授权 → 回 IDLE,不创建订阅 ──
     if (acceptCount === 0) {
       if (rejected) {
@@ -480,13 +487,6 @@ Page({
       )
       console.log('[subscribe] create subscription success, id=', sub.id)
       if (onSubscribed) onSubscribed(sub)
-      // 额度刷新(不阻塞订阅)
-      try {
-        console.log('[subscribe] quota refresh')
-        await requestGrant(openid, acceptCount)
-      } catch (e) {
-        console.log('[subscribe] quota refresh fail(不阻塞):', e.message)
-      }
       wx.showToast({ title: '订阅成功', icon: 'success' })
     } catch (err) {
       console.log('[subscribe] create subscription fail:', err.message)

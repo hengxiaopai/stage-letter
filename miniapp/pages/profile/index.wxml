@@ -29,7 +29,9 @@
     <section-header title="通知记录"/>
     <block wx:if="{{history.length > 0}}">
       <view wx:for="{{history}}" wx:key="id">
-        <notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/>
+        <view bindtap="onHistoryTap" data-page="{{item.page}}">
+          <notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/>
+        </view>
       </view>
     </block>
     <view wx:else class="history-empty">

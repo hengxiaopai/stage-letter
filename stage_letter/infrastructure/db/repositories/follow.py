@@ -1,6 +1,8 @@
 """SQLAlchemy implementation of the formal FollowRepository port."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,12 +27,34 @@ class SQLAlchemyFollowRepository:
         )
         if row is None:
             return None
-        return Follow(
-            user_id=serialize_persistence_id(row.user_id, field="user_id"),
-            creator_id=serialize_persistence_id(row.creator_id, field="creator_id"),
-            account_id=serialize_persistence_id(row.platform_account_id, field="account_id"),
-            starred=row.starred,
+        return self._to_follow(row)
+
+    async def list_follows_for_account(
+        self,
+        account_id: str,
+        *,
+        created_at_lte: datetime | None = None,
+        after_user_id: str | None = None,
+        limit: int = 500,
+    ) -> tuple[Follow, ...]:
+        if limit < 1 or limit > 500:
+            raise ValueError("limit must be between 1 and 500")
+
+        account_pk = parse_persistence_id(account_id, field="account_id")
+        statement = (
+            select(FollowModel)
+            .where(FollowModel.platform_account_id == account_pk)
+            .order_by(FollowModel.user_id.asc())
+            .limit(limit)
         )
+        if created_at_lte is not None:
+            statement = statement.where(FollowModel.created_at <= created_at_lte)
+        if after_user_id is not None:
+            after_user_pk = parse_persistence_id(after_user_id, field="after_user_id")
+            statement = statement.where(FollowModel.user_id > after_user_pk)
+
+        rows = tuple((await self.session.scalars(statement)).all())
+        return tuple(self._to_follow(row) for row in rows)
 
     async def save_follow(self, follow: Follow) -> None:
         user_pk = parse_persistence_id(follow.user_id, field="user_id")
@@ -116,3 +140,12 @@ class SQLAlchemyFollowRepository:
         row.enabled = preference.enabled
         row.silent_start = preference.silent_start
         row.silent_end = preference.silent_end
+
+    @staticmethod
+    def _to_follow(row: FollowModel) -> Follow:
+        return Follow(
+            user_id=serialize_persistence_id(row.user_id, field="user_id"),
+            creator_id=serialize_persistence_id(row.creator_id, field="creator_id"),
+            account_id=serialize_persistence_id(row.platform_account_id, field="account_id"),
+            starred=row.starred,
+        )

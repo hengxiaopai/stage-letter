@@ -20,7 +20,15 @@ from stage_letter.domain.live import (
     LiveSession,
     SessionOrigin,
 )
-from stage_letter.domain.notifications import DeliveryKey, NotificationDelivery
+from stage_letter.domain.notifications import (
+    DeliveryChannel,
+    DeliveryKey,
+    NotificationDelivery,
+    WeChatGrantLedger,
+)
+from stage_letter.domain.grant_intake import WeChatGrantIntake
+from stage_letter.domain.notification_templates import WeChatTemplateRegistration
+from stage_letter.domain.notification_history import NotificationHistoryEntry
 
 
 @dataclass(frozen=True)
@@ -73,6 +81,17 @@ class CreatorRepository(Protocol):
 @runtime_checkable
 class FollowRepository(Protocol):
     async def get_follow(self, user_id: str, account_id: str) -> Follow | None: ...
+
+    async def list_follows_for_account(
+        self,
+        account_id: str,
+        *,
+        created_at_lte: datetime | None = None,
+        after_user_id: str | None = None,
+        limit: int = 500,
+    ) -> tuple[Follow, ...]:
+        """Return followers in stable user-id order, optionally event-time bounded."""
+        ...
 
     async def save_follow(self, follow: Follow) -> None: ...
 
@@ -174,6 +193,121 @@ class NotificationRepository(Protocol):
 
     async def save_delivery(self, delivery: NotificationDelivery) -> None: ...
 
+    async def list_due_delivery_keys(
+        self,
+        now: datetime,
+        *,
+        limit: int = 100,
+        channel: DeliveryChannel | None = None,
+    ) -> tuple[DeliveryKey, ...]:
+        """Return PENDING / due WAITING_RETRY keys in stable persistence order."""
+        ...
+
+    async def list_stale_in_flight_keys(
+        self,
+        stale_before: datetime,
+        *,
+        limit: int = 100,
+        channel: DeliveryChannel | None = None,
+    ) -> tuple[DeliveryKey, ...]:
+        """Return stale IN_FLIGHT keys for conservative crash recovery."""
+        ...
+
+    async def lock_delivery(self, key: DeliveryKey) -> NotificationDelivery | None:
+        """Lock one logical delivery if available, skipping an already-locked row."""
+        ...
+
+    async def list_history_for_user(
+        self,
+        user_id: str,
+        *,
+        before_delivery_id: int | None = None,
+        limit: int = 21,
+    ) -> tuple[NotificationHistoryEntry, ...]:
+        """Return formal deliveries newest-first using a stable id cursor."""
+        ...
+
+
+@runtime_checkable
+class GrantRepository(Protocol):
+    async def get_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+    ) -> WeChatGrantLedger | None:
+        """Return the optimistic local WeChat grant ledger, or None when absent."""
+        ...
+
+    async def consume_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+        *,
+        sent_at: datetime,
+        error_code: str | None = None,
+    ) -> WeChatGrantLedger | None:
+        """Record one provider-authoritative consumed send opportunity.
+
+        The row is locked by persistence. Consumption is allowed to exceed the
+        optimistic granted_count because the provider send result is stronger
+        evidence than the local ledger and Gate 0A explicitly permits drift.
+        None means the expected ledger row is missing.
+        """
+        ...
+
+    async def create_wechat_grant_intake(
+        self,
+        intake: WeChatGrantIntake,
+    ) -> bool:
+        """Insert client evidence iff its user/request/template key is absent."""
+        ...
+
+    async def get_wechat_grant_intake(
+        self,
+        user_id: str,
+        request_id: str,
+        template_id: str,
+    ) -> WeChatGrantIntake | None: ...
+
+    async def increment_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+        *,
+        granted_at: datetime,
+    ) -> WeChatGrantLedger:
+        """Atomically add one accepted client-reported grant opportunity."""
+        ...
+
+
+@runtime_checkable
+class WeChatTemplateRepository(Protocol):
+    async def get_wechat_template(
+        self,
+        template_id: str,
+    ) -> WeChatTemplateRegistration | None: ...
+
+    async def register_enabled(
+        self,
+        template_id: str,
+        *,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
+
+    async def disable_from_40037(
+        self,
+        template_id: str,
+        *,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
+
+    async def enable_by_administrator(
+        self,
+        template_id: str,
+        *,
+        administrator: str,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
 
 @runtime_checkable
 class UnitOfWork(Protocol):
@@ -183,6 +317,8 @@ class UnitOfWork(Protocol):
     follows: FollowRepository
     live: LiveRepository
     notifications: NotificationRepository
+    grants: GrantRepository
+    templates: WeChatTemplateRepository
 
     async def __aenter__(self) -> UnitOfWork: ...
 

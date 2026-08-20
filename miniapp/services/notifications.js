@@ -6,12 +6,19 @@ function getGrants(openid) {
   return request('/notifications/grants', { query: { openid } })
 }
 
-/** 记录授权(request-grant) */
-function requestGrant(openid, acceptCount = 1) {
+/** 持久化 wx.requestSubscribeMessage 的逐模板结果(幂等 intake) */
+function requestGrant(openid, grantResults, requestId) {
+  const results = Object.keys(grantResults)
+    .filter((templateId) => templateId !== 'errMsg')
+    .map((templateId) => ({
+      template_id: templateId,
+      decision: grantResults[templateId],
+    }))
+  const durableRequestId = requestId || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   return request('/notifications/request-grant', {
     method: 'POST',
     query: { openid },
-    data: { accept_count: acceptCount },
+    data: { request_id: durableRequestId, results },
   })
 }
 
