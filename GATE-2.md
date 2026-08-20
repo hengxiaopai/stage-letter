@@ -64,7 +64,7 @@ Migration head remained `a63f4b2d9e71`.
 
 ## Gate 2.5 — Restart / Multi-Worker / Capacity Acceptance
 
-Status: CURRENT
+Status: PASS / CLOSED
 
 ### Durable cross-worker lease
 
@@ -112,18 +112,22 @@ Gate 2.5 introduces revision `b25d4e9c7a12`, revising `a63f4b2d9e71`, with:
 
 No canonical live/session/event/notification schema is changed.
 
-### Gate 2.5 acceptance
+### Gate 2.5 final acceptance
 
-- Dedicated Gate 2.5 lease/restart/multi-worker tests PASS.
-- Complete Gate 1 + Gate 2 regression remains green.
-- PostgreSQL controlled race: two independent workers contend for one account and
-  exactly one lease acquisition succeeds while the lease is live.
-- Fresh-engine restart cannot acquire the live lease.
-- Expired takeover succeeds atomically; old owner cannot release the new lease.
-- Acceptance removes its controlled lease and reports `database_restored=true`.
-- Capacity probe proves a healthy platform progresses while another platform is
-  saturated at its per-platform limit.
-- No real provider or notification call is required for Gate 2.5 acceptance.
-- No live truth mutation, provider/worker exactly-once, or Gate 0A lifecycle claim.
+- Complete Gate 1 + Gate 2 regression: `498 passed, 173 subtests passed`.
+- PostgreSQL controlled race produced exactly one live-lease winner.
+- Same-owner acquisition was non-reentrant.
+- Fresh-engine restart observed and honored the live lease.
+- Controlled expiry allowed atomic takeover; old owner could not release the new lease.
+- Capacity acceptance proved Bilibili progressed while Douyin was saturated.
+- Acceptance removed its controlled lease and reported `database_restored=true`.
+- `provider_called=false`, `notification_called=false`, `live_truth_mutated=false`.
+- `worker_exactly_once_claimed=false`, `provider_exactly_once_claimed=false`.
+- Migration head: `b25d4e9c7a12`.
 
-Gate 2 closes only after all of the above evidence passes on PostgreSQL.
+## Gate 2 final state
+
+**Gate 2 — Detection Engine: PASS / CLOSED.**
+
+Gate 0A remains DEGRADED. Gate 2 controlled/synthetic evidence does not close the
+missing same-creator real-provider lifecycle evidence.
