@@ -94,11 +94,13 @@ async def _main() -> int:
     user_id = seed + 1
     creator_id = seed + 2
     account_id = seed + 3
-    session_id = seed + 4
-    event_one_id = seed + 5
-    event_two_id = seed + 6
-    delivery_one_id = seed + 7
-    delivery_two_id = seed + 8
+    session_one_id = seed + 4
+    session_two_id = seed + 5
+    event_one_id = seed + 6
+    event_two_id = seed + 7
+    delivery_one_id = seed + 8
+    delivery_two_id = seed + 9
+    grant_id = seed + 10
     event_one_key = f"live-event:gate16-5:{seed}:accepted"
     event_two_key = f"live-event:gate16-5:{seed}:crash"
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -117,7 +119,9 @@ async def _main() -> int:
                 )
             )
             await connection.execute(
-                delete(LiveSessionModel).where(LiveSessionModel.id == session_id)
+                delete(LiveSessionModel).where(
+                    LiveSessionModel.id.in_([session_one_id, session_two_id])
+                )
             )
             await connection.execute(
                 text(
@@ -146,29 +150,36 @@ async def _main() -> int:
                     is_disabled=False,
                 )
             )
-            session.add(
+            session.add_all([
                 LiveSessionModel(
-                    id=session_id,
+                    id=session_one_id,
                     platform_account_id=account_id,
                     opened_at=now - timedelta(minutes=10),
+                    closed_at=now - timedelta(minutes=9),
                     origin="TRANSITION",
-                )
-            )
+                ),
+                LiveSessionModel(
+                    id=session_two_id,
+                    platform_account_id=account_id,
+                    opened_at=now - timedelta(minutes=8),
+                    origin="TRANSITION",
+                ),
+            ])
             session.add_all([
                 LiveEventModel(
                     id=event_one_id,
                     event_id=event_one_key,
                     platform_account_id=account_id,
-                    live_session_id=session_id,
+                    live_session_id=session_one_id,
                     event_type="LIVE_STARTED",
                     cause="TRANSITION",
-                    occurred_at=now - timedelta(minutes=9),
+                    occurred_at=now - timedelta(minutes=10),
                 ),
                 LiveEventModel(
                     id=event_two_id,
                     event_id=event_two_key,
                     platform_account_id=account_id,
-                    live_session_id=session_id,
+                    live_session_id=session_two_id,
                     event_type="LIVE_STARTED",
                     cause="TRANSITION",
                     occurred_at=now - timedelta(minutes=8),
@@ -179,18 +190,18 @@ async def _main() -> int:
                     id=delivery_one_id,
                     user_id=user_id,
                     live_event_id=event_one_id,
-                    live_session_id=session_id,
+                    live_session_id=session_one_id,
                     channel="WECHAT_SUBSCRIBE",
                     state="PENDING",
                     attempt=0,
-                    created_at=now - timedelta(minutes=9),
-                    updated_at=now - timedelta(minutes=9),
+                    created_at=now - timedelta(minutes=10),
+                    updated_at=now - timedelta(minutes=10),
                 ),
                 NotificationDeliveryModel(
                     id=delivery_two_id,
                     user_id=user_id,
                     live_event_id=event_two_id,
-                    live_session_id=session_id,
+                    live_session_id=session_two_id,
                     channel="WECHAT_SUBSCRIBE",
                     state="PENDING",
                     attempt=0,
@@ -206,7 +217,7 @@ async def _main() -> int:
                     "VALUES (:id,:user_id,:template_id,2,0,:now)"
                 ),
                 {
-                    "id": seed + 9,
+                    "id": grant_id,
                     "user_id": user_id,
                     "template_id": TEMPLATE_ID,
                     "now": now,
