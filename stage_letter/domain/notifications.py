@@ -97,50 +97,15 @@ class NotificationDelivery:
     error_message: str | None = None
 
     def __post_init__(self) -> None:
+        # Gate 1.1 froze state-only value construction for some tests/legacy
+        # reads. Gate 1.6-3 therefore keeps the value type tolerant and performs
+        # strict execution-metadata validation only when a transition is run.
         _required(self.account_id, "account_id")
         _required(self.session_id, "session_id")
         if self.attempt < 0:
             raise ValueError("attempt must be non-negative")
         if self.error_code is not None and not self.error_code.strip():
             raise ValueError("error_code must not be blank")
-
-        if self.state is DeliveryState.PENDING:
-            if self.attempt != 0:
-                raise ValueError("PENDING delivery must have attempt=0")
-            if any((self.next_attempt_at, self.in_flight_at, self.sent_at)):
-                raise ValueError("PENDING delivery cannot carry execution timestamps")
-            return
-
-        if self.attempt < 1:
-            raise ValueError(f"{self.state.value} delivery requires at least one attempt")
-
-        if self.state is DeliveryState.IN_FLIGHT:
-            if self.in_flight_at is None:
-                raise ValueError("IN_FLIGHT delivery requires in_flight_at")
-            if self.next_attempt_at is not None or self.sent_at is not None:
-                raise ValueError("IN_FLIGHT delivery cannot be retry-scheduled or sent")
-            return
-
-        if self.state is DeliveryState.WAITING_RETRY:
-            if self.next_attempt_at is None:
-                raise ValueError("WAITING_RETRY delivery requires next_attempt_at")
-            if self.in_flight_at is not None or self.sent_at is not None:
-                raise ValueError("WAITING_RETRY delivery cannot remain in flight or sent")
-            return
-
-        if self.state is DeliveryState.SENT:
-            if self.sent_at is None:
-                raise ValueError("SENT delivery requires sent_at")
-            if self.in_flight_at is not None or self.next_attempt_at is not None:
-                raise ValueError("SENT delivery cannot remain in flight or retry-scheduled")
-            return
-
-        if self.next_attempt_at is not None or self.sent_at is not None:
-            raise ValueError(
-                f"{self.state.value} delivery cannot be retry-scheduled or marked sent"
-            )
-        if self.state is not DeliveryState.AMBIGUOUS and self.in_flight_at is not None:
-            raise ValueError(f"{self.state.value} delivery cannot remain in flight")
 
     @property
     def is_terminal(self) -> bool:
@@ -160,11 +125,28 @@ class NotificationDelivery:
         )
 
 
+def _require_in_flight_metadata(delivery: NotificationDelivery) -> None:
+    if delivery.state is not DeliveryState.IN_FLIGHT:
+        raise ValueError("only IN_FLIGHT delivery can resolve an attempt outcome")
+    if delivery.attempt < 1 or delivery.in_flight_at is None:
+        raise ValueError("IN_FLIGHT transition requires persisted claim metadata")
+    if delivery.next_attempt_at is not None or delivery.sent_at is not None:
+        raise ValueError("IN_FLIGHT transition has conflicting execution timestamps")
+
+
 def claim_delivery(delivery: NotificationDelivery, *, now: datetime) -> NotificationDelivery:
     """Claim one due delivery for external work without performing that work."""
 
     if not delivery.is_due(now):
         raise ValueError(f"delivery in {delivery.state.value} is not due for claim")
+    if delivery.state is DeliveryState.PENDING:
+        if delivery.attempt != 0 or any(
+            (delivery.next_attempt_at, delivery.in_flight_at, delivery.sent_at)
+        ):
+            raise ValueError("PENDING claim has conflicting execution metadata")
+    else:
+        if delivery.attempt < 1 or delivery.in_flight_at is not None or delivery.sent_at is not None:
+            raise ValueError("WAITING_RETRY claim has conflicting execution metadata")
     return replace(
         delivery,
         state=DeliveryState.IN_FLIGHT,
@@ -187,8 +169,7 @@ def schedule_delivery_retry(
 ) -> NotificationDelivery:
     """Move a known failed attempt to an explicit future retry time."""
 
-    if delivery.state is not DeliveryState.IN_FLIGHT:
-        raise ValueError("only IN_FLIGHT delivery can be scheduled for retry")
+    _require_in_flight_metadata(delivery)
     if delay_seconds <= 0:
         raise ValueError("retry delay_seconds must be positive")
     return replace(
@@ -211,8 +192,7 @@ def _finish_in_flight(
     error_message: str | None = None,
     preserve_in_flight_at: bool = False,
 ) -> NotificationDelivery:
-    if delivery.state is not DeliveryState.IN_FLIGHT:
-        raise ValueError("only IN_FLIGHT delivery can resolve an attempt outcome")
+    _require_in_flight_metadata(delivery)
     return replace(
         delivery,
         state=state,

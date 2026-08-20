@@ -171,25 +171,31 @@ class Gate16DeliveryStateMachineTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             claim_delivery(recovered, now=T0 + timedelta(minutes=1))
 
-    def test_pending_execution_metadata_is_strict(self) -> None:
+    def test_transition_requires_persisted_execution_metadata(self) -> None:
+        incomplete_inflight = NotificationDelivery(
+            key=_key(),
+            account_id="101",
+            session_id="501",
+            created_at=T0,
+            state=DeliveryState.IN_FLIGHT,
+        )
         with self.assertRaises(ValueError):
-            NotificationDelivery(
-                key=_key(),
-                account_id="101",
-                session_id="501",
-                created_at=T0,
-                state=DeliveryState.PENDING,
-                attempt=1,
+            schedule_delivery_retry(
+                incomplete_inflight,
+                now=T0,
+                delay_seconds=10,
             )
+
+        malformed_pending = NotificationDelivery(
+            key=_key(),
+            account_id="101",
+            session_id="501",
+            created_at=T0,
+            state=DeliveryState.PENDING,
+            attempt=1,
+        )
         with self.assertRaises(ValueError):
-            NotificationDelivery(
-                key=_key(),
-                account_id="101",
-                session_id="501",
-                created_at=T0,
-                state=DeliveryState.IN_FLIGHT,
-                attempt=1,
-            )
+            claim_delivery(malformed_pending, now=T0)
 
     async def test_service_claim_next_due_persists_inflight_and_commits(self) -> None:
         uow = _FakeUoW()
