@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from stage_letter.detection.health import CircuitBreakerPolicy
+from stage_letter.detection.lease import DetectionLeaseAcquireResult
 from stage_letter.detection.telemetry import (
     PlatformHealthSnapshot,
     ProbeTelemetryPersistenceResult,
@@ -65,3 +66,24 @@ class DetectionHealthRepository(Protocol):
         platform: str,
         at: datetime,
     ) -> PlatformHealthSnapshot: ...
+
+
+class DetectionLeaseRepository(Protocol):
+    """Coordinate one active provider probe per platform account across workers."""
+
+    async def try_acquire(
+        self,
+        *,
+        account_id: str,
+        probe_id: str,
+        owner_token: str,
+        now: datetime,
+        lease_seconds: int,
+    ) -> DetectionLeaseAcquireResult: ...
+
+    async def release(
+        self,
+        *,
+        account_id: str,
+        owner_token: str,
+    ) -> bool: ...
