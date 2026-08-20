@@ -29,7 +29,6 @@ from stage_letter.infrastructure.db.models import (
     NotificationPreferenceModel,
     PlatformAccountModel,
     UserModel,
-    WeChatSubscriptionGrantModel,
 )
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 
@@ -211,25 +210,21 @@ async def _main() -> int:
         second = await service.enqueue_live_event(event_id=event_id, template_id=TEMPLATE_ID)
 
         async with engine.connect() as connection:
-            delivery_count = int(
-                await connection.scalar(
-                    select(func.count())
-                    .select_from(NotificationDeliveryModel)
-                    .where(NotificationDeliveryModel.live_event_id == event_pk)
-                )
-                or 0
+            delivery_count_value = await connection.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(NotificationDeliveryModel.live_event_id == event_pk)
             )
-            eligible_user_count = int(
-                await connection.scalar(
-                    select(func.count())
-                    .select_from(NotificationDeliveryModel)
-                    .where(
-                        NotificationDeliveryModel.live_event_id == event_pk,
-                        NotificationDeliveryModel.user_id == user_ids[0],
-                    )
+            eligible_user_count_value = await connection.scalar(
+                select(func.count())
+                .select_from(NotificationDeliveryModel)
+                .where(
+                    NotificationDeliveryModel.live_event_id == event_pk,
+                    NotificationDeliveryModel.user_id == user_ids[0],
                 )
-                or 0
             )
+            delivery_count = int(delivery_count_value or 0)
+            eligible_user_count = int(eligible_user_count_value or 0)
 
         passed = all((
             bool(index_exists),
@@ -282,9 +277,10 @@ async def _main() -> int:
                 )
             )
             await session.execute(
-                delete(WeChatSubscriptionGrantModel).where(
-                    WeChatSubscriptionGrantModel.user_id.in_(user_ids)
-                )
+                text(
+                    "DELETE FROM wechat_subscription_grants WHERE user_id = ANY(:user_ids)"
+                ),
+                {"user_ids": user_ids},
             )
             await session.execute(
                 delete(NotificationPreferenceModel).where(

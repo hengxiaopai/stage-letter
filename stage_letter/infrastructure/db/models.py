@@ -122,25 +122,6 @@ class NotificationPreferenceModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class WeChatSubscriptionGrantModel(Base):
-    """Formal mapping of the existing optimistic WeChat grant ledger table."""
-
-    __tablename__ = "wechat_subscription_grants"
-    __table_args__ = (
-        UniqueConstraint("user_id", "template_id", name="uq_grant_user_template"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    template_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    granted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    consumed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_send_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_send_error: Mapped[str | None] = mapped_column(String(255))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
 class LiveObservationModel(Base):
     __tablename__ = "live_observations"
     __table_args__ = (
