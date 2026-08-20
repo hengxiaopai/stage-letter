@@ -1,8 +1,8 @@
 """Gate 2 detection composition root.
 
 Construction is I/O-free. Gate 2.1 due selection, Gate 2.2 runtime coordination,
-Gate 1.4 durable provider ingress, and Gate 2.3 operational telemetry are wired
-without reviving the legacy probe worker.
+Gate 1.4 durable provider ingress, Gate 2.3 operational telemetry, and Gate 2.4
+circuit-breaker state are wired without reviving the legacy probe worker.
 """
 from __future__ import annotations
 
@@ -12,11 +12,17 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stage_letter.application.services.detection_due import DueMonitoringTargetApplicationService
+from stage_letter.application.services.detection_health import (
+    DetectionHealthAdministrationApplicationService,
+    HealthAwareDetectionTelemetryApplicationService,
+)
 from stage_letter.application.services.detection_telemetry import DetectionTelemetryApplicationService
 from stage_letter.application.services.monitoring_probe import MonitoringProbeApplicationService
 from stage_letter.detection.due import DetectionCadencePolicy
+from stage_letter.detection.health import CircuitBreakerPolicy
 from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 from stage_letter.infrastructure.detection import (
+    SQLAlchemyDetectionHealthRepository,
     SQLAlchemyDetectionScheduleRepository,
     SQLAlchemyDetectionTelemetryRepository,
 )
@@ -42,7 +48,8 @@ class DetectionSchedulingBundle:
 @dataclass(frozen=True)
 class DetectionRuntimeBundle:
     scheduling: DetectionSchedulingBundle
-    telemetry: DetectionTelemetryApplicationService
+    telemetry: HealthAwareDetectionTelemetryApplicationService
+    health_administration: DetectionHealthAdministrationApplicationService
     coordinator: DetectionRuntimeCoordinator
     runtime: DetectionCycleRuntime
 
@@ -52,6 +59,7 @@ def build_detection_scheduling(
     *,
     douyin_cookie: str | None = None,
     cadence_policy: DetectionCadencePolicy | None = None,
+    circuit_breaker_policy: CircuitBreakerPolicy | None = None,
     scheduler_policy: MonitoringSchedulerPolicy | None = None,
 ) -> DetectionSchedulingBundle:
     def uow_factory() -> SQLAlchemyUnitOfWork:
@@ -61,6 +69,7 @@ def build_detection_scheduling(
     due_targets = DueMonitoringTargetApplicationService(
         schedule_repository,
         cadence=cadence_policy,
+        circuit_breaker=circuit_breaker_policy,
     )
     adapter_registry = build_formal_adapter_registry(douyin_cookie=douyin_cookie)
     monitoring_probe = MonitoringProbeApplicationService(uow_factory, adapter_registry.get)
@@ -82,19 +91,31 @@ def build_detection_runtime(
     *,
     douyin_cookie: str | None = None,
     cadence_policy: DetectionCadencePolicy | None = None,
+    circuit_breaker_policy: CircuitBreakerPolicy | None = None,
     runtime_policy: PlatformRuntimePolicy | None = None,
     platform_runtime_policies: dict[str, PlatformRuntimePolicy] | None = None,
     page_size: int = 100,
 ) -> DetectionRuntimeBundle:
-    """Build the formal Gate 2.3 runtime without opening DB/provider I/O."""
+    """Build the formal Gate 2.4 runtime without opening DB/provider I/O."""
 
+    policy = circuit_breaker_policy or CircuitBreakerPolicy()
     scheduling = build_detection_scheduling(
         session_factory,
         douyin_cookie=douyin_cookie,
         cadence_policy=cadence_policy,
+        circuit_breaker_policy=policy,
     )
-    telemetry = DetectionTelemetryApplicationService(
+    base_telemetry = DetectionTelemetryApplicationService(
         SQLAlchemyDetectionTelemetryRepository(session_factory)
+    )
+    health_repository = SQLAlchemyDetectionHealthRepository(session_factory)
+    telemetry = HealthAwareDetectionTelemetryApplicationService(
+        base_telemetry,
+        health_repository,
+        policy=policy,
+    )
+    health_administration = DetectionHealthAdministrationApplicationService(
+        health_repository
     )
     coordinator = DetectionRuntimeCoordinator(
         default_policy=runtime_policy,
@@ -104,12 +125,13 @@ def build_detection_runtime(
         scheduling.due_targets,
         scheduling.monitoring_probe,
         coordinator,
-        telemetry=telemetry,
+        telemetry=telemetry,  # same record() contract as Gate 2.3 service
         page_size=page_size,
     )
     return DetectionRuntimeBundle(
         scheduling=scheduling,
         telemetry=telemetry,
+        health_administration=health_administration,
         coordinator=coordinator,
         runtime=runtime,
     )
