@@ -101,7 +101,7 @@ class RuntimeExecutionOutcome(Generic[T]):
     platform: str
     attempts: int
     value: T | None = None
-    error: BaseException | None = None
+    error: Exception | None = None
     last_retry_decision: RetryDecision | None = None
 
     @property
@@ -176,7 +176,6 @@ class DetectionRuntimeCoordinator:
 
     async def execute(self, platform: str, operation: Operation[T]) -> RuntimeExecutionOutcome[T]:
         policy = self.policy_for(platform)
-        last_decision: RetryDecision | None = None
         for attempt in range(1, policy.max_attempts + 1):
             try:
                 # Waiting for a platform's rate window must not consume scarce
@@ -192,9 +191,8 @@ class DetectionRuntimeCoordinator:
                     attempts=attempt,
                     value=value,
                 )
-            except BaseException as exc:
+            except Exception as exc:
                 decision = classify_retry(exc)
-                last_decision = decision
                 if decision.action is RetryAction.STOP or attempt >= policy.max_attempts:
                     return RuntimeExecutionOutcome(
                         platform=platform,
