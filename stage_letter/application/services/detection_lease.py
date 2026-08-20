@@ -1,23 +1,20 @@
 """Gate 2.5 cross-worker detection lease application service."""
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime, timezone
-
 from stage_letter.detection.lease import (
     DetectionLeaseAcquireResult,
     DetectionLeasePolicy,
 )
 from stage_letter.detection.ports import DetectionLeaseRepository
 
-Clock = Callable[[], datetime]
-
 
 class DetectionLeaseApplicationService:
     """Acquire/release short operational provider-execution leases.
 
-    The lease only suppresses overlapping automatic probes under a valid lease.
-    It does not claim provider exactly-once delivery across crashes or lease expiry.
+    Lease timing is authoritative in PostgreSQL so worker clock skew cannot cause
+    premature takeover or accidental extension. The lease suppresses overlapping
+    automatic probes while live, but makes no provider exactly-once claim across
+    crash/expiry boundaries.
     """
 
     def __init__(
@@ -25,17 +22,9 @@ class DetectionLeaseApplicationService:
         repository: DetectionLeaseRepository,
         *,
         policy: DetectionLeasePolicy | None = None,
-        clock: Clock | None = None,
     ) -> None:
         self._repository = repository
         self.policy = policy or DetectionLeasePolicy()
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
-
-    def _now(self) -> datetime:
-        now = self._clock()
-        if now.tzinfo is None:
-            raise ValueError("detection lease clock must return timezone-aware timestamps")
-        return now
 
     async def try_acquire(
         self,
@@ -48,7 +37,6 @@ class DetectionLeaseApplicationService:
             account_id=account_id,
             probe_id=probe_id,
             owner_token=owner_token,
-            now=self._now(),
             lease_seconds=self.policy.lease_seconds,
         )
 
