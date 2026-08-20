@@ -138,8 +138,14 @@ async def _main() -> int:
 
     try:
         async with sessions() as session:
+            # These probe fixtures intentionally use explicit flush barriers.
+            # The formal models do not declare ORM relationships, so relying on
+            # one large flush can let child rows reach PostgreSQL before their
+            # referenced parents even though the database FKs are correct.
             session.add(UserModel(id=user_id, openid=f"gate16-5-{seed}"))
             session.add(CreatorModel(id=creator_id))
+            await session.flush()
+
             session.add(
                 PlatformAccountModel(
                     id=account_id,
@@ -150,6 +156,8 @@ async def _main() -> int:
                     is_disabled=False,
                 )
             )
+            await session.flush()
+
             session.add_all([
                 LiveSessionModel(
                     id=session_one_id,
@@ -165,6 +173,8 @@ async def _main() -> int:
                     origin="TRANSITION",
                 ),
             ])
+            await session.flush()
+
             session.add_all([
                 LiveEventModel(
                     id=event_one_id,
@@ -185,6 +195,8 @@ async def _main() -> int:
                     occurred_at=now - timedelta(minutes=8),
                 ),
             ])
+            await session.flush()
+
             session.add_all([
                 NotificationDeliveryModel(
                     id=delivery_one_id,
@@ -210,6 +222,7 @@ async def _main() -> int:
                 ),
             ])
             await session.flush()
+
             await session.execute(
                 text(
                     "INSERT INTO wechat_subscription_grants "
