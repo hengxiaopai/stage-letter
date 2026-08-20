@@ -8,50 +8,14 @@ Gate 1 closed with the accepted baseline `435 / 435` and migration head
 `a63f4b2d9e71`. Gate 2 extends the detection runtime; it must not rewrite the
 accepted Gate 1 live-truth or notification semantics.
 
-### Reuse from Gate 1
+Frozen boundaries remain: provider failure is not live truth; provider I/O stays
+outside DB transactions; provider results enter through durable `LiveObservation`
+first; detection metadata stays operational; the Gate 1 Base stays frozen; the
+legacy `workers/probe/worker.py` remains `LEGACY_REFERENCE_ONLY`; notification is
+independent; no exactly-once claim is introduced; Gate 0A remains DEGRADED.
 
-- `MonitoringTargetApplicationService` for deterministic enabled-account discovery.
-- `MonitoringProbeApplicationService` as the only provider-to-durable-observation ingress.
-- `workers.monitoring.MonitoringScheduler` for bounded concurrency, stable logical
-  probe IDs, and conservative transport retry mechanics.
-- The accepted four-platform formal adapter registry (`douyin`, `bilibili`, `huya`,
-  `douyu`).
-- `LiveObservationConsumptionApplicationService` + `LiveStateReducer` + transition
-  persistence for interpretation of already-durable observations.
-
-### Frozen boundaries
-
-1. **Provider failure is not live truth.** Timeout/network/429/auth/schema ambiguity
-   may produce provider diagnostics or `UNKNOWN`; it must never fabricate `OFFLINE`.
-2. **Canonical live truth has one ingress.** A provider result becomes a durable
-   `LiveObservation` before the reducer may interpret it.
-3. **Provider I/O stays outside database transactions.** Operational locks/limits
-   must not wrap network calls inside a SQLAlchemy UnitOfWork.
-4. **Detection metadata is operational, not canonical.** Polling tier, due time,
-   latency, provider failures and platform health may influence scheduling only;
-   they do not directly create/close sessions or events.
-5. **Gate 1 Base remains frozen.** Existing physical legacy tables/columns
-   (`platform_health`, `probe_runs`, `platform_accounts.polling_tier`) may be mapped
-   through a separate Gate 2 persistence boundary, as Gate 1.6 did for grants;
-   they are not silently promoted into the ten-table canonical Base.
-6. **Legacy probe worker is quarantined.** `workers/probe/worker.py` is
-   `LEGACY_REFERENCE_ONLY`. Gate 2 formal runtime must not import `core.models`,
-   `core.live_session_engine`, or legacy `platform_adapters` from it.
-7. **Cross-platform isolation is mandatory.** Saturation/failure in one platform
-   must not consume all global capacity or stop healthy platforms.
-8. **Notification remains independent.** Detection code does not send WeChat
-   messages or mutate notification delivery state.
-9. **No exactly-once claims.** Durable observation/event identities may be
-   idempotent; provider/worker execution is not claimed exactly once.
-10. **Gate 0A remains DEGRADED.** Gate 2 synthetic/controlled evidence cannot close
-    the missing same-creator real-provider lifecycle evidence.
-
-### Gate 2.0 acceptance
-
-- Boundary tests PASS.
-- Complete Gate 1 + Gate 2.0 regression: `442 passed, 173 subtests passed`.
-- Alembic head remained `a63f4b2d9e71`.
-- No provider/network calls were required.
+Gate 2.0 acceptance froze `442 passed, 173 subtests passed` and migration head
+`a63f4b2d9e71` with no provider/network requirement.
 
 ## Gate 2.1 — Due Selection + HOT/WARM/COLD Scheduling Policy
 
@@ -85,65 +49,86 @@ call or DB write occurred, and migration head remained `a63f4b2d9e71`.
 
 ## Gate 2.3 — Probe Telemetry + Platform Health Persistence
 
+Status: PASS / CLOSED
+
+One formal `ProbeTelemetryRecord` describes one logical `monitor:` execution
+after Gate 2.2 finishes. `success=True` means provider execution plus durable
+ingress completed; a resulting `UNKNOWN` LiveObservation remains a successful
+operational probe and is not rewritten as failure or OFFLINE.
+
+Formal telemetry uses independent SQLAlchemy Core metadata over existing physical
+`probe_runs` and `platform_health`. Gate 2.3-tagged rows (`telemetry_schema =
+gate2.3`) alone feed formal 24-hour success/error/latency metrics. It records
+last success/failure and consecutive failures but deliberately preserves the
+existing platform-health state; Gate 2.4 owns circuit-breaker transitions.
+
+Gate 2.3 acceptance froze `474 passed, 173 subtests passed`. Controlled PostgreSQL
+acceptance persisted one synthetic operational row, verified `probe_runs` and
+`platform_health`, then removed/restored all controlled evidence. Result:
+`database_restored=true`, no provider/notification call, no live-truth mutation,
+and migration head `a63f4b2d9e71`.
+
+## Gate 2.4 — Degrade / Circuit Breaker / Recovery / Administrative Disable
+
 Status: CURRENT
 
-### Operational telemetry contract
+### State policy
 
-One `ProbeTelemetryRecord` describes one logical `monitor:` execution after the
-Gate 2.2 coordinator finishes. It records account/platform identity, start/end,
-total latency, attempt count, operational success/failure, resulting observation
-status when available, and a normalized failure kind when execution failed.
+Default operational thresholds are:
 
-`success=True` means the formal provider operation completed and durable ingress
-succeeded. A resulting `UNKNOWN` LiveObservation is therefore still an
-operationally successful probe; UNKNOWN is not silently reclassified as failure
-or OFFLINE.
+- failures 0-4: remain `HEALTHY`;
+- failure 5: trip `DEGRADED`;
+- while `DEGRADED`, automatic polling cadence is multiplied by 5;
+- failure 20: trip `DISABLED`;
+- `DISABLED` is sticky under late/racing probe results and is never automatically
+  restored by a success that arrives after disable;
+- explicit administrative enable moves `DISABLED -> DEGRADED` and resets
+  `consecutive_failures` to 0 (half-open recovery);
+- the next successful half-open probe moves `DEGRADED -> HEALTHY`;
+- explicit administrative disable moves any platform to `DISABLED`.
 
-Raw exception/provider messages are not persisted by the formal telemetry path.
-`error_message` receives only the normalized failure kind, reducing secret/token
-leak risk.
+This state machine is operational only. A circuit-breaker transition cannot
+create/close `LiveSession` or `LiveEvent`, cannot mutate notification delivery,
+and cannot fabricate OFFLINE.
 
-### Persistence boundary
+### Scheduling integration
 
-`SQLAlchemyDetectionTelemetryRepository` uses independent SQLAlchemy Core
-`MetaData` and the existing physical `probe_runs` / `platform_health` tables. It
-is deliberately outside the frozen Gate 1 canonical Base.
+Gate 2.1 due selection now reads `platform_health.state` through the same separate
+operational SQLAlchemy Core boundary:
 
-Formal Gate 2.3 probe rows are tagged with `telemetry_schema = gate2.3` in JSON.
-Platform 24-hour success/error counts and average latency are recomputed from
-only those tagged rows in the trailing 24-hour window; legacy probe rows are not
-silently mixed into the new formal metrics.
+- `HEALTHY`: normal HOT/WARM/COLD cadence;
+- `DEGRADED`: base cadence x5;
+- `DISABLED`: excluded from automatic target discovery;
+- absent/blank health state: `HEALTHY`;
+- corrupt non-blank state: conservatively `DEGRADED`, never full-rate HEALTHY.
 
-Gate 2.3 updates operational evidence only:
+A never-probed DEGRADED account remains eligible immediately so a newly enabled
+half-open platform cannot deadlock waiting for historical probe metadata.
 
-- success sets `last_success_at` and resets `consecutive_failures`;
-- failure sets `last_failure_at` and increments `consecutive_failures`;
-- success/error/latency 24h metrics are refreshed;
-- an absent platform-health row starts as `HEALTHY`;
-- an existing `platform_health.state` is preserved exactly.
+### Persistence and runtime
 
-**Gate 2.3 does not perform HEALTHY/DEGRADED/DISABLED transitions. Gate 2.4 owns
-those circuit-breaker decisions.**
+`SQLAlchemyDetectionHealthRepository` maps only the physical `platform_health`
+table with independent Core metadata and row locks. Health-aware telemetry first
+persists Gate 2.3 evidence, then applies the Gate 2.4 state transition. If either
+operational persistence step fails, the already durable provider observation is
+not rolled back and the provider is not retried because of telemetry/health work.
 
-### Runtime isolation from truth
+Explicit administrative disable/half-open-enable are separate application
+operations and do not touch `platform_accounts.is_disabled`; per-account
+administrative configuration and per-platform circuit health remain distinct.
 
-`DetectionCycleRuntime` appends telemetry only after the provider/durable-ingress
-outcome exists. Telemetry persistence failure is surfaced separately through
-`telemetry_failures`; it cannot reverse a successfully persisted observation,
-create/close a session/event, or touch notification delivery.
+### Gate 2.4 acceptance
 
-### Gate 2.3 acceptance
-
-- Dedicated telemetry/health tests PASS.
+- Dedicated circuit-breaker tests PASS.
 - Complete Gate 1 + Gate 2 regression remains green.
-- Controlled PostgreSQL acceptance writes one synthetic operational telemetry row,
-  verifies `probe_runs` + `platform_health`, then removes the synthetic row and
-  restores the exact pre-probe health snapshot.
-- Acceptance makes no provider/notification call and reports no live-truth mutation.
-- Alembic head remains `a63f4b2d9e71`; Gate 2.3 adds no migration.
-- No worker/provider exactly-once or Gate 0A lifecycle claim is introduced.
+- Controlled PostgreSQL probe proves HEALTHY at failure 4, DEGRADED at 5,
+  DISABLED at 20, sticky DISABLED under a late success, administrative half-open,
+  successful recovery to HEALTHY, and explicit administrative disable.
+- Controlled PostgreSQL probe restores the exact original `platform_health` row.
+- No provider/notification call and no canonical live-truth mutation.
+- Alembic head remains `a63f4b2d9e71`; Gate 2.4 adds no migration.
+- No exactly-once or Gate 0A lifecycle claim is introduced.
 
-### Remaining Gate 2 slices
+### Remaining Gate 2 slice
 
-- **2.4** Degrade / Circuit-Breaker Policy + Recovery + Administrative Disable.
 - **2.5** Restart / Multi-Worker / Capacity Acceptance.
