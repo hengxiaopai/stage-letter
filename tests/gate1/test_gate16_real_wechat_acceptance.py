@@ -5,6 +5,8 @@ import inspect
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from stage_letter.application.errors import ApplicationInvariantError
 from stage_letter.application.notification_providers import (
@@ -115,6 +117,9 @@ class _Uow:
     def __init__(self, delivery: NotificationDelivery, *, missing_grant: bool = False) -> None:
         self.notifications = _Notifications(delivery)
         self.grants = _Grants(missing=missing_grant)
+        self.templates = SimpleNamespace(
+            disable_from_40037=AsyncMock(return_value=None)
+        )
         self.commit_calls = 0
 
     async def __aenter__(self):

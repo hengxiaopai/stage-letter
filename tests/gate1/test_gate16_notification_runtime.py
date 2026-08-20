@@ -73,12 +73,16 @@ class _DummyUoW:
 
 class Gate16NotificationRuntimeTests(unittest.IsolatedAsyncioTestCase):
     def _runtime(self) -> WeChatNotificationRuntime:
-        return WeChatNotificationRuntime(
+        runtime = WeChatNotificationRuntime(
             uow_factory=lambda: _DummyUoW(),  # type: ignore[arg-type]
             session_factory=_DummySessionFactory(),  # type: ignore[arg-type]
             provider=_Provider(),
             template_id="tpl",
         )
+        runtime._template_service = SimpleNamespace(
+            is_enabled=AsyncMock(return_value=True)
+        )
+        return runtime
 
     async def test_run_once_idle_does_not_build_message_or_call_provider(self) -> None:
         runtime = self._runtime()

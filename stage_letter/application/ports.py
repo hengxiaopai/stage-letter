@@ -26,6 +26,7 @@ from stage_letter.domain.notifications import (
     NotificationDelivery,
     WeChatGrantLedger,
 )
+from stage_letter.domain.notification_templates import WeChatTemplateRegistration
 
 
 @dataclass(frozen=True)
@@ -244,6 +245,35 @@ class GrantRepository(Protocol):
 
 
 @runtime_checkable
+class WeChatTemplateRepository(Protocol):
+    async def get_wechat_template(
+        self,
+        template_id: str,
+    ) -> WeChatTemplateRegistration | None: ...
+
+    async def register_enabled(
+        self,
+        template_id: str,
+        *,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
+
+    async def disable_from_40037(
+        self,
+        template_id: str,
+        *,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
+
+    async def enable_by_administrator(
+        self,
+        template_id: str,
+        *,
+        administrator: str,
+        now: datetime,
+    ) -> WeChatTemplateRegistration: ...
+
+@runtime_checkable
 class UnitOfWork(Protocol):
     """Atomic persistence boundary for one application use-case."""
 
@@ -252,6 +282,7 @@ class UnitOfWork(Protocol):
     live: LiveRepository
     notifications: NotificationRepository
     grants: GrantRepository
+    templates: WeChatTemplateRepository
 
     async def __aenter__(self) -> UnitOfWork: ...
 

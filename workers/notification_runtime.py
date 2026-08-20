@@ -38,6 +38,9 @@ from stage_letter.domain.notifications import (
     DeliveryState,
     NotificationDelivery,
 )
+from stage_letter.application.services.wechat_template import (
+    WeChatTemplateRegistryApplicationService,
+)
 from stage_letter.infrastructure.db.models import UserModel
 
 
@@ -94,6 +97,7 @@ class WeChatNotificationRuntime:
             channel=DeliveryChannel.WECHAT_SUBSCRIBE,
         )
         self._fallback_service = InAppFallbackApplicationService(uow_factory)
+        self._template_service = WeChatTemplateRegistryApplicationService(uow_factory)
         self._finalizer = WeChatDeliveryFinalizationApplicationService(uow_factory)
         self._attempt_service = WeChatAtomicDeliveryAttemptApplicationService(
             provider,
@@ -117,6 +121,20 @@ class WeChatNotificationRuntime:
         claimed = await self._delivery_service.claim_next_due(now=now)
         if claimed is None:
             return WeChatNotificationRunResult("IDLE", None)
+
+        if not await self._template_service.is_enabled(self._template_id):
+            updated = await self._delivery_service.mark_blocked_config(
+                claimed.key,
+                now=now,
+                error_code="TEMPLATE_DISABLED",
+                error_message="WeChat template is administratively disabled",
+            )
+            fallback = await self._fallback_service.ensure_for_wechat(updated)
+            return WeChatNotificationRunResult(
+                "BLOCKED_CONFIG",
+                updated,
+                in_app_fallback=None if fallback is None else fallback.delivery,
+            )
 
         openid = await self._get_openid(claimed.key.user_id)
         if not openid:

@@ -17,6 +17,7 @@ from .identity import (
 )
 from .live import SQLAlchemyLiveRepository
 from .notification import SQLAlchemyNotificationRepository
+from .wechat_template import SQLAlchemyWeChatTemplateRepository
 
 __all__ = [
     "MAX_POSTGRES_BIGINT",
@@ -27,6 +28,7 @@ __all__ = [
     "SQLAlchemyGrantRepository",
     "SQLAlchemyLiveRepository",
     "SQLAlchemyNotificationRepository",
+    "SQLAlchemyWeChatTemplateRepository",
     "parse_persistence_id",
     "serialize_persistence_id",
 ]

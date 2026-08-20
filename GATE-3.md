@@ -86,8 +86,8 @@ Gate 3 therefore owns these remaining capabilities:
 
 - **3.0** Baseline / Gap Freeze. **PASS / CLOSED**
 - **3.1** Multi-Channel Delivery + Durable In-App Fallback. **PASS / CLOSED**
-- **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **CURRENT**
-- **3.3** Grant Intake + Reconciliation + User-Facing Grant API.
+- **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **PASS / CLOSED**
+- **3.3** Grant Intake + Reconciliation + User-Facing Grant API. **CURRENT**
 - **3.4** Notification Read Model + Anchor Detail Routing Contract.
 - **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance.
 
@@ -148,3 +148,47 @@ Status: PASS / CLOSED
 Gate 3.1 acceptance: Gate 3 `20 passed`; Gate 1 + Gate 2 + Gate 3
 `518 passed, 173 subtests passed`; migration head `b25d4e9c7a12`. No provider
 request or live-truth mutation was performed by the Gate 3.1 acceptance suite.
+
+## Gate 3.2 — WeChat Template Registry + Administrative Recovery
+
+Status: PASS / CLOSED
+
+### Accepted design
+
+1. `wechat_notification_templates` is durable notification configuration state,
+   not live truth and not part of the frozen Gate 1 canonical `Base`.
+2. A missing registry row is compatibly treated as enabled so the migration does
+   not silently disable the already accepted Gate 1.6 template. Registration is
+   explicit and never re-enables an existing disabled row.
+3. Template state is `ENABLED` or `DISABLED`, with durable `state_source`,
+   `updated_by`, `updated_at`, and internally consistent disable metadata.
+4. Only normalized WeChat provider code `40037` automatically disables the
+   template. The template-state write and delivery `BLOCKED_CONFIG` finalization
+   share one database transaction; the optimistic grant remains preserved.
+5. A disabled template affects only `WECHAT_SUBSCRIBE`. New fan-out routes to
+   `IN_APP`; already queued WeChat delivery is blocked before provider I/O and
+   creates the Gate 3.1 fallback.
+6. Recovery is explicit through `enable_by_administrator` or
+   `scripts/gate32_template_admin.py enable`. Registration, retries, process
+   restart, and successful detection never auto-enable a disabled template.
+7. Template disable cannot disable Douyin, Bilibili, Huya, or Douyu adapters and
+   cannot create/close `LiveSession` or `LiveEvent`.
+
+### Gate 3.2 acceptance
+
+- migration extends `b25d4e9c7a12` with durable constrained template state;
+- PostgreSQL observes register -> provider `40037` disable -> restart read ->
+  administrator enable across independent transactions;
+- `40037` finalization disables only its exact template and preserves grant;
+- non-`40037` provider outcomes do not change template state;
+- disabled templates route new recipients to `IN_APP` even with grant balance;
+- queued WeChat work is blocked before address lookup/provider I/O;
+- administrative enable clears disable metadata and records administrator source;
+- controlled probe performs no provider call, notification send, or live mutation,
+  and removes its synthetic template row;
+- Gate 1 + Gate 2 + Gate 3 regression remains green.
+
+Gate 3.2 acceptance: Gate 3 `32 passed`; Gate 1 + Gate 2 + Gate 3
+`530 passed, 173 subtests passed`; migration head `c32a1d7e9b40`; controlled
+PostgreSQL registry probe `PASS` with `cleanup_complete=true` and
+`database_restored=true`. No provider request or notification send was made.

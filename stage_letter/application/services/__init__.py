@@ -49,6 +49,7 @@ from .wechat_finalize import (
     WeChatAtomicFinalizationResult,
     WeChatDeliveryFinalizationApplicationService,
 )
+from .wechat_template import WeChatTemplateRegistryApplicationService
 
 __all__ = [
     "CreatorApplicationService",
@@ -80,6 +81,7 @@ __all__ = [
     "WeChatDeliveryAttemptResult",
     "WeChatDeliveryFinalizationApplicationService",
     "WeChatRetryPolicy",
+    "WeChatTemplateRegistryApplicationService",
     "make_live_event_id",
     "requires_in_app_fallback",
 ]

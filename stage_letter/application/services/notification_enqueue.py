@@ -56,8 +56,20 @@ class NotificationEnqueueApplicationService:
         self._batch_size = batch_size
         self._channel = channel
 
-    def _select_channel(self, grant_state: GrantState) -> DeliveryChannel:
+    def _select_channel(
+        self,
+        grant_state: GrantState,
+        *,
+        template_enabled: bool = True,
+    ) -> DeliveryChannel:
         return self._channel
+
+    async def _is_wechat_template_enabled(
+        self,
+        uow: UnitOfWork,
+        template_id: str,
+    ) -> bool:
+        return True
 
     async def enqueue_live_event(
         self,
@@ -80,6 +92,10 @@ class NotificationEnqueueApplicationService:
             event = await uow.live.get_event(event_id)
             if event is None:
                 raise ApplicationNotFoundError(f"live event {event_id!r} not found")
+            template_enabled = await self._is_wechat_template_enabled(
+                uow,
+                template_id,
+            )
 
             after_user_id: str | None = None
             while True:
@@ -117,7 +133,10 @@ class NotificationEnqueueApplicationService:
                     decision = evaluate_notification_eligibility(
                         event,
                         target,
-                        channel=self._select_channel(grant_state),
+                        channel=self._select_channel(
+                            grant_state,
+                            template_enabled=template_enabled,
+                        ),
                     )
                     delivery = build_pending_delivery(decision, event, target)
                     if delivery is None:
@@ -168,7 +187,20 @@ class MultiChannelNotificationEnqueueApplicationService(
             channel=DeliveryChannel.WECHAT_SUBSCRIBE,
         )
 
-    def _select_channel(self, grant_state: GrantState) -> DeliveryChannel:
-        if grant_state is GrantState.GRANTED:
+    def _select_channel(
+        self,
+        grant_state: GrantState,
+        *,
+        template_enabled: bool = True,
+    ) -> DeliveryChannel:
+        if template_enabled and grant_state is GrantState.GRANTED:
             return DeliveryChannel.WECHAT_SUBSCRIBE
         return DeliveryChannel.IN_APP
+
+    async def _is_wechat_template_enabled(
+        self,
+        uow: UnitOfWork,
+        template_id: str,
+    ) -> bool:
+        registration = await uow.templates.get_wechat_template(template_id)
+        return registration is None or registration.enabled

@@ -86,6 +86,9 @@ class _UoW:
             ),
         )
         self.grants = SimpleNamespace(get_wechat_grant=AsyncMock(return_value=None))
+        self.templates = SimpleNamespace(
+            get_wechat_template=AsyncMock(return_value=None)
+        )
 
     async def __aenter__(self):
         return self
@@ -240,6 +243,10 @@ async def test_wechat_runtime_creates_fallback_after_terminal_outcome() -> None:
     failed = mark_delivery_failed_terminal(claimed, now=T0, error_code="TERMINAL")
     fallback = _delivery(DeliveryChannel.IN_APP)
     runtime = object.__new__(WeChatNotificationRuntime)
+    runtime._template_id = "tpl-live-start"
+    runtime._template_service = SimpleNamespace(
+        is_enabled=AsyncMock(return_value=True)
+    )
     runtime._delivery_service = SimpleNamespace(
         claim_next_due=AsyncMock(return_value=claimed)
     )

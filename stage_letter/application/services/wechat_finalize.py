@@ -33,6 +33,7 @@ from stage_letter.domain.notifications import (
     mark_delivery_waiting_auth,
     schedule_delivery_retry,
 )
+from stage_letter.domain.notification_templates import WeChatTemplateRegistration
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
 
@@ -43,6 +44,7 @@ class WeChatAtomicFinalizationResult:
     provider_outcome: ProviderOutcome
     grant_ledger: WeChatGrantLedger | None
     grant_consumed: bool
+    template_registration: WeChatTemplateRegistration | None = None
 
 
 class WeChatDeliveryFinalizationApplicationService:
@@ -103,6 +105,16 @@ class WeChatDeliveryFinalizationApplicationService:
                         "provider-authoritative grant consumption requires an existing ledger"
                     )
 
+            template_registration: WeChatTemplateRegistration | None = None
+            if (
+                outcome.kind is ProviderOutcomeKind.CONFIG_BLOCKED
+                and outcome.provider_code == "40037"
+            ):
+                template_registration = await uow.templates.disable_from_40037(
+                    template_id,
+                    now=now,
+                )
+
             await uow.notifications.save_delivery(updated)
             await uow.commit()
             return WeChatAtomicFinalizationResult(
@@ -110,6 +122,7 @@ class WeChatDeliveryFinalizationApplicationService:
                 provider_outcome=outcome,
                 grant_ledger=grant_ledger,
                 grant_consumed=grant_consumed,
+                template_registration=template_registration,
             )
 
     def _apply_outcome(

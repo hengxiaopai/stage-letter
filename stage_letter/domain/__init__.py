@@ -19,6 +19,11 @@ from .notification_policy import (
     build_pending_delivery,
     evaluate_notification_eligibility,
 )
+from .notification_templates import (
+    WeChatTemplateRegistration,
+    WeChatTemplateState,
+    WeChatTemplateStateSource,
+)
 from .notifications import (
     DeliveryChannel,
     DeliveryKey,
@@ -77,6 +82,9 @@ __all__ = [
     "TransitionIntentType",
     "User",
     "WeChatGrantLedger",
+    "WeChatTemplateRegistration",
+    "WeChatTemplateState",
+    "WeChatTemplateStateSource",
     "build_pending_delivery",
     "claim_delivery",
     "evaluate_notification_eligibility",
