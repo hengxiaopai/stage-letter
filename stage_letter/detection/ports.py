@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from stage_letter.detection.telemetry import (
+    ProbeTelemetryPersistenceResult,
+    ProbeTelemetryRecord,
+)
 from stage_letter.domain.creators import PlatformAccount
 
 
@@ -22,3 +26,12 @@ class DetectionScheduleRepository(Protocol):
         after_account_id: str | None = None,
         limit: int = 100,
     ) -> tuple[DetectionScheduleRow, ...]: ...
+
+
+class DetectionTelemetryRepository(Protocol):
+    """Append operational probe evidence and refresh platform-health metrics."""
+
+    async def record_probe(
+        self,
+        record: ProbeTelemetryRecord,
+    ) -> ProbeTelemetryPersistenceResult: ...
