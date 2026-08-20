@@ -13,8 +13,13 @@ from stage_letter.detection.telemetry import (
 )
 
 
-class HealthAwareDetectionTelemetryApplicationService:
+class HealthAwareDetectionTelemetryApplicationService(DetectionTelemetryApplicationService):
     """Persist telemetry first, then reconcile operational circuit-breaker state.
+
+    This Gate 2.4 enhancement deliberately remains a subtype of the accepted
+    Gate 2.3 ``DetectionTelemetryApplicationService``. That preserves the frozen
+    worker-composition contract while adding health reconciliation behind the
+    same ``record()`` surface.
 
     Telemetry and health are operational evidence only. Any failure in this layer
     happens after provider/durable observation work and therefore cannot roll back
@@ -28,6 +33,10 @@ class HealthAwareDetectionTelemetryApplicationService:
         *,
         policy: CircuitBreakerPolicy | None = None,
     ) -> None:
+        # ``record`` is intentionally overridden below and delegates to the
+        # already-constructed Gate 2.3 service. We keep that service intact rather
+        # than reaching into its private repository, while inheritance preserves
+        # the accepted Gate 2.3 runtime type contract.
         self._telemetry = telemetry
         self._health = health
         self.policy = policy or CircuitBreakerPolicy()
