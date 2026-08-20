@@ -1,172 +1,175 @@
 # 开场信 / StageLetter
 
-> 跨平台主播订阅通知服务 — 微信小程序 + 7×24 服务端监控
+开场信是一个面向微信小程序的跨平台主播开播通知系统。用户关注主播后，后端持续检测抖音、哔哩哔哩、虎牙和斗鱼的直播状态，并通过微信订阅消息或应用内通知提供可恢复、可追踪的开播提醒。
 
-## 这是什么
+> 当前仍处于工程验证阶段，尚未获得生产发布批准，也不承诺平台调用、消息发送或用户阅读的 exactly-once 语义。
 
-一个面向多用户的 SaaS 服务：
+## 当前进度
 
-- 在微信小程序里订阅抖音、B 站、虎牙、斗鱼、Twitch 等平台的主播
-- 服务端 7×24 监控这些主播的开播状态
-- 主播开播时通过微信服务消息触达用户
-
-不是直播录制器，不是直播聚合器，不是直播播放器 —— 是一台「订阅通知服务器」。
-
-## 项目状态
-
-**当前阶段：Gate 4 — 微信小程序（4.0 基线梳理）**
-
-```
-Gate 0  Feasibility Evidence  ⚠️ DEGRADED（历史实测保留；不补写缺失生命周期证据）
-Gate 1  Domain Core          ✅ PASS / CLOSED
-Gate 2  Detection Engine     ✅ PASS / CLOSED
+```text
+Gate 0  平台真实性证据         ⚠️ DEGRADED（历史证据保留）
+Gate 1  领域与通知基础设施     ✅ PASS / CLOSED
+Gate 2  检测引擎               ✅ PASS / CLOSED
 Gate 3  Notification Engine  ✅ PASS / CLOSED
 Gate 4  微信小程序             🚧 4.0 CURRENT
 ```
 
-最新已验收基线：Gate 1–3 回归 `556 passed, 173 subtests passed`，Alembic
-head `e34d7a2c1b50`。Gate 3 已完成多通道 fallback、微信模板级禁用/恢复、
-grant intake 对账、正式通知历史、主播详情路由和重启/多 worker E2E。详细冻结证据见
-[GATE-2.md](./GATE-2.md) 与 [GATE-3.md](./GATE-3.md)。
+当前冻结基线：
 
-> GitHub 默认分支必须通过 PR 才会更新；push 功能分支不等于合并。README 中以下
-> Gate 0 内容是历史验证记录，不代表当前研发阶段。
+- 自动化回归：`556 passed, 173 subtests passed`
+- Alembic migration head：`e34d7a2c1b50`
+- Gate 3.5 PostgreSQL 端到端验收：PASS，受控数据已恢复
+- 当前重点：微信小程序的信息架构、真实开发者工具联调、真机交互和 UI 验收
 
-### Gate 0A 历史验证记录
-- 脚手架完成,等用户完成模板审核后跑 `wechat_grant_demo.py`(预计 1-3 工作日)
-- 实测结论填到 [reports/wechat_grant.md](./reports/wechat_grant.md)
-- **v0.2 修正**:A3-5 已改名为"微信服务端是否强制验证真实订阅授权",**不再**声称后端可证明 `wx.requestSubscribeMessage` 弹窗真实发生;**真实 authority = `subscribeMessage.send` 返回码**,客户端 accept 仅作 optimistic ledger 输入;**已删**"前端签名 + 后端验签"方案
-- **v0.2 修正**:A3-4 N>1 标 `UNEXPECTED_POSITIVE`,触发 ADR-002 增量更新,**不**自动降级到多通道;仅"无法可靠后台触达 / 用户必须不可接受地频繁操作"才触发通知架构降级
+Gate 0A 的平台生命周期证据仍标记为 `DEGRADED`。后续 Gate 的通过不覆盖或伪造这项历史限制。
 
-### Gate 0B 历史验证记录（非当前研发状态）
+## 已实现能力
 
-**已完成**:
-- ✅ 4 平台 adapter 升级到 7-state 返回:`ONLINE / OFFLINE / NOT_FOUND / RATE_LIMITED / BLOCKED / PARSE_ERROR / UNKNOWN`
-- ✅ 跨平台共用分类器 `platform_adapters/common.py` + placeholder 短路(`is_placeholder()` 检测 uppercase 字符串,直接返 `NOT_FOUND` 不调 API)
-- ✅ 24h 浸泡脚本支持 `--soak-type {correctness, transport, error-path}`,7 状态分布 + 状态转换 + live 转换分离统计
-- ✅ 4 平台 transport 冒烟通过(`--soak-type transport --smoke` 60s 各跑一次,见 `experiments/data/*-24h-*.log`)
-- ✅ **B 站真实状态转换已捕获**(1796297556 与 1993299468 均 ONLINE→OFFLINE,8/4→8/6 快照确认)— B 站 Correctness 接近 PASS
+### 直播检测
 
-**浸泡轮次历史**(进程多次被杀,改为多轮短浸泡 + 快照抽查累积数据):
-- 2026-08-02 12:44 启 4 平台 24h soak(`9l0S2l`/`LTcpGb`/`ZhwM37`/`tV38J1`)— 8/3 00:09-00:19 全被杀(11.4h 数据)
-- 2026-08-04 13:54 启 B 站 72h soak(`bvPAE2`)— 16:44 被杀(3h 数据,且 B 站二次限流 25 分钟即触发)
-- 2026-08-06 08:35 启 3 平台 6h soak(`KlT9wr` B站 / `OhCAhz` 虎牙 / `kdgzBq` 斗鱼)— 进行中
-- 2026-08-12 22:27 启深夜 12h soak(虎牙/斗鱼,`supervise_soak.sh`)— 资源耗尽只跑 2h(00:27 收):虎牙 5 房间全 ONLINE 无转换,斗鱼 4 ONLINE + 1 OFFLINE(1000)无转换
-- **2026-08-13 09:20 白天 4h soak(虎牙/斗鱼,`supervise_soak.sh huya/douyu 4 600`)— 13:21 正常收**(批次 2h×2):
-  - 虎牙 50 样本全部 ONLINE(5 房间 × 10 次),**无 OFFLINE / 无转换 / 零错误**
-  - 斗鱼 50 样本:40 ONLINE + 10 OFFLINE(房间 1000 全程 OFFLINE,证明 OFFLINE 探测正确),**无 ONLINE↔OFFLINE 转换**
-  - 结论:**时间不是问题,样本主播不换状态才是**;两平台均仍缺标准 #3(真实转换)
-- **2026-08-13 09:22-10:51 主动盯梢(`transition_watch.py` 盯 5 个刚开播房间 142761/31256203/30985600/17611785/32233,每 ~60s 探测,395 条)**:
-  - 4 房间全程 ONLINE(79 次/房间);房间 142761 首采 ONLINE 后连续 78 次 PARSE_ERROR(页面结构与该房间不兼容,非状态转换)
-  - **未捕获任何转换**;盯梢工具对个别房间 HTML 变体解析失败,需修 parse(候选:提升 eLiveStatus 兜底)
+- 抖音、哔哩哔哩、虎牙、斗鱼四个平台适配器
+- `LIVE / OFFLINE / UNKNOWN` 正式状态模型，平台失败不会被误判为下播
+- HOT / WARM / COLD 检测节奏与 PostgreSQL due selection
+- PostgreSQL lease、多 worker 竞争、过期接管和按平台容量隔离
+- 重试、限流、熔断、观测记录及可回放状态转换
 
-**等用户输入**:
-- ⏳ 抖音 5 个真实 web_rid(`experiments/test_anchors/douyin.txt` 当前 5 个 PLACEHOLDER_DOUYIN_*)
-  - 取得途径:抖音 App 分享短链 / 浏览器打开 `live.douyin.com/{web_rid}` 复制 19 位数字
-- ⏳ 虎牙 OFFLINE ground truth(当前 5 个全 ONLINE,需至少 1 个已知不播房间 / 中尾部主播)
-- ⏳ 斗鱼 1000 房间是否为权威 OFFLINE 基线(用户确认)
+### 通知引擎
 
-**Gate 0B 新 PASS 标准**(任何一条不满足就 NOT PASS):
-1. 每平台 ≥ 5 个真实房间号(placeholder 不计)
-2. 每平台 ≥ 1 个真实 ONLINE 主播 + ≥ 1 个真实 OFFLINE 主播 ground truth 已被人工对照平台官方客户端验证
-3. ≥ 1 次真实状态转换(ONLINE↔OFFLINE 跨样本真实发生)
-4. 24h 浸泡无转换则延长到 72h
-5. 每个样本的 `state` 字段和平台官方客户端 ground truth 完全一致,**不允许** `state=OFFLINE` 的字段缺失/HTML 异常/placeholder 静默
+- `LIVE_STARTED` 事件到关注者 fan-out 的持久化投递链路
+- 微信订阅消息 grant 账本、原子消费、摄取与对账
+- 微信模板注册表、`40037` 模板禁用和管理恢复
+- 微信不可用或 grant 不足时的 durable `IN_APP` fallback
+- 重启恢复、`AMBIGUOUS` 结果、单数据库 claim owner 和重复发送边界
+- 通知历史、已读状态与主播详情页跳转目标
 
-**当前结果**(截至 2026-08-13 13:30,4h soak + 盯梢收尾):
+### 微信小程序
 
-| 平台 | 样本累计 | 7-state 分布 | Ground Truth | 真实转换 | PASS 状态 |
-|------|---------|-------------|--------------|----------|-----------|
-| B 站 | 316+ | ONLINE 155 / OFFLINE 100 / PARSE_ERROR 61 | ≥1 ONLINE + ≥1 OFFLINE ✅ | **4 次 ✅ 双向**(2 下播 + 2 开播,时间戳精确) | **Transport ✅ / Correctness ✅ PASS** |
-| 抖音 | 90 | ONLINE 34 / OFFLINE 56 | ≥1 ONLINE + ≥1 OFFLINE ✅ | **4 次 ✅**(00:48/01:48/02:23/03:33 下播) | **Transport ✅ / Correctness ✅ PASS** |
-| 虎牙 | 191+ | ONLINE 166 / PARSE_ERROR 25(旧样本) | ≥1 ONLINE ✅ / OFFLINE ❌ | 0 | Transport ✅ / Correctness ⚠️ NOT PASS(缺 OFFLINE ground truth + 转换) |
-| 斗鱼 | 191+ | ONLINE 133 / OFFLINE 33 / PARSE_ERROR 25 | ≥1 ONLINE + ≥1 OFFLINE ✅(1000 浏览器验证) | 0 | Transport ✅ / Correctness ⚠️ NOT PASS(缺真实转换) |
+- 原生 WXML / WXSS / JavaScript 工程
+- 登录、首页、主播搜索与订阅管理
+- 通知授权、通知历史、个人页和主播详情基础链路
+- Gate 4 将继续完成真实开发者工具、真机和视觉交互验收
 
-> **2026-08-13 收尾结论**:白天 4h soak 两平台均正常完成(零错误、零限流),但**仍无真实状态转换**。斗鱼房间 1000 全程 OFFLINE(10/10 采样)证明 OFFLINE 探测正确,但 OFFLINE 是静态基线不是转换。**Gate 0B 唯一阻塞项 = 标准 #3(≥1 次真实转换)**:虎牙还叠加缺 OFFLINE 样本(标准 #2)。下一步建议:换晚间黄金档中尾部主播(直播时长 1-3h,下播概率高)做高频盯梢;盯梢工具修复 142761 类房间解析失败后重跑。
+## 核心架构
 
-> **2026-08-13 策略调整(回应"为什么 12h"问题)**:Gate 0B 唯一缺的是标准 #3(≥1 次真实状态转换)。12h 是"赌运气等转换",改为**主动捕获**:
-> - 夜间 12h soak(8/12 22:27 启)因系统资源耗尽只跑 2h(虎牙 5 房间全 ONLINE 无转换,斗鱼 1 OFFLINE + 4 ONLINE 无转换)——2h 数据已证明**时间短不是问题,样本主播没转换才是**
-> - 白天重启 **4h soak**(8/13 09:20 启,13:21 正常收)— 虎牙/斗鱼各 50 样本,零错误,但样本主播全程不换状态,**仍无转换**
-> - **主动盯梢**:用批量列表对比发现"刚开播"主播(ONLINE 候选 5 个),每 60s 高频探测(transition_watch.py,8/13 09:22-10:51 共 395 条)— 4 房间全程 ONLINE,**未捕获转换**;142761 房间连续 PARSE_ERROR(解析器不兼容该房间 HTML,需修)
-> - 虎牙列表对比法本身有噪音(列表是推荐排序,房间消失 ≠ 下播,已验证 6 个候选均仍 ONLINE)— 再次确认 C3 结论:列表只能当 ONLINE 单侧证据
+```text
+平台适配器
+  -> 检测运行时 / due selection / lease
+  -> LiveObservation（事实观测）
+  -> 状态转换与 replay
+  -> LiveSession / LiveEvent
+  -> follower fan-out
+  -> WECHAT_SUBSCRIBE 或 IN_APP
+  -> 通知历史 / 主播详情
+```
 
-> 🎉 **抖音 web_rid 自主获取成功(2026-08-06 晚)**:playwright 监听 `webcast/feed` 推荐流 API,提取 item 顶层 `web_rid` 字段(10-13 位;19 位 id_str 是内部 room_id,两者不同)。5 个 web_rid 全部 ONLINE 验证(adapter + 页面 video 双重确认),6h correctness soak 已启动。**同时发现抖音 enter API 改版**(房间详情移到 `data.data[0]`),adapter 已适配。
+主要边界：
 
-> ⚠️ **重要实测发现(限流,直接进 Gate 0C 输入)**:B 站/虎牙/斗鱼对匿名持续轮询都有连接级限流(非 429,是 `HTTPSConnectionPool` 超时)。**B 站限流阈值与 IP 信誉负相关**:首犯 8.3h 触发,冷却 2 天后累犯 25 分钟即触发。V1 生产必须引入登录态/cookie 池/UA 池/多出口 IP + 自动退避。详见各 capacity.md §2/§3。
-
-**4 平台 capacity.md 同步更新**:`reports/{bilibili,douyin,huya,douyu}.md` 已重写,明确标注 Transport ✅ / Correctness ⚠️ / NOT TESTED / PARTIAL,删除了"verify stream URL signature"(StageLetter 是订阅通知服务,不流不录不播)。B 站"~2.5s intentional delay"已改为"~2.5s observed,cause unknown,Gate 0C causal experiment"。
-
-- v0.2 立项包 13 个文档已发布,3 P0 + 8 P1 问题已修正。详见 [CHANGELOG.md §v0.2](./CHANGELOG.md)。
-
-**v0.2 重大变更**:
-- 微信通知模型从"伪造额度(初始 8/季度重置/refresh+8)"改为"乐观 grant 账本"
-- Gate 0 拆分为 0A → 0B → 0C → 0D → 0E,**0A 排第一**
-- 引入分级轮询(hot / warm / cold)
-- 按平台分级 SLA(Twitch < 30s / 其他 < 5-8min)
-- V1 主播上限由 Gate 0C 实测决定(不再假定 18,000)
-
-进入任何正式产品代码之前,必须先通过 Gate 0 全部 5 关验证。详见 [GATE-0.md](./GATE-0.md)。
-
-## 文档索引
-
-| 文档 | 作用 |
-|------|------|
-| [CHANGELOG.md](./CHANGELOG.md) | **v0.2 修订记录(P0/P1 修正清单)** |
-| [PRODUCT.md](./PRODUCT.md) | 产品愿景、定位、反愿景 |
-| [PRD.md](./PRD.md) | V1 产品需求文档 |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构与技术选型 |
-| [DATA-MODEL.md](./DATA-MODEL.md) | 数据库模型 |
-| [PLATFORM-ADAPTER-SPEC.md](./PLATFORM-ADAPTER-SPEC.md) | 平台适配器规范 |
-| [WECHAT-NOTIFICATION-SPEC.md](./WECHAT-NOTIFICATION-SPEC.md) | 微信通知机制 (v0.2 grant 模型) |
-| [API-SPEC.md](./API-SPEC.md) | REST API 规范 |
-| [SECURITY.md](./SECURITY.md) | 安全考虑 |
-| [NON-GOALS.md](./NON-GOALS.md) | V1 明确不做 |
-| [ROADMAP.md](./ROADMAP.md) | 路线图与里程碑 |
-| [GATE-0.md](./GATE-0.md) | Gate 0 (0A-0E) 技术验证任务书 |
-
-## 核心原则
-
-1. **只做一件事**:订阅主播,开播通知。
-2. **多租户模型**:1 万用户 × 10 订阅 = 18,000 个主播去重检测(实际容量由 Gate 0C 倒推)。
-3. **微信通知是用户行为产物** (v0.2):不是配额,是用户每次主动 accept 产生的 grant。初始 0,无季度重置。详见 [WECHAT-NOTIFICATION-SPEC.md §2](./WECHAT-NOTIFICATION-SPEC.md)。
-4. **平台适配器可降级**:任一平台故障不影响其他平台,可手动 disable。
-5. **状态机避免抖动**:SUSPECT → CONFIRMED 二次确认,不会反复上下线。
-6. **事件可重放**:所有 LiveEvent 落库,支持事后补偿与审计。
-7. **分级轮询** (v0.2):hot / warm / cold,优化总承载量。
-8. **不诚实的产品承诺**:SLA 按平台分级,不假装"< 3min 统一"。
+- provider I/O 不放在数据库事务中。
+- provider 失败不是直播事实，不能直接改变 live truth。
+- `accepted`、`delivered`、`read` 是不同语义。
+- worker、provider 和用户阅读均不做 exactly-once 声明。
+- 历史 `workers/probe/worker.py` 仍为 `LEGACY_REFERENCE_ONLY`。
 
 ## 技术栈
 
-- **微信端**：原生微信小程序（WXML / WXSS / JavaScript）
-- **服务端**：Python 3.13 + FastAPI
-- **数据库**：PostgreSQL 15+ + SQLAlchemy 2 + Alembic
-- **队列 / 缓存**：Redis + Dramatiq
-- **检测运行时**：HOT / WARM / COLD 调度、PostgreSQL lease、平台隔离容量控制
-- **部署**：Docker Compose
+- API：FastAPI、Pydantic
+- 数据访问：SQLAlchemy 2、asyncpg、Alembic
+- 数据库：PostgreSQL 16
+- 缓存与运行时依赖：Redis 7、Dramatiq
+- HTTP：HTTPX、Requests
+- 测试：pytest、PostgreSQL 受控验收脚本
+- 小程序：微信开发者工具、原生 WXML / WXSS / JavaScript
+- 本地基础设施：Docker Compose
 
-详细选型见 [ARCHITECTURE.md §4](./ARCHITECTURE.md)。
+## 本地启动
 
-## 当前开发入口
+建议环境：Python 3.13、Docker Desktop、微信开发者工具。
 
-1. 阅读 [GATE-3.md](./GATE-3.md) 的冻结边界和当前 slice。
-2. 使用 `python -m alembic upgrade head` 将本地 PostgreSQL 升到当前 head。
-3. 运行 `python -m pytest -q tests/gate1 tests/gate2 tests/gate3` 验证累计 Gate。
-4. Gate 0 实验材料仅用于追溯历史证据，不应重新作为当前开发入口。
+PowerShell：
 
-## 快速开始
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+docker compose up -d postgres redis
+python -m alembic upgrade head
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8899 --reload
+```
 
-项目已有 FastAPI、PostgreSQL migration、四平台检测运行时、正式通知状态机与微信
-小程序代码。开发环境配置通过 `.env` 注入；不得将 AppSecret、数据库口令或真实用户
-标识提交到 Git。
+Git Bash 可使用：
 
-## 参考项目
+```bash
+python -m venv .venv
+source .venv/Scripts/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+docker compose up -d postgres redis
+python -m alembic upgrade head
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8899 --reload
+```
 
-下列项目仅作架构与实现参考，**禁止直接复制代码**到本项目（部分项目 License 限制或声明禁止商用）：
+启动前请检查 `.env` 中的数据库、Redis 和微信配置。默认本地 API 地址为 `http://127.0.0.1:8899/api/v1`。
 
-- [DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) — 多平台适配器最成熟
-- [aio-dynamic-push](https://github.com/nfe-w/aio-dynamic-push) — 检测/推送模块分离设计（禁止商用）
-- [WebMoniter](https://github.com/666fy666/WebMoniter) — 后端工程组织参考
+### 打开微信小程序
 
-## 许可
+1. 在微信开发者工具中导入 `miniapp/` 目录。
+2. 确认本地 API 已启动且数据库已迁移到 head。
+3. 模拟器可使用 `127.0.0.1`；真机联调需要手机可访问的 HTTPS 地址，并按微信要求配置合法域名。
+4. 开发者工具的个人设置应保存在 `project.private.config.json`，不要提交到仓库。
 
-待定。
+## 验证基线
+
+```bash
+python -m pytest -q tests/gate1 tests/gate2 tests/gate3
+python -m alembic current
+```
+
+当前预期：
+
+```text
+556 passed, 173 subtests passed
+e34d7a2c1b50
+```
+
+涉及 lease、重启恢复、容量隔离或通知端到端语义的改动，还应运行对应 Gate 的 PostgreSQL 受控 probe。Probe 可能写入临时验收数据，必须确认输出包含清理完成和数据库恢复证据。
+
+## 敏感配置
+
+仓库只提供配置结构，真实凭据应留在本机或部署环境：
+
+| 配置 | 处理方式 |
+| --- | --- |
+| 微信 AppSecret | 仅写入根目录 `.env` 或部署平台的 secret store，禁止提交 |
+| 数据库密码、访问令牌、用户 openid | 视为敏感信息，禁止写入日志、文档、测试快照或 Git 历史 |
+| 微信 AppID、模板 ID | 属于客户端可见标识符，不等同于 AppSecret；仍应通过现有配置入口维护，避免无必要复制 |
+| 开发者工具个人配置 | 使用已忽略的 `miniapp/project.private.config.json` |
+
+根目录 `.env` 和私有配置已被 `.gitignore` 排除。提交前仍应检查 `git diff --cached`，因为忽略规则无法撤回已经进入 Git 历史的秘密。
+
+## 文档索引
+
+- [产品说明](PRODUCT.md)
+- [产品需求](PRD.md)
+- [系统架构](ARCHITECTURE.md)
+- [数据模型](DATA-MODEL.md)
+- [API 规范](API-SPEC.md)
+- [安全说明](SECURITY.md)
+- [研发路线图](ROADMAP.md)
+- [Gate 0 平台证据](GATE-0.md)
+- [Gate 2 检测引擎](GATE-2.md)
+- [Gate 3 通知引擎](GATE-3.md)
+- [历史实验与验收报告](reports/)
+
+README 只呈现当前可执行入口。详细冻结契约、历史 soak 记录、边界证据和验收输出保留在各 Gate 文档、`reports/` 与 `experiments/` 中。
+
+## 当前限制
+
+- Gate 0A 仍为 `DEGRADED`，不能据此宣称四个平台已经完成长期生产级真实性证明。
+- 尚未批准生产部署；生产认证、密钥托管、域名和监控仍需独立验收。
+- Gate 4 的开发者工具、真机点击链路、可用性和 UI 视觉质量仍在推进。
+- 当前通知保证以持久化状态机、幂等边界和可恢复性为核心，不承诺端到端 exactly-once。
+
+## License
+
+许可证尚未确定。
