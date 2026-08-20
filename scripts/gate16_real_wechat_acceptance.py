@@ -5,9 +5,9 @@ This probe sends exactly one real subscribe message only when ``--send`` is
 provided. It never creates or edits live observations/sessions/events. It reuses
 an already-persisted canonical LIVE_STARTED/TRANSITION event, validates Follow +
 NotificationPreference + positive local grant, creates only the test user's
-logical delivery when absent, claims it, sends once, atomically finalizes the
-provider outcome + grant effect, restarts the DB runtime, and verifies the
-persisted result.
+logical PENDING delivery when absent, then (only with --send) claims it, sends
+once, atomically finalizes the provider outcome + grant effect, restarts the DB
+runtime, and verifies the persisted result.
 """
 from __future__ import annotations
 
@@ -24,11 +24,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from core.config import settings
 from stage_letter.application.notification_providers import WeChatLiveStartMessage
+from stage_letter.application.services.wechat_finalize import (
+    WeChatAtomicDeliveryAttemptApplicationService,
+    WeChatDeliveryFinalizationApplicationService,
+)
 from stage_letter.domain.notification_policy import (
     NotificationTarget,
     build_pending_delivery,
@@ -46,10 +50,6 @@ from stage_letter.infrastructure.db.uow import SQLAlchemyUnitOfWork
 from stage_letter.infrastructure.notifications.wechat import (
     HttpxWeChatProviderGateway,
     WeChatSubscribeFormalAdapter,
-)
-from stage_letter.application.services.wechat_finalize import (
-    WeChatAtomicDeliveryAttemptApplicationService,
-    WeChatDeliveryFinalizationApplicationService,
 )
 
 EXPECTED_HEAD = "a63f4b2d9e71"
@@ -220,7 +220,10 @@ async def _main(args: argparse.Namespace) -> int:
                 if not created:
                     return await _block("logical delivery creation lost a concurrent race")
                 await uow.commit()
-            elif existing.state not in {DeliveryState.PENDING, DeliveryState.WAITING_RETRY}:
+                prepared_delivery = delivery
+            elif existing.state in {DeliveryState.PENDING, DeliveryState.WAITING_RETRY}:
+                prepared_delivery = existing
+            else:
                 return await _block(
                     "logical delivery already exists in a non-sendable state",
                     delivery_state=existing.state.value,
@@ -228,23 +231,8 @@ async def _main(args: argparse.Namespace) -> int:
                     event_id=event_id,
                 )
 
-        key = DeliveryKey(str(user_id), event_id, DeliveryChannel.WECHAT_SUBSCRIBE)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
         async with uow_factory() as uow:
-            current = await uow.notifications.lock_delivery(key)
-            if current is None:
-                return await _block("logical delivery is currently locked or missing")
-            if not current.is_due(now):
-                return await _block(
-                    "logical delivery is not due for claim",
-                    delivery_state=current.state.value,
-                )
-            claimed = claim_delivery(current, now=now)
-            await uow.notifications.save_delivery(claimed)
-            await uow.commit()
-
-        async with uow_factory() as uow:
-            account = await uow.creators.get_account(claimed.account_id)
+            account = await uow.creators.get_account(prepared_delivery.account_id)
             profile = None if account is None else await uow.creators.get_profile(account.creator_id)
         anchor_name = (
             profile.display_name
@@ -272,8 +260,7 @@ async def _main(args: argparse.Namespace) -> int:
                 "migration_head": head,
                 "user_id": str(user_id),
                 "event_id": event_id,
-                "delivery_state": claimed.state.value,
-                "attempt": claimed.attempt,
+                "delivery_state": prepared_delivery.state.value,
                 "grant_available_before": grant_before.available,
                 "real_wechat_called": False,
                 "next_action": "rerun the same command with --send to consume one real grant",
@@ -282,6 +269,21 @@ async def _main(args: argparse.Namespace) -> int:
                 "production_approved": False,
             }, ensure_ascii=False, indent=2))
             return 3
+
+        key = DeliveryKey(str(user_id), event_id, DeliveryChannel.WECHAT_SUBSCRIBE)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        async with uow_factory() as uow:
+            current = await uow.notifications.lock_delivery(key)
+            if current is None:
+                return await _block("logical delivery is currently locked or missing")
+            if not current.is_due(now):
+                return await _block(
+                    "logical delivery is not due for claim",
+                    delivery_state=current.state.value,
+                )
+            claimed = claim_delivery(current, now=now)
+            await uow.notifications.save_delivery(claimed)
+            await uow.commit()
 
         finalizer = WeChatDeliveryFinalizationApplicationService(uow_factory)
         async with httpx.AsyncClient(timeout=10.0) as client:
