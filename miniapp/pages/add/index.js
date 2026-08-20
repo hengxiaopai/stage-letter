@@ -419,67 +419,51 @@ Page({
   /**
    * 统一订阅流程 — 严格串行状态机(UI-2.1A)
    *
-   * IDLE → REQUESTING_PERMISSION → wx 授权弹窗
-   *   ├─ accept → CREATING_SUBSCRIPTION → SUCCESS → ✓ 已订阅
-   *   ├─ reject/ban → IDLE(仍显示「订阅」)
-   *   └─ API fail → ERROR(仅此处可提示授权失败)
+   * IDLE → REQUESTING_PERMISSION(模板可用时) → RECORDING_EVIDENCE
+   *      → CREATING_SUBSCRIPTION → SUCCESS → ✓ 已订阅
    *
    * 铁律:
-   * 1. 未得到 accept 之前,绝不调用后端 subscribe/requestGrant(严格串行)
-   * 2. wx success 之前,绝不弹任何 Toast(授权框未完成,无权判断成败)
-   * 3. reject/ban 不是 API failure,不得提示「授权失败」
+   * 1. wx 授权只能由当前用户点击触发,不能后台重放。
+   * 2. accept/reject/ban 原样 intake;无授权时后端将使用 IN_APP。
+   * 3. grant 结果不阻断关注关系,订阅创建仍保持幂等。
    */
   async confirmSubscribe(openid, anchor, onSubscribed) {
     console.log('[subscribe] wx.requestSubscribeMessage start')
+    const templateId = getApp().globalData.liveStartTemplateId
 
-    // ── REQUESTING_PERMISSION: 等待授权,期间零 Toast ──
+    // ── REQUESTING_PERMISSION: 仅模板已配置时由当前点击触发 ──
     let res = null
-    try {
-      res = await new Promise((resolve) => {
-        wx.requestSubscribeMessage({
-          tmplIds: ['VehDuOW2xRXubcWgFvcgnFnp42wdA3uesHpjfmBP-Cs'],
-          success: (r) => { console.log('[subscribe] wx success', r.errMsg); resolve(r) },
-          fail: (e) => { console.log('[subscribe] wx fail:', e.errMsg); resolve(null) },
+    if (templateId) {
+      try {
+        res = await new Promise((resolve) => {
+          wx.requestSubscribeMessage({
+            tmplIds: [templateId],
+            success: (r) => { console.log('[subscribe] wx success', r.errMsg); resolve(r) },
+            fail: (e) => { console.log('[subscribe] wx fail:', e.errMsg); resolve(null) },
+          })
         })
-      })
-    } catch (e) {
-      console.log('[subscribe] wx exception:', e && e.errMsg)
-      res = null
-    }
-
-    // ── API fail(真失败) → 仅此分支提示「授权失败」 ──
-    if (!res) {
-      console.log('[subscribe] 无结果(API fail)')
-      wx.showToast({ title: '授权失败，请重试', icon: 'none' })
-      return
-    }
-
-    // ── 解析用户真实选择 ──
-    const tmplResults = Object.keys(res).filter((k) => k !== 'errMsg')
-    const acceptCount = tmplResults.filter((k) => res[k] === 'accept').length
-    const rejected = tmplResults.some((k) => res[k] === 'reject' || res[k] === 'ban')
-    console.log('[subscribe] permission result:', tmplResults.map((k) => res[k]).join(','))
-
-    // 逐模板结果先作为幂等 evidence 入账；失败不伪造额度，也不重放微信授权。
-    try {
-      await requestGrant(openid, res)
-    } catch (e) {
-      console.log('[subscribe] grant intake fail(不阻塞订阅):', e.message)
-    }
-
-    // ── reject / ban → 用户未授权 → 回 IDLE,不创建订阅 ──
-    if (acceptCount === 0) {
-      if (rejected) {
-        console.log('[subscribe] 用户拒绝/禁止 → IDLE')
-        wx.showToast({ title: '未完成订阅', icon: 'none' })
-      } else {
-        console.log('[subscribe] 无有效授权结果 → IDLE')
+      } catch (e) {
+        console.log('[subscribe] wx exception:', e && e.errMsg)
+        res = null
       }
-      return
     }
 
-    // ── accept → CREATING_SUBSCRIPTION(严格串行) ──
-    console.log('[subscribe] accept, create subscription start')
+    let acceptCount = 0
+    if (res) {
+      const tmplResults = Object.keys(res).filter((k) => k !== 'errMsg')
+      acceptCount = tmplResults.filter((k) => res[k] === 'accept').length
+      console.log('[subscribe] permission result:', tmplResults.map((k) => res[k]).join(','))
+
+      // 原样记录逐模板 evidence;失败不伪造额度,也不阻断 IN_APP 关注关系。
+      try {
+        await requestGrant(openid, res)
+      } catch (e) {
+        console.log('[subscribe] grant intake fail(不阻塞订阅):', e.message)
+      }
+    }
+
+    // ── CREATING_SUBSCRIPTION: grant 不可用时由 Gate 3 路由到 IN_APP ──
+    console.log('[subscribe] create subscription start')
     try {
       const sub = await subscribe(
         openid, anchor.platform, anchor.platform_user_id,
@@ -487,7 +471,10 @@ Page({
       )
       console.log('[subscribe] create subscription success, id=', sub.id)
       if (onSubscribed) onSubscribed(sub)
-      wx.showToast({ title: '订阅成功', icon: 'success' })
+      wx.showToast({
+        title: acceptCount > 0 ? '订阅成功' : '订阅成功，已启用站内提醒',
+        icon: acceptCount > 0 ? 'success' : 'none',
+      })
     } catch (err) {
       console.log('[subscribe] create subscription fail:', err.message)
       wx.showToast({ title: err.message, icon: 'none' })

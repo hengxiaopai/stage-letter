@@ -182,6 +182,10 @@ class PlatformAccount(Base):
 
     id = Column(BigInteger, primary_key=True)
     anchor_id = Column(BigInteger, ForeignKey("anchors.id"), nullable=False)
+    # Gate 1 canonical ownership.  The legacy API mapper intentionally keeps
+    # ``anchor_id`` during the compatibility window, but every new row must
+    # also satisfy the formal creator foreign key in PostgreSQL.
+    creator_id = Column(BigInteger, nullable=False)
     platform = Column(String(32), nullable=False)
     platform_user_id = Column(String(128), nullable=False)
     room_id = Column(String(128))
@@ -414,6 +418,26 @@ class PlatformHealth(Base):
     sustained_qps = Column(Numeric(6, 2))
     max_anchors = Column(Integer)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ============================================================
+# Gate 5 — administrative audit (operational only)
+# ============================================================
+
+
+class AdminPlatformAction(Base):
+    __tablename__ = "admin_platform_actions"
+    __table_args__ = (
+        Index("idx_admin_platform_actions_platform_created", "platform", "created_at"),
+    )
+
+    id = Column(BigInteger, primary_key=True)
+    actor_username = Column(String(128), nullable=False)
+    platform = Column(String(32), nullable=False)
+    requested_action = Column(String(16), nullable=False)
+    prior_state = Column(String(16))
+    resulting_state = Column(String(16), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 # ============================================================

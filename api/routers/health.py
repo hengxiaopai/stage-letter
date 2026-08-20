@@ -20,10 +20,8 @@ from core.models import PlatformHealth
 router = APIRouter()
 
 
-@router.get("/system/health")
-async def system_health(
-    db: AsyncSession = Depends(get_db),
-) -> dict:
+async def build_system_health(db: AsyncSession) -> dict:
+    """Build one shared operational snapshot for public health and protected Admin."""
     h = get_health()
 
     # 平台健康度(DB)
@@ -57,3 +55,10 @@ async def system_health(
     from datetime import datetime, timezone
     h["timestamp"] = datetime.now(timezone.utc).isoformat()
     return h
+
+
+@router.get("/system/health")
+async def system_health(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return await build_system_health(db)

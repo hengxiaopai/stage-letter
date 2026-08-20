@@ -3,6 +3,7 @@ const { getAnchor } = require('../../services/anchors')
 const { fmtDur } = require('../../utils/time')
 
 const PLATFORM_LABEL = { douyin: '抖音', bilibili: 'B站', huya: '虎牙', douyu: '斗鱼' }
+const POSITIVE_ID_RE = /^[1-9]\d*$/
 
 Page({
   data: {
@@ -21,7 +22,12 @@ Page({
   },
 
   onLoad(options) {
-    this.anchorId = options.id
+    const anchorId = String((options && options.id) || '')
+    if (!POSITIVE_ID_RE.test(anchorId)) {
+      this.setData({ loading: false, error: '主播信息无效' })
+      return
+    }
+    this.anchorId = anchorId
     this.load()
   },
 
@@ -89,6 +95,11 @@ Page({
     } catch (err) {
       this.setData({ loading: false, error: err.message })
     }
+  },
+
+  retryLoad() {
+    this.setData({ loading: true, error: null })
+    this.load()
   },
 
   /** §3.3 P0: 当前仅支持复制 → 按钮文案与行为一致 */

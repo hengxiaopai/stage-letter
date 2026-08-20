@@ -11,15 +11,22 @@ Gate 0  平台真实性证据         ⚠️ DEGRADED（历史证据保留）
 Gate 1  领域与通知基础设施     ✅ PASS / CLOSED
 Gate 2  检测引擎               ✅ PASS / CLOSED
 Gate 3  Notification Engine  ✅ PASS / CLOSED
-Gate 4  微信小程序             🚧 4.0 CURRENT
+Gate 4  微信小程序             ✅ PASS / CLOSED
+Gate 5  Admin / Observability  ✅ PASS / CLOSED
 ```
 
 当前冻结基线：
 
-- 自动化回归：`556 passed, 173 subtests passed`
-- Alembic migration head：`e34d7a2c1b50`
+- 自动化回归：`622 passed, 173 subtests passed`
+- Alembic migration head：`f52a9d1c4e81`
 - Gate 3.5 PostgreSQL 端到端验收：PASS，受控数据已恢复
-- 当前重点：微信小程序的信息架构、真实开发者工具联调、真机交互和 UI 验收
+- Gate 4.5：开发者工具联调、真机收到受控通知、点击进入主播详情 `PASS`
+- Gate 5.1：受保护的 Admin 健康页 `PASS`；运行中准确暴露 worker 心跳异常
+- Gate 5.2：受保护的 B站 `HEALTHY → DISABLED → DEGRADED` 与审计记录 `PASS`
+- Gate 5.3：受保护、分页且脱敏的用户、订阅与通知投递查询 `PASS`
+- Gate 5.4：受保护的固定维度指标与错误聚合 `PASS`
+- Gate 5.5：独立数据库引擎重启后的只读 Admin 投影验收 `PASS`
+- 下一阶段：V1 Alpha 内测准备（仍未获得生产发布批准）
 
 Gate 0A 的平台生命周期证据仍标记为 `DEGRADED`。后续 Gate 的通过不覆盖或伪造这项历史限制。
 
@@ -159,6 +166,7 @@ e34d7a2c1b50
 - [Gate 0 平台证据](GATE-0.md)
 - [Gate 2 检测引擎](GATE-2.md)
 - [Gate 3 通知引擎](GATE-3.md)
+- [Gate 4 微信小程序](GATE-4.md)
 - [历史实验与验收报告](reports/)
 
 README 只呈现当前可执行入口。详细冻结契约、历史 soak 记录、边界证据和验收输出保留在各 Gate 文档、`reports/` 与 `experiments/` 中。

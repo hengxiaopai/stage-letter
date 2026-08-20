@@ -8,10 +8,10 @@ Gate 0 — Feasibility Evidence      ⚠️ DEGRADED（历史证据，不补写�
 Gate 1 — Domain Core              ✅ PASS / CLOSED
 Gate 2 — Detection Engine         ✅ PASS / CLOSED
 Gate 3 — Notification Engine      ✅ PASS / CLOSED
-Gate 4 — 微信小程序                 🚧 4.0 CURRENT
-Gate 5 — Admin / Observability    [1-2 周]
+Gate 4 — 微信小程序                 ✅ PASS / CLOSED
+Gate 5 — Admin / Observability      ✅ PASS / CLOSED
 ──────────────────────────────────────────
-V1 Alpha 内测                      2 周
+V1 Alpha 内测准备                  🚧 CURRENT
 V1 公开上线                         2-4 周缓冲
 ──────────────────────────────────────────
 V1.1: P1 平台 + V1.2 优化         4-6 周
@@ -19,7 +19,7 @@ V2:  跨平台身份合并 + 静默时间      2-3 月
 V3:  创作者订阅情报中心            6+ 月
 ```
 
-> Gate 0 的原始计划和实验记录继续保留用于审计，但当前开发入口是 Gate 4；
+> Gate 0 的原始计划和实验记录继续保留用于审计，但当前开发入口是 Gate 5；
 > Gate 1–3 的最终冻结证据分别以 Gate 文档和自动化验收为准。
 
 ## Gate 0 — 技术可行性 (v0.2 拆 0A-0E)
@@ -160,11 +160,10 @@ Gate 1.6；grant、40037、fallback、restart、多 worker、history 和详情�
 - Admin 完整可用
 - 至少 4 个核心页面
 
-**验收**：
-- [ ] Admin 平台健康页可看
-- [ ] 手动 disable 平台生效
-- [ ] 用户列表 / 通知记录可查
-- [ ] 错误日志聚合
+**验收**：✅ PASS / CLOSED。受保护的健康页、审计化的平台 disable/restore、
+有界用户/订阅/投递查询、固定维度错误聚合和独立引擎重启读取已验收；最终
+证据见 [GATE-5.md](./GATE-5.md)。Prometheus/Grafana 保持为 V1.1 的独立工作，
+不得将其缺席伪装为已完成。
 
 ## V1 Alpha 内测
 

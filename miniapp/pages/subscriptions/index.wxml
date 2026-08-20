@@ -25,7 +25,7 @@
     <view class="empty-icon">!</view>
     <view class="empty-title">加载失败</view>
     <view class="empty-sub">{{error}}</view>
-    <primary-button bindtap="load">重新加载</primary-button>
+    <primary-button bindtap="retryLoad">重新加载</primary-button>
   </view>
 
   <!-- 空状态 -->

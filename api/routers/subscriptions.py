@@ -14,6 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.db import get_db
 from core.live_state import from_platform_account
 from core.models import Anchor, PlatformAccount, User, UserSubscription
+from stage_letter.infrastructure.db.models import (
+    CreatorModel,
+    CreatorProfileModel,
+    FollowModel,
+    NotificationPreferenceModel,
+)
 
 router = APIRouter()
 
@@ -58,6 +64,79 @@ async def _resolve_user_id(db: AsyncSession, req: SubscribeRequest) -> int:
     return user.id
 
 
+async def _ensure_formal_creator(
+    db: AsyncSession,
+    *,
+    creator_id: int,
+    display_name: str | None,
+    avatar: str | None,
+) -> CreatorProfileModel:
+    """Keep the Gate 1 canonical creator/profile beside the legacy Anchor bridge."""
+    creator = await db.get(CreatorModel, creator_id)
+    if creator is None:
+        db.add(CreatorModel(id=creator_id))
+
+    profile = await db.scalar(
+        select(CreatorProfileModel).where(CreatorProfileModel.creator_id == creator_id)
+    )
+    if profile is None:
+        profile = CreatorProfileModel(
+            creator_id=creator_id,
+            display_name=display_name,
+            avatar_url=avatar,
+        )
+        db.add(profile)
+    else:
+        if display_name:
+            profile.display_name = display_name
+        if avatar and not profile.avatar_url:
+            profile.avatar_url = avatar
+    await db.flush()
+    return profile
+
+
+async def _ensure_formal_follow(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    creator_id: int,
+    platform_account_id: int,
+) -> None:
+    """Dual-write the temporary legacy subscription and Gate 1 formal truth."""
+    follow = await db.scalar(
+        select(FollowModel).where(
+            FollowModel.user_id == user_id,
+            FollowModel.platform_account_id == platform_account_id,
+        )
+    )
+    if follow is None:
+        db.add(
+            FollowModel(
+                user_id=user_id,
+                creator_id=creator_id,
+                platform_account_id=platform_account_id,
+                starred=False,
+            )
+        )
+
+    preference = await db.scalar(
+        select(NotificationPreferenceModel).where(
+            NotificationPreferenceModel.user_id == user_id,
+            NotificationPreferenceModel.platform_account_id == platform_account_id,
+        )
+    )
+    if preference is None:
+        db.add(
+            NotificationPreferenceModel(
+                user_id=user_id,
+                platform_account_id=platform_account_id,
+                enabled=True,
+            )
+        )
+    else:
+        preference.enabled = True
+
+
 @router.post("/subscriptions", response_model=SubscriptionResponse)
 async def subscribe(
     req: SubscribeRequest, db: AsyncSession = Depends(get_db)
@@ -82,8 +161,19 @@ async def subscribe(
         db.add(anchor)
         await db.flush()  # 拿 anchor.id
 
+        # Gate 1 migration froze a deterministic identity bridge: legacy
+        # anchor.id == formal creator.id.  Create the canonical owner first so
+        # platform_accounts.creator_id can never be NULL.
+        await _ensure_formal_creator(
+            db,
+            creator_id=anchor.id,
+            display_name=anchor.display_name,
+            avatar=anchor.avatar,
+        )
+
         pa = PlatformAccount(
             anchor_id=anchor.id,
+            creator_id=anchor.id,
             platform=req.platform,
             platform_user_id=req.platform_user_id,
             room_id=req.platform_user_id,
@@ -100,6 +190,12 @@ async def subscribe(
             anchor.avatar = req.avatar
         if req.display_name and anchor.display_name != req.display_name:
             anchor.display_name = req.display_name
+        await _ensure_formal_creator(
+            db,
+            creator_id=pa.creator_id,
+            display_name=anchor.display_name,
+            avatar=anchor.avatar,
+        )
 
     # 2. upsert subscription(唯一键 user_id+platform_account_id)
     result = await db.execute(
@@ -118,11 +214,18 @@ async def subscribe(
         )
         db.add(sub)
 
+    await _ensure_formal_follow(
+        db,
+        user_id=user_id,
+        creator_id=pa.creator_id,
+        platform_account_id=pa.id,
+    )
+
     await db.commit()
     await db.refresh(sub)
     return SubscriptionResponse(
         id=sub.id,
-        anchor_id=pa.anchor_id,
+        anchor_id=pa.creator_id,
         platform_account_id=pa.id,
         display_name=anchor.display_name if anchor else None,
         avatar=anchor.avatar if anchor else None,
@@ -167,7 +270,7 @@ async def list_subscriptions(
         out.append(
             SubscriptionResponse(
                 id=sub.id,
-                anchor_id=anchor.id,
+                anchor_id=pa.creator_id,
                 platform_account_id=pa.id,
                 display_name=anchor.display_name,
                 avatar=anchor.avatar,
@@ -187,5 +290,21 @@ async def unsubscribe(sub_id: int, db: AsyncSession = Depends(get_db)) -> None:
     sub = await db.get(UserSubscription, sub_id)
     if sub is None:
         raise HTTPException(status_code=404, detail="subscription not found")
+    follow = await db.scalar(
+        select(FollowModel).where(
+            FollowModel.user_id == sub.user_id,
+            FollowModel.platform_account_id == sub.platform_account_id,
+        )
+    )
+    preference = await db.scalar(
+        select(NotificationPreferenceModel).where(
+            NotificationPreferenceModel.user_id == sub.user_id,
+            NotificationPreferenceModel.platform_account_id == sub.platform_account_id,
+        )
+    )
+    if follow is not None:
+        await db.delete(follow)
+    if preference is not None:
+        await db.delete(preference)
     await db.delete(sub)
     await db.commit()

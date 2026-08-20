@@ -2,17 +2,14 @@
 
 POST /api/v1/auth/login   {code} → {user_id, openid, is_new}
 
-Dev 模式(DEBUG=true):
-- code 无效时(开发者工具/本地联调,微信 code 不可用)自动降级:
-  用 code 的 hash 生成确定性 openid `dev_<hash>`,保证本地联调可用
-- 返回完整 openid(生产建议改为只返回 tail + token)
+当前返回完整 openid 供 Gate 4 开发联调；生产仍需改为服务端会话 token。
+登录失败必须显式返回错误，不能用伪造 openid 静默降级。
 """
 from __future__ import annotations
 
-import hashlib
-
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +22,15 @@ router = APIRouter()
 
 
 class LoginRequest(BaseModel):
-    code: str
+    code: str = Field(min_length=1, max_length=128)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("code must not be blank")
+        return value
 
 
 class LoginResponse(BaseModel):
@@ -33,31 +38,22 @@ class LoginResponse(BaseModel):
     openid: str  # dev: 完整 openid;生产: 建议改 token + tail
     openid_tail: str
     is_new: bool
-
-
-def _dev_openid(code: str) -> str:
-    """Dev 降级: 用 code 生成确定性 openid(本地联调用)。"""
-    digest = hashlib.sha256(code.encode()).hexdigest()[:28]
-    return f"dev_{digest}"
+    live_start_template_id: str | None = None
 
 
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginResponse:
     """wx.login code → openid → 获取或创建 user。"""
-    openid = None
-    unionid = None
-
     try:
         info = get_wechat_client().code2session(req.code)
         openid = info["openid"]
         unionid = info.get("unionid")
-    except WeChatError as e:
-        if settings.debug:
-            # Dev 模式: code2session 不可用(假 code),降级为确定性 openid
-            openid = _dev_openid(req.code)
-            unionid = None
-        else:
-            raise HTTPException(status_code=400, detail=f"code2session failed: {e.errmsg}")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="微信登录服务配置不完整") from exc
+    except WeChatError as exc:
+        raise HTTPException(status_code=400, detail="微信登录凭证无效或已失效") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="微信登录服务暂时不可用，请重试") from exc
 
     result = await db.execute(select(User).where(User.openid == openid))
     user = result.scalar_one_or_none()
@@ -80,4 +76,5 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginR
         openid=openid,
         openid_tail=openid[-4:],
         is_new=is_new,
+        live_start_template_id=settings.wx_template_live_start.strip() or None,
     )

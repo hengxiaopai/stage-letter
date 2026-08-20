@@ -105,5 +105,8 @@ def test_gate3_closure_and_gate4_handoff_are_frozen() -> None:
     assert "Gate 3 is **PASS / CLOSED**" in gate
     assert "Gate 4.0" in gate and "is now current" in gate
     assert "Gate 3  Notification Engine  ✅ PASS / CLOSED" in readme
-    assert "Gate 4  微信小程序             🚧 4.0 CURRENT" in readme
+    gate4_line = next(line for line in readme.splitlines() if line.startswith("Gate 4  微信小程序"))
+    gate5_line = next(line for line in readme.splitlines() if line.startswith("Gate 5  Admin / Observability"))
+    assert "PASS / CLOSED" in gate4_line
+    assert "PASS / CLOSED" in gate5_line
     assert "真实点击/页面交互属于 Gate 4" in roadmap

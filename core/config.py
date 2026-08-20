@@ -52,6 +52,10 @@ class Settings:
     wx_secret: str = _env("WX_SECRET", "")
     wx_template_live_start: str = _env("WX_TEMPLATE_LIVE_START", "")
 
+    # ── Internal admin (Gate 5; configure only in local/deployed secrets) ──
+    admin_username: str = _env("ADMIN_USERNAME", "")
+    admin_password: str = _env("ADMIN_PASSWORD", "")
+
     # ── 轮询 ──
     probe_min_interval_s: float = float(_env("PROBE_MIN_INTERVAL", "3"))
     probe_default_timeout_s: float = float(_env("PROBE_TIMEOUT", "8"))

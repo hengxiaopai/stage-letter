@@ -19,7 +19,7 @@ import logging
 from fastapi import FastAPI
 
 from api.composition import build_api_services
-from api.routers import anchors, auth, health, lives, notifications, subscriptions
+from api.routers import admin, anchors, auth, health, lives, notifications, subscriptions
 from core.config import settings
 from core.db import async_session
 
@@ -51,3 +51,4 @@ app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"
 app.include_router(lives.router, prefix="/api/v1", tags=["lives"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["notifications"])
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(admin.router, tags=["admin"])
