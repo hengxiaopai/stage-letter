@@ -22,6 +22,7 @@ WX_TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token"
 WX_SEND_SUBSCRIBE_URL = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send"
 
 ERR_OK = 0
+ERR_INVALID_OPENID = 40003
 ERR_USER_REFUSE = 43101
 ERR_TEMPLATE_INVALID = 40037
 ERR_RATE_LIMIT = 45009
@@ -117,6 +118,17 @@ def normalize_wechat_response(raw: WeChatRawResponse) -> ProviderOutcome:
         return ProviderOutcome(
             ProviderOutcomeKind.ACCEPTED,
             GrantEffect.CONSUME,
+            provider_code=code_text,
+            provider_message=message,
+        )
+    if code == ERR_INVALID_OPENID:
+        # Real Gate 1.6-5 provider evidence proved this is an explicit rejection:
+        # the recipient identity is not valid for the current Mini Program app.
+        # No message was accepted and no subscription grant was consumed. Treat
+        # it as identity/auth repair rather than an ambiguous provider outcome.
+        return ProviderOutcome(
+            ProviderOutcomeKind.AUTH_REQUIRED,
+            GrantEffect.PRESERVE,
             provider_code=code_text,
             provider_message=message,
         )
