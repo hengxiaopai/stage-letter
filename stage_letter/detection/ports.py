@@ -77,7 +77,6 @@ class DetectionLeaseRepository(Protocol):
         account_id: str,
         probe_id: str,
         owner_token: str,
-        now: datetime,
         lease_seconds: int,
     ) -> DetectionLeaseAcquireResult: ...
 
