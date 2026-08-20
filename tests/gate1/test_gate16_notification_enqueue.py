@@ -22,10 +22,13 @@ from stage_letter.domain.notifications import (
     WeChatGrantLedger,
     resolve_wechat_grant_state,
 )
+from stage_letter.infrastructure.db.base import Base
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE_PATH = ROOT / "stage_letter" / "application" / "services" / "notification_enqueue.py"
+MIGRATION_PATH = ROOT / "migrations" / "versions" / "f16e2a7c4d10_gate16_recipient_resolution.py"
+GRANT_REPO_PATH = ROOT / "stage_letter" / "infrastructure" / "db" / "repositories" / "grant.py"
 T0 = datetime(2026, 8, 20, 1, 0, tzinfo=timezone.utc)
 
 
@@ -306,6 +309,23 @@ class Gate16NotificationEnqueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("save_session", source)
         self.assertNotIn("append_event", source)
         self.assertNotIn("send_wechat", source)
+
+    def test_gate16_migration_extends_gate14_and_only_repairs_recipient_contract(self) -> None:
+        source = MIGRATION_PATH.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "f16e2a7c4d10"', source)
+        self.assertIn('down_revision: Union[str, Sequence[str], None] = "d14e7c9a5b30"', source)
+        self.assertIn('INDEX_NAME = "idx_g16_follows_account_user"', source)
+        self.assertIn("INSERT INTO notification_preferences", source)
+        self.assertIn("TRUE", source)
+        self.assertNotIn("CREATE TABLE wechat_subscription_grants", source)
+        self.assertNotIn("op.drop_table", source)
+
+    def test_grant_mapping_does_not_expand_frozen_formal_domain_metadata(self) -> None:
+        self.assertNotIn("wechat_subscription_grants", Base.metadata.tables)
+        source = GRANT_REPO_PATH.read_text(encoding="utf-8")
+        self.assertIn("MetaData()", source)
+        self.assertIn('Table(\n    "wechat_subscription_grants"', source)
+        self.assertNotIn("from stage_letter.infrastructure.db.base import Base", source)
 
 
 if __name__ == "__main__":

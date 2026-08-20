@@ -276,12 +276,14 @@ async def _main() -> int:
                     NotificationDeliveryModel.live_event_id == event_pk
                 )
             )
-            await session.execute(
-                text(
-                    "DELETE FROM wechat_subscription_grants WHERE user_id = ANY(:user_ids)"
-                ),
-                {"user_ids": user_ids},
-            )
+            for user_id in user_ids:
+                await session.execute(
+                    text(
+                        "DELETE FROM wechat_subscription_grants "
+                        "WHERE user_id = :user_id"
+                    ),
+                    {"user_id": user_id},
+                )
             await session.execute(
                 delete(NotificationPreferenceModel).where(
                     NotificationPreferenceModel.user_id.in_(user_ids)
