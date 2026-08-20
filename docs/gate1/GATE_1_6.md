@@ -1,6 +1,6 @@
 # Gate 1.6 — Notification Queue + WeChat Delivery
 
-Status: **CURRENT / 1.6-3 CODE LANDED / LOCAL EVIDENCE PENDING**
+Status: **CURRENT / 1.6-4 CODE LANDED / LOCAL EVIDENCE PENDING**
 
 Entry authority: Gate 1.5 PASS / CLOSED.
 
@@ -16,52 +16,41 @@ canonical LiveEvent
   -> durable execution state machine
   -> WeChat provider adapter
   -> provider result normalization
+  -> real-account acceptance
 ```
 
-Notification failure must never mutate creator live truth, `LiveSession`, or `LiveEvent`.
+Notification/provider failure must never mutate creator live truth, `LiveSession`, or `LiveEvent`.
 
 ## 2. Internal slices
 
 ```text
 Gate 1.6-1  Eligibility + Logical Delivery Contract               PASS / CLOSED
 Gate 1.6-2  Recipient / Grant Resolution + Durable Enqueue        PASS / CLOSED
-Gate 1.6-3  Delivery State Machine + Crash / Retry Recovery        CURRENT / CODE LANDED
-Gate 1.6-4  WeChat Provider Adapter + Result Normalization         NOT STARTED
+Gate 1.6-3  Delivery State Machine + Crash / Retry Recovery        PASS / CLOSED
+Gate 1.6-4  WeChat Provider Adapter + Result Normalization         CURRENT / CODE LANDED
 Gate 1.6-5  Restart + Real WeChat Acceptance                       NOT STARTED
 ```
 
-## 3. Inherited Gate 0D truth
-
-Eligibility requires all of:
+## 3. Permanent safety constraints
 
 ```text
-LiveEvent.event_type == LIVE_STARTED
-LiveEvent.cause      == TRANSITION
-Follow               == true
-NotificationPreference.enabled == true
-WeChat grant state   == GRANTED
-```
-
-Logical delivery identity remains exactly:
-
-```text
-(user_id, live_event_id, channel)
-```
-
-Permanent safety constraints remain inherited:
-
-```text
+LIVE_STARTED + TRANSITION is required for live-start delivery
+BOOTSTRAP_LIVE never creates a live-start notification
+logical delivery identity = (user_id, live_event_id, channel)
 SENT is terminal for one logical delivery
 SENT does not prove global grant exhaustion
-IN_FLIGHT at crash/restart -> AMBIGUOUS -> no blind resend
-exact same provider payload may produce duplicate external notifications
-no provider-backed exactly-once claim
-non-zero provider codes stay conservative unless evidence-backed
+stale IN_FLIGHT -> AMBIGUOUS -> no blind resend
+message payload equality does not imply provider deduplication
+unknown provider result is never promoted to success/retry without evidence
+no worker/provider/external exactly-once claim
+secret/token material is never persisted or exposed through normalized outcomes
 ```
+
+Gate 0A remains **DEGRADED** for the deferred same-creator real-provider OFFLINE -> LIVE -> OFFLINE lifecycle evidence gap. Notification evidence does not replace that missing provider evidence.
 
 ## 4. Gate 1.6-1 — PASS / CLOSED
 
-Landed the pure formal notification eligibility policy and logical `PENDING` delivery construction.
+Landed pure eligibility and logical PENDING-delivery construction.
 
 Accepted evidence:
 
@@ -72,92 +61,52 @@ complete Gate 1 suite            357 / 357 PASS
 
 ## 5. Gate 1.6-2 — PASS / CLOSED
 
-Gate 1.6-2 added:
+Landed:
 
 ```text
 event-time follower fan-out
 NotificationPreference default/repair contract
-formal optimistic WeChat grant ledger boundary
-durable NotificationDelivery enqueue
+formal optimistic WeChat grant-ledger read boundary
+durable PENDING NotificationDelivery enqueue
 PostgreSQL idempotent reuse by (user,event,channel)
 ```
 
-Accepted local evidence:
+Accepted evidence:
 
 ```text
-complete Gate 1 suite            372 / 372 PASS
-migration head                   f16e2a7c4d10
-PostgreSQL enqueue probe         PASS
-fanout_index_present             true
-first enqueue created            1
-second enqueue reused_existing   1
-final delivery count             1
-wechat_provider_called           false
-provider_exactly_once_claimed    false
-notification_exactly_once_claimed false
+complete Gate 1 suite               372 / 372 PASS
+migration head                      f16e2a7c4d10
+PostgreSQL enqueue probe            PASS
+fanout_index_present                true
+first enqueue created               1
+second enqueue reused_existing      1
+final delivery count                1
+wechat_provider_called              false
+provider_exactly_once_claimed       false
+notification_exactly_once_claimed   false
 ```
 
-The accepted probe examined four candidate recipients and proved the conservative split:
+## 6. Gate 1.6-3 — PASS / CLOSED
 
-```text
-eligible target             -> one PENDING delivery
-missing preference          -> skipped
-other ineligible targets    -> skipped
-same logical enqueue retry  -> existing delivery reused
-```
+Gate 1.6-3 froze the durable delivery execution state machine.
 
-`production_approved=false` remains correct because no real WeChat send occurred in 1.6-2.
-
-## 6. Gate 1.6-3 — CURRENT / CODE LANDED
-
-### 6.1 Delivery execution metadata
-
-The formal `NotificationDelivery` value now carries the already-existing persistence execution fields:
-
-```text
-attempt
-next_attempt_at
-in_flight_at
-sent_at
-error_code
-error_message
-```
-
-Gate 1.1's frozen state-only value construction remains readable/constructible. Strict execution metadata is validated when a state transition is actually performed, rather than by breaking older value construction contracts.
-
-### 6.2 Claimable states
-
-Only these states may be automatically claimed:
+Automatic claim is limited to:
 
 ```text
 PENDING
 WAITING_RETRY where next_attempt_at <= now
 ```
 
-Claim transition:
+Claim:
 
 ```text
 PENDING / due WAITING_RETRY
   -> IN_FLIGHT
   -> attempt += 1
   -> in_flight_at = now
-  -> next_attempt_at = null
 ```
 
-Automatic blind retry is **not** allowed for:
-
-```text
-IN_FLIGHT
-WAITING_AUTH
-BLOCKED_CONFIG
-AMBIGUOUS
-SENT
-FAILED_TERMINAL
-```
-
-### 6.3 Attempt outcome state machine
-
-One persisted `IN_FLIGHT` attempt can transition to:
+One persisted IN_FLIGHT attempt may resolve to:
 
 ```text
 WAITING_RETRY
@@ -168,64 +117,19 @@ FAILED_TERMINAL
 AMBIGUOUS
 ```
 
-Gate 1.6-3 does not decide which WeChat result maps to which state. That provider-result normalization belongs to Gate 1.6-4.
-
-Generic durable mechanics are now frozen:
-
-```text
-IN_FLIGHT -> WAITING_RETRY
-  stores explicit next_attempt_at
-
-WAITING_RETRY -> IN_FLIGHT
-  only when due
-  increments attempt
-
-IN_FLIGHT -> SENT
-  records sent_at
-  SENT is terminal
-
-IN_FLIGHT -> WAITING_AUTH / BLOCKED_CONFIG / FAILED_TERMINAL
-  no automatic blind claim
-```
-
-### 6.4 Crash/restart recovery
-
-A stale persisted `IN_FLIGHT` row is never returned to `PENDING` or `WAITING_RETRY` merely because the process restarted.
+Crash safety remains deliberately conservative:
 
 ```text
 stale IN_FLIGHT
   -> AMBIGUOUS
   -> preserve prior in_flight_at for forensic evidence
   -> error_code = CRASH_RECOVERY_AMBIGUOUS
-  -> no blind resend
+  -> never blind reclaim
 ```
 
-This is deliberately conservative because after a process loss the application cannot know whether the provider request was never issued, issued but not accepted, or accepted with the response lost.
+PostgreSQL claim coordination uses row locking with `FOR UPDATE SKIP LOCKED`. This coordinates durable claims but does not establish worker/provider exactly-once execution.
 
-### 6.5 PostgreSQL claim coordination
-
-`NotificationRepository` now exposes stable due/stale selection and row locking.
-
-The concrete PostgreSQL implementation uses:
-
-```text
-SELECT ... FOR UPDATE SKIP LOCKED
-```
-
-A delivery claim is persisted and committed before any later provider I/O. Multiple workers may race to inspect the same due candidate, but only a locked current-state row can be transitioned to `IN_FLIGHT`.
-
-This is queue coordination, not worker/provider exactly-once execution.
-
-### 6.6 Execution indexes
-
-New forward-only migration:
-
-```text
-a63f4b2d9e71
-  down_revision = f16e2a7c4d10
-```
-
-It adds only:
+Execution indexes remain:
 
 ```text
 idx_g163_delivery_due
@@ -235,124 +139,23 @@ idx_g163_delivery_inflight
   (state, in_flight_at, id)
 ```
 
-No table is added, no delivery identity changes, and no delivery/grant truth is rewritten.
-
-### 6.7 Application boundary
-
-Landed:
+Accepted local evidence:
 
 ```text
-stage_letter/application/services/notification_delivery.py
-```
-
-It owns:
-
-```text
-claim_next_due(...)
-schedule_retry(...)
-mark_sent(...)
-mark_waiting_auth(...)
-mark_blocked_config(...)
-mark_failed_terminal(...)
-recover_stale_in_flight(...)
-```
-
-It performs no provider/network request, does not obtain an access token, and does not mutate `LiveSession`, `LiveEvent`, or creator live truth.
-
-Gate 1.4's worker-composition freeze remains intact; no notification/provider worker is wired in this slice.
-
-### 6.8 Dedicated contracts
-
-Landed:
-
-```text
-tests/gate1/test_gate16_delivery_state_machine.py  18 tests
-```
-
-The contracts cover:
-
-```text
-PENDING claim
-explicit retry scheduling
-not-due retry rejection
-due retry attempt increment
-SENT terminal semantics
-WAITING_AUTH / BLOCKED_CONFIG non-blind-retry semantics
-FAILED_TERMINAL semantics
-crash -> AMBIGUOUS recovery
-frozen state-only construction compatibility
-application claim/save/commit behavior
-SKIP LOCKED candidate handling
-invalid retry transition rejection
-stale recovery / no-op recovery
-migration + model index parity
-repository execution metadata persistence
-provider/network/live-truth boundary
-```
-
-Accepted entering complete Gate 1 baseline is 372. Eighteen new contracts raise the expected suite to:
-
-```text
-390 / 390
-```
-
-### 6.9 Real PostgreSQL acceptance
-
-Landed:
-
-```text
-scripts/gate16_delivery_state_machine_probe.py
-```
-
-The probe requires migration head `a63f4b2d9e71` and verifies two independent durable paths.
-
-Crash/concurrency path:
-
-```text
-one PENDING delivery
-  -> two concurrent claim transactions
-  -> exactly one claim winner
-  -> persisted IN_FLIGHT attempt=1
-  -> process/runtime restart
-  -> stale recovery
-  -> AMBIGUOUS
-  -> later automatic claim returns none
-```
-
-Retry/terminal path:
-
-```text
-second PENDING delivery
-  -> claim attempt=1
-  -> WAITING_RETRY with explicit due time
-  -> before due: no claim
-  -> at due: claim attempt=2
-  -> SENT
-  -> later automatic claim returns none
-```
-
-Expected core evidence:
-
-```text
-status                              PASS
-migration_head                      a63f4b2d9e71
+Gate 1.6-3 dedicated contracts      18 / 18 PASS
+complete Gate 1 suite               390 / 390 PASS
+migration head                      a63f4b2d9e71
+PostgreSQL state-machine probe      PASS
 execution_indexes_present           true
 concurrent_claim_non_null_count     1
-
-first_delivery_after_claim.state    IN_FLIGHT
-first_delivery_after_claim.attempt  1
 restart_recovery.recovered_ambiguous 1
 first_delivery_after_recovery.state AMBIGUOUS
 claim_after_ambiguous               false
-
-retry_first_attempt                 1
-waiting_retry_state                 WAITING_RETRY
 retry_before_due_claimed            false
 retry_second_attempt                2
 sent_state                          SENT
 sent_terminal                       true
 claim_after_sent                    false
-
 final_ambiguous_count               1
 final_sent_count                    1
 wechat_provider_called              false
@@ -362,30 +165,286 @@ notification_exactly_once_claimed   false
 production_approved                 false
 ```
 
-### 6.10 Acceptance — Gate 1.6-3
+Therefore Gate 1.6-3 is closed.
+
+## 7. Gate 1.6-4 — CURRENT / CODE LANDED
+
+### 7.1 Application-owned provider contract
+
+Landed:
 
 ```text
-A. Gate 1.6-2 PASS / CLOSED                      PASS
-B. execution-state transitions                  CODE / CONTRACT
-C. only PENDING/due retry automatically claimable CODE / CONTRACT
-D. SENT terminal                                CODE / CONTRACT
-E. stale IN_FLIGHT -> AMBIGUOUS                 CODE / CONTRACT
-F. AMBIGUOUS never blindly reclaimed            CODE / CONTRACT
-G. transaction row-lock coordination            CODE / CONTRACT
-H. no provider/network/live-truth mutation      CODE / CONTRACT
-I. migration head a63f4b2d9e71                  CODE / PENDING LOCAL
-J. dedicated Gate 1.6-3 contracts               PENDING / expected 18
-K. complete Gate 1 suite                         PENDING / expected 390
-L. real PostgreSQL crash/retry probe             PENDING
+stage_letter/application/notification_providers.py
 ```
 
-Gate 1.6-3 remains CURRENT until I-L pass.
+The formal application boundary now owns semantic WeChat live-start messages and a finite normalized provider vocabulary:
 
-## 7. Next slice
+```text
+ProviderOutcomeKind
+  ACCEPTED
+  AUTH_REQUIRED
+  CONFIG_BLOCKED
+  RETRYABLE
+  TERMINAL_FAILURE
+  AMBIGUOUS
 
-Gate 1.6-4 will add the WeChat provider adapter and evidence-backed provider-result normalization. It may map normalized outcomes into the state machine frozen by 1.6-3, but must not weaken `AMBIGUOUS` crash safety or invent external exactly-once semantics.
+GrantEffect
+  CONSUME
+  PRESERVE
+```
 
-## 8. Stop rules
+`WeChatLiveStartMessage` contains semantic content only. It does not carry a provider dedupe key and does not imply external exactly-once behavior.
+
+### 7.2 Formal WeChat HTTP adapter
+
+Landed:
+
+```text
+stage_letter/infrastructure/notifications/wechat.py
+```
+
+It contains:
+
+```text
+WeChatSubscribeFormalAdapter
+HttpxWeChatProviderGateway
+build_live_start_template_data(...)
+normalize_wechat_response(...)
+```
+
+Provider-specific five-field template translation remains in infrastructure:
+
+```text
+thing1  anchor name
+thing2  room title
+time3   start time
+thing5  theme
+thing6  activity
+```
+
+The HTTP gateway owns only private in-memory access-token caching and transport. It imports no `core`, `api`, legacy `workers/notify`, `platform_adapters`, or `experiments` code.
+
+### 7.3 Evidence-backed result normalization
+
+Only accepted project evidence receives specific semantics:
+
+```text
+errcode 0
+  -> ACCEPTED
+  -> GrantEffect.CONSUME
+
+errcode 43101
+  -> AUTH_REQUIRED
+  -> GrantEffect.CONSUME
+
+errcode 40037
+  -> CONFIG_BLOCKED
+  -> GrantEffect.PRESERVE
+
+errcode 45009
+  -> RETRYABLE
+  -> GrantEffect.PRESERVE
+
+errcode 40001 / 42001
+  -> RETRYABLE
+  -> invalidate cached access token
+  -> GrantEffect.PRESERVE
+```
+
+Conservative unknown handling:
+
+```text
+explicit HTTP 5xx
+  -> RETRYABLE
+
+access-token acquisition failure before message POST
+  -> RETRYABLE
+
+message POST transport failure / response loss
+  -> AMBIGUOUS
+  -> never blind retry
+
+malformed provider response
+  -> AMBIGUOUS
+
+arbitrary unknown non-zero errcode
+  -> AMBIGUOUS
+  -> never silently promoted to retry/success
+```
+
+Transport exception text is not exposed through normalized outcomes. Fixed safe messages are used so a lower-level exception cannot leak token/secret material.
+
+### 7.4 Mapping normalized outcomes onto Gate 1.6-3
+
+Landed:
+
+```text
+stage_letter/application/services/wechat_delivery.py
+```
+
+One already-persisted IN_FLIGHT attempt maps as follows:
+
+```text
+ACCEPTED        -> SENT
+AUTH_REQUIRED   -> WAITING_AUTH
+CONFIG_BLOCKED  -> BLOCKED_CONFIG
+RETRYABLE       -> WAITING_RETRY
+TERMINAL_FAILURE-> FAILED_TERMINAL
+AMBIGUOUS       -> AMBIGUOUS
+```
+
+Retry policy is explicit and bounded:
+
+```text
+base delay      10s
+exponential     10,20,40,...
+max delay       300s
+max attempts    8
+```
+
+A retryable outcome at the configured attempt ceiling becomes `FAILED_TERMINAL` rather than looping forever.
+
+### 7.5 Grant-effect boundary
+
+Gate 1.6-4 normalizes whether provider evidence says the optimistic ledger should later be consumed or preserved, but it deliberately does **not** mutate `wechat_subscription_grants` yet.
+
+```text
+0 / 43101 -> CONSUME
+40037 / 45009 / token errors / unknowns -> PRESERVE
+```
+
+Real durable grant consumption, user/openid resolution, runtime worker wiring, and real WeChat acceptance are reserved for Gate 1.6-5 so provider I/O and durable accounting can be accepted together.
+
+### 7.6 No migration
+
+Gate 1.6-4 adds no table, column, constraint, or index.
+
+Expected migration head remains:
+
+```text
+a63f4b2d9e71
+```
+
+### 7.7 Dedicated contracts
+
+Landed:
+
+```text
+tests/gate1/test_gate16_wechat_provider.py
+  20 tests
+
+tests/gate1/test_gate16_wechat_provider_state_integration.py
+  2 tests
+```
+
+Dedicated Gate 1.6-4 total:
+
+```text
+22 tests
+```
+
+They cover:
+
+```text
+semantic message validation
+five-field payload shape / truncation
+0 / 43101 / 40037 / 45009 / 40001 / 42001 normalization
+HTTP 5xx handling
+unknown/malformed result ambiguity
+pre-send token failure vs post-send transport ambiguity
+private token cache invalidation
+secret-free send payload / normalized outcome
+ACCEPTED -> SENT
+AUTH_REQUIRED -> WAITING_AUTH
+CONFIG_BLOCKED -> BLOCKED_CONFIG
+RETRYABLE -> WAITING_RETRY
+retry exhaustion -> FAILED_TERMINAL
+AMBIGUOUS -> AMBIGUOUS / no blind retry
+actual NotificationDeliveryApplicationService ambiguous persistence
+application/infrastructure dependency boundaries
+```
+
+Accepted entering complete Gate 1 baseline is 390. Twenty-two new tests raise the expected complete suite to:
+
+```text
+412 / 412
+```
+
+### 7.8 Deterministic normalization probe
+
+Landed:
+
+```text
+scripts/gate16_wechat_provider_normalization_probe.py
+```
+
+This probe intentionally uses no real WeChat account, no access token, no app secret, and no provider network call. It verifies the normalized outcome matrix and the state mapping before the real-account acceptance slice.
+
+Expected core evidence:
+
+```text
+status                          PASS
+migration_head_expected         a63f4b2d9e71
+normalization.0.kind            ACCEPTED
+normalization.43101.kind        AUTH_REQUIRED
+normalization.40037.kind        CONFIG_BLOCKED
+normalization.45009.kind        RETRYABLE
+normalization.40001.kind        RETRYABLE
+normalization.42001.kind        RETRYABLE
+normalization.unknown.kind      AMBIGUOUS
+normalization.token_unavailable.kind RETRYABLE
+normalization.send_transport.kind    AMBIGUOUS
+state_mapping.accepted.state    SENT
+state_mapping.auth_required.state WAITING_AUTH
+state_mapping.config_blocked.state BLOCKED_CONFIG
+state_mapping.retryable.state   WAITING_RETRY
+state_mapping.ambiguous.state   AMBIGUOUS
+real_wechat_called              false
+access_token_loaded             false
+app_secret_loaded               false
+provider_exactly_once_claimed   false
+notification_exactly_once_claimed false
+production_approved             false
+```
+
+### 7.9 Acceptance — Gate 1.6-4
+
+```text
+A. Gate 1.6-3 PASS / CLOSED                         PASS
+B. formal WeChat provider contract                 CODE / CONTRACT
+C. five-field provider payload translation         CODE / CONTRACT
+D. evidence-backed known-code normalization        CODE / CONTRACT
+E. unknown/transport ambiguity remains conservative CODE / CONTRACT
+F. normalized outcomes map to frozen 1.6-3 states CODE / CONTRACT
+G. no real WeChat/secret/grant mutation yet        CODE / CONTRACT
+H. migration head remains a63f4b2d9e71             PENDING LOCAL
+I. dedicated Gate 1.6-4 contracts                  PENDING / expected 22
+J. complete Gate 1 suite                            PENDING / expected 412
+K. deterministic provider-normalization probe      PENDING
+```
+
+Gate 1.6-4 remains CURRENT until H-K pass.
+
+## 8. Next slice
+
+Gate 1.6-5 will perform final runtime wiring and restart + real WeChat acceptance. It must cover, at minimum:
+
+```text
+resolve recipient openid and provider message input
+re-check / account for optimistic grant before real send
+claim IN_FLIGHT before provider I/O
+apply normalized provider outcome
+atomically record evidence-backed grant consumption where required
+prove retry/restart behavior around real provider attempts
+prove stale IN_FLIGHT -> AMBIGUOUS remains no-blind-resend
+prove no secret/token persistence or logging
+exercise a real accepted WeChat send with controlled test account when available
+retain honest no-exactly-once claims
+```
+
+Gate 1.6-5 must not use notification success to repair Gate 0A provider lifecycle evidence.
+
+## 9. Stop rules
 
 Stop with FAIL/BLOCKED if progress requires:
 
@@ -398,11 +457,7 @@ notification/provider failure mutating live truth
 payload equality treated as provider deduplication
 blind resend of AMBIGUOUS delivery
 exactly-once external delivery claim
-raw non-zero provider code promoted without evidence
-secret material persisted or logged
+unknown raw non-zero provider code promoted without evidence
+secret material persisted/logged/exposed in normalized outcomes
 formal runtime importing experiments or legacy workers/notify
 ```
-
-## 9. Inherited caveat
-
-Gate 0A remains **DEGRADED** for the deferred same-creator OFFLINE -> LIVE -> OFFLINE real-provider lifecycle evidence gap. Gate 1.6 proceeds from already-persisted canonical `LiveEvent` facts and does not use notification success to repair or reinterpret that missing provider lifecycle evidence.
