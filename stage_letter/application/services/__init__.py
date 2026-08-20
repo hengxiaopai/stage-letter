@@ -1,6 +1,7 @@
 """Infrastructure-free application services for Stage Letter."""
 
 from .creator import CreatorApplicationService
+from .detection_lease import DetectionLeaseApplicationService
 from .follow import FollowApplicationService
 from .live import LiveObservationApplicationService
 from .live_consumption import (
@@ -45,6 +46,7 @@ from .wechat_finalize import (
 __all__ = [
     "CreatorApplicationService",
     "DeliveryRecoveryResult",
+    "DetectionLeaseApplicationService",
     "FollowApplicationService",
     "LiveObservationApplicationService",
     "LiveObservationConsumptionApplicationService",
