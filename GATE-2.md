@@ -57,96 +57,93 @@ accepted Gate 1 live-truth or notification semantics.
 
 Status: PASS / CLOSED
 
-### Contract
+Accepted cadence is HOT=30s, WARM=60s, COLD=300s. NULL/blank tier values use
+WARM; corrupt non-blank values conservatively use COLD. Never-probed accounts are
+due immediately and the due boundary is inclusive.
 
-Gate 2.1 answers only **which enabled platform accounts are eligible to probe now**.
-It does not change live truth, health state, retry classification, notifications,
-or provider semantics.
-
-Accepted default cadence:
-
-- `HOT`: 30 seconds
-- `WARM`: 60 seconds
-- `COLD`: 300 seconds
-
-Legacy `NULL`/blank tier values normalize to `WARM`. Unknown non-blank tier values
-fall back to `COLD`, preventing corrupted metadata from increasing provider load.
-A never-probed enabled account is due immediately. A probed account becomes due at
-`last_probe_at + tier_interval`; the boundary instant is inclusive.
-
-### Persistence boundary
-
-`platform_accounts.polling_tier` remains operational metadata and is read through
-an independent SQLAlchemy Core `MetaData`, not added to the frozen Gate 1 Base.
-The last formal monitoring probe time is derived from the latest durable
-`live_observations.created_at` whose `observation_id` starts with `monitor:`.
-This reuses the accepted durable probe ingress instead of reviving legacy
-`last_checked_at` / `last_status` truth coupling.
-
-### Runtime reuse
-
-`workers/detection_composition.py` wires the Gate 2 due-aware target service into
-Gate 1's already accepted `MonitoringScheduler` and
-`MonitoringProbeApplicationService`. Therefore provider I/O remains outside the
-DB transaction and every provider result still enters through durable
-`LiveObservation` first.
-
-### Gate 2.1 acceptance
-
-- Complete Gate 1 + Gate 2 regression: `452 passed, 173 subtests passed`.
-- Read-only PostgreSQL due-selection probe PASS over 15 enabled accounts.
-- All 15 existing accounts normalized to WARM and were due because no formal
-  `monitor:` observation had yet been persisted for them.
-- Accepted cadence remained HOT=30s, WARM=60s, COLD=300s.
-- Alembic head remained `a63f4b2d9e71`; Gate 2.1 added no migration.
-- Probe made no provider/notification calls and performed no DB writes.
+Gate 2.1 acceptance froze `452 passed, 173 subtests passed`, a read-only
+PostgreSQL due-selection PASS across 15 enabled WARM accounts, no provider or
+notification calls, no DB writes, and migration head `a63f4b2d9e71`.
 
 ## Gate 2.2 — Per-Platform Runtime Isolation + Rate Limits + Retry Classification
 
+Status: PASS / CLOSED
+
+Gate 2.2 controls how a due provider operation executes: bounded global and
+per-platform concurrency, independent per-platform start-rate limiting, stable
+logical probe identity across retries, and bounded exponential backoff.
+
+Automatic retry is limited to explicit transient evidence: `TIMEOUT`, `NETWORK`,
+`RATE_LIMITED`, `UPSTREAM_ERROR`, plus Python `TimeoutError` / `ConnectionError`.
+Auth/forbidden/captcha/parse/schema/ambiguous/not-found/unknown evidence stops
+without blind retry. Retry exhaustion never fabricates OFFLINE.
+
+Gate 2.2 acceptance froze `463 passed, 173 subtests passed` and deterministic
+runtime policy PASS: transient retry succeeded on attempt 2, auth stopped after
+one attempt, 2 req/s start times were `[0.0, 0.5, 1.0]`, no provider/notification
+call or DB write occurred, and migration head remained `a63f4b2d9e71`.
+
+## Gate 2.3 — Probe Telemetry + Platform Health Persistence
+
 Status: CURRENT
 
-### Contract
+### Operational telemetry contract
 
-Gate 2.2 controls **how a due provider operation is allowed to execute**. It does
-not decide live truth and does not own platform-health persistence yet.
+One `ProbeTelemetryRecord` describes one logical `monitor:` execution after the
+Gate 2.2 coordinator finishes. It records account/platform identity, start/end,
+total latency, attempt count, operational success/failure, resulting observation
+status when available, and a normalized failure kind when execution failed.
 
-- Global execution concurrency is bounded.
-- Every platform has its own semaphore; waiting work from one saturated platform
-  does not occupy all global execution capacity.
-- Provider start rate is limited independently per platform. Waiting for the next
-  rate window happens before execution semaphores are acquired.
-- Default formal start rate is 1 request/second/platform and is configurable by
-  explicit per-platform policy.
-- Retries preserve the exact same `MonitoringProbeRequest` / `monitor:` probe ID.
-- Exponential backoff remains bounded.
-- Only explicit transient failures retry automatically:
-  `TIMEOUT`, `NETWORK`, `RATE_LIMITED`, `UPSTREAM_ERROR`, plus Python
-  `TimeoutError` / `ConnectionError`.
-- `AUTH_REQUIRED`, `FORBIDDEN`, `CAPTCHA_REQUIRED`, `PARSE_ERROR`,
-  `SCHEMA_DRIFT`, `AMBIGUOUS`, `NOT_FOUND`, `UNKNOWN` stop without blind retry.
-- Cancellation is never swallowed by the retry loop.
-- Retry exhaustion returns the original failure and never fabricates OFFLINE or
-  another live-state value.
+`success=True` means the formal provider operation completed and durable ingress
+succeeded. A resulting `UNKNOWN` LiveObservation is therefore still an
+operationally successful probe; UNKNOWN is not silently reclassified as failure
+or OFFLINE.
 
-### Formal runtime
+Raw exception/provider messages are not persisted by the formal telemetry path.
+`error_message` receives only the normalized failure kind, reducing secret/token
+leak risk.
 
-`workers/detection_runtime.py` combines Gate 2.1 due targets with the Gate 2.2
-execution coordinator, while retaining Gate 1.4's
-`MonitoringProbeApplicationService` as the only provider-to-durable-observation
-ingress. `UNKNOWN` remains a valid durable observation and is not treated as a
-transport failure.
+### Persistence boundary
 
-### Gate 2.2 acceptance
+`SQLAlchemyDetectionTelemetryRepository` uses independent SQLAlchemy Core
+`MetaData` and the existing physical `probe_runs` / `platform_health` tables. It
+is deliberately outside the frozen Gate 1 canonical Base.
 
-- Dedicated runtime-isolation/retry tests PASS.
+Formal Gate 2.3 probe rows are tagged with `telemetry_schema = gate2.3` in JSON.
+Platform 24-hour success/error counts and average latency are recomputed from
+only those tagged rows in the trailing 24-hour window; legacy probe rows are not
+silently mixed into the new formal metrics.
+
+Gate 2.3 updates operational evidence only:
+
+- success sets `last_success_at` and resets `consecutive_failures`;
+- failure sets `last_failure_at` and increments `consecutive_failures`;
+- success/error/latency 24h metrics are refreshed;
+- an absent platform-health row starts as `HEALTHY`;
+- an existing `platform_health.state` is preserved exactly.
+
+**Gate 2.3 does not perform HEALTHY/DEGRADED/DISABLED transitions. Gate 2.4 owns
+those circuit-breaker decisions.**
+
+### Runtime isolation from truth
+
+`DetectionCycleRuntime` appends telemetry only after the provider/durable-ingress
+outcome exists. Telemetry persistence failure is surfaced separately through
+`telemetry_failures`; it cannot reverse a successfully persisted observation,
+create/close a session/event, or touch notification delivery.
+
+### Gate 2.3 acceptance
+
+- Dedicated telemetry/health tests PASS.
 - Complete Gate 1 + Gate 2 regression remains green.
-- Deterministic Gate 2.2 runtime policy probe PASS.
-- Alembic head remains `a63f4b2d9e71`; Gate 2.2 adds no migration.
-- Acceptance probe performs no provider/notification call and no database write.
-- No exactly-once or Gate 0A lifecycle claim is introduced.
+- Controlled PostgreSQL acceptance writes one synthetic operational telemetry row,
+  verifies `probe_runs` + `platform_health`, then removes the synthetic row and
+  restores the exact pre-probe health snapshot.
+- Acceptance makes no provider/notification call and reports no live-truth mutation.
+- Alembic head remains `a63f4b2d9e71`; Gate 2.3 adds no migration.
+- No worker/provider exactly-once or Gate 0A lifecycle claim is introduced.
 
 ### Remaining Gate 2 slices
 
-- **2.3** Probe Telemetry + Platform Health Persistence.
 - **2.4** Degrade / Circuit-Breaker Policy + Recovery + Administrative Disable.
 - **2.5** Restart / Multi-Worker / Capacity Acceptance.
