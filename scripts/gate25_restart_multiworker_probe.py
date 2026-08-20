@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,6 +91,7 @@ async def _main() -> int:
     initial_lease_count = 0
     cleanup_performed = False
     winner_owner: str | None = None
+    final_lease_count = -1
     try:
         async with engine.connect() as connection:
             head = await connection.scalar(text("SELECT version_num FROM alembic_version"))
@@ -143,7 +143,6 @@ async def _main() -> int:
 
         repo_a = SQLAlchemyDetectionLeaseRepository(factory)
         repo_b = SQLAlchemyDetectionLeaseRepository(factory)
-        now = datetime.now(timezone.utc)
         probe_id = make_probe_id("gate25-controlled-race", str(account_id))
         owner_a = "gate25-worker-a"
         owner_b = "gate25-worker-b"
@@ -153,14 +152,12 @@ async def _main() -> int:
                 account_id=str(account_id),
                 probe_id=probe_id,
                 owner_token=owner_a,
-                now=now,
                 lease_seconds=LEASE_SECONDS,
             ),
             repo_b.try_acquire(
                 account_id=str(account_id),
                 probe_id=probe_id,
                 owner_token=owner_b,
-                now=now,
                 lease_seconds=LEASE_SECONDS,
             ),
         )
@@ -169,6 +166,13 @@ async def _main() -> int:
         if acquired:
             assert acquired[0].lease is not None
             winner_owner = acquired[0].lease.owner_token
+        winner_repo = repo_a if winner_owner == owner_a else repo_b
+        same_owner_reentrant = await winner_repo.try_acquire(
+            account_id=str(account_id),
+            probe_id=probe_id,
+            owner_token=winner_owner or "gate25-no-winner",
+            lease_seconds=LEASE_SECONDS,
+        )
 
         # A fresh engine represents another worker/process after restart. A live
         # lease must still be visible and block provider execution.
@@ -181,14 +185,30 @@ async def _main() -> int:
                 account_id=str(account_id),
                 probe_id=make_probe_id("gate25-after-restart", str(account_id)),
                 owner_token="gate25-worker-restart",
-                now=now + timedelta(seconds=1),
                 lease_seconds=LEASE_SECONDS,
             )
+
+            # Controlled crash-expiry simulation: only this synthetic lease row is
+            # moved into the past. Takeover still uses PostgreSQL current time.
+            async with restart_engine.begin() as connection:
+                expired_row_count = int(
+                    (
+                        await connection.execute(
+                            text(
+                                "UPDATE detection_probe_leases "
+                                "SET lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' "
+                                "WHERE platform_account_id=:account_id AND owner_token=:owner_token"
+                            ),
+                            {"account_id": account_id, "owner_token": winner_owner},
+                        )
+                    ).rowcount
+                    or 0
+                )
+
             expired_takeover = await restart_repo.try_acquire(
                 account_id=str(account_id),
                 probe_id=make_probe_id("gate25-expired-takeover", str(account_id)),
                 owner_token="gate25-worker-takeover",
-                now=now + timedelta(seconds=LEASE_SECONDS + 1),
                 lease_seconds=LEASE_SECONDS,
             )
             non_owner_release = await restart_repo.release(
@@ -220,7 +240,9 @@ async def _main() -> int:
             "migration_head_matches": head == EXPECTED_HEAD,
             "account_started_without_lease": initial_lease_count == 0,
             "concurrent_race_single_winner": race_acquired_count == 1,
+            "same_owner_is_not_reentrant": same_owner_reentrant.acquired is False,
             "restart_preserved_live_lease": before_expiry.acquired is False,
+            "controlled_expiry_applied": expired_row_count == 1,
             "expired_lease_takeover": expired_takeover.acquired is True,
             "old_owner_cannot_release_takeover": non_owner_release is False,
             "takeover_owner_released": owner_release is True,
@@ -242,7 +264,9 @@ async def _main() -> int:
             "platform": platform,
             "lease_seconds": LEASE_SECONDS,
             "concurrent_race_acquired_count": race_acquired_count,
+            "same_owner_reentrant_acquired": same_owner_reentrant.acquired,
             "restart_live_lease_acquired_by_second_worker": before_expiry.acquired,
+            "controlled_expiry_row_count": expired_row_count,
             "expired_takeover_acquired": expired_takeover.acquired,
             "non_owner_release_succeeded": non_owner_release,
             "takeover_owner_release_succeeded": owner_release,
