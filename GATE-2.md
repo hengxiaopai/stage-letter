@@ -2,7 +2,7 @@
 
 ## Gate 2.0 — Baseline / Boundary Freeze
 
-Status: CURRENT
+Status: PASS / CLOSED
 
 Gate 1 closed with the accepted baseline `435 / 435` and migration head
 `a63f4b2d9e71`. Gate 2 extends the detection runtime; it must not rewrite the
@@ -46,22 +46,62 @@ accepted Gate 1 live-truth or notification semantics.
 10. **Gate 0A remains DEGRADED.** Gate 2 synthetic/controlled evidence cannot close
     the missing same-creator real-provider lifecycle evidence.
 
-### Gate 2 slices
+### Gate 2.0 acceptance
 
-- **2.0** Baseline / Boundary Freeze.
-- **2.1** Due Selection + HOT/WARM/COLD Scheduling Policy.
+- Boundary tests PASS.
+- Complete Gate 1 + Gate 2.0 regression: `442 passed, 173 subtests passed`.
+- Alembic head remained `a63f4b2d9e71`.
+- No provider/network calls were required.
+
+## Gate 2.1 — Due Selection + HOT/WARM/COLD Scheduling Policy
+
+Status: CURRENT
+
+### Contract
+
+Gate 2.1 answers only **which enabled platform accounts are eligible to probe now**.
+It does not change live truth, health state, retry classification, notifications,
+or provider semantics.
+
+Accepted default cadence:
+
+- `HOT`: 30 seconds
+- `WARM`: 60 seconds
+- `COLD`: 300 seconds
+
+Legacy `NULL`/blank tier values normalize to `WARM`. Unknown non-blank tier values
+fall back to `COLD`, preventing corrupted metadata from increasing provider load.
+A never-probed enabled account is due immediately. A probed account becomes due at
+`last_probe_at + tier_interval`; the boundary instant is inclusive.
+
+### Persistence boundary
+
+`platform_accounts.polling_tier` remains operational metadata and is read through
+an independent SQLAlchemy Core `MetaData`, not added to the frozen Gate 1 Base.
+The last formal monitoring probe time is derived from the latest durable
+`live_observations.created_at` whose `observation_id` starts with `monitor:`.
+This reuses the accepted durable probe ingress instead of reviving legacy
+`last_checked_at` / `last_status` truth coupling.
+
+### Runtime reuse
+
+`workers/detection_composition.py` wires the Gate 2 due-aware target service into
+Gate 1's already accepted `MonitoringScheduler` and
+`MonitoringProbeApplicationService`. Therefore provider I/O remains outside the
+DB transaction and every provider result still enters through durable
+`LiveObservation` first.
+
+### Gate 2.1 acceptance
+
+- Dedicated due-selection tests PASS.
+- Complete Gate 1 + Gate 2 regression remains green.
+- Read-only PostgreSQL due-selection probe PASS.
+- Alembic head remains `a63f4b2d9e71`; Gate 2.1 adds no migration.
+- Probe does not call providers or notification delivery and does not write DB.
+
+### Remaining Gate 2 slices
+
 - **2.2** Per-Platform Runtime Isolation + Rate Limits + Retry Classification.
 - **2.3** Probe Telemetry + Platform Health Persistence.
 - **2.4** Degrade / Circuit-Breaker Policy + Recovery + Administrative Disable.
 - **2.5** Restart / Multi-Worker / Capacity Acceptance.
-
-### Gate 2.0 acceptance
-
-- Gate 2 boundary tests PASS.
-- Complete Gate 1 regression remains `435 / 435` PASS.
-- Alembic head remains `a63f4b2d9e71`; Gate 2.0 adds no migration.
-- No provider/network calls are required for Gate 2.0.
-
-Gate 2.0 closes only the architectural boundary. It does not claim tier cadence,
-health transitions, rate limits, or capacity are implemented until their later
-slices pass.
