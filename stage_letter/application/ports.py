@@ -222,6 +222,23 @@ class GrantRepository(Protocol):
         """Return the optimistic local WeChat grant ledger, or None when absent."""
         ...
 
+    async def consume_wechat_grant(
+        self,
+        user_id: str,
+        template_id: str,
+        *,
+        sent_at: datetime,
+        error_code: str | None = None,
+    ) -> WeChatGrantLedger | None:
+        """Record one provider-authoritative consumed send opportunity.
+
+        The row is locked by persistence. Consumption is allowed to exceed the
+        optimistic granted_count because the provider send result is stronger
+        evidence than the local ledger and Gate 0A explicitly permits drift.
+        None means the expected ledger row is missing.
+        """
+        ...
+
 
 @runtime_checkable
 class UnitOfWork(Protocol):
