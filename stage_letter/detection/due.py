@@ -1,4 +1,4 @@
-"""Pure scheduling policy for Gate 2.1 detection due selection.
+"""Pure scheduling policy for Gate 2 detection due selection.
 
 Polling cadence is operational metadata only. It decides when an enabled account
 may be probed; it never creates live truth or notification state.
@@ -59,12 +59,15 @@ def due_at(
     tier: PollingTier,
     last_probe_at: datetime | None,
     policy: DetectionCadencePolicy,
+    interval_multiplier: int = 1,
 ) -> datetime | None:
-    """Return the next eligible instant; None means never-probed and due now."""
+    """Return next eligible instant; None means never-probed and due now."""
 
+    if interval_multiplier < 1:
+        raise ValueError("interval_multiplier must be at least 1")
     if last_probe_at is None:
         return None
-    return _utc(last_probe_at) + policy.interval(tier)
+    return _utc(last_probe_at) + policy.interval(tier) * interval_multiplier
 
 
 def is_due(
@@ -73,6 +76,12 @@ def is_due(
     tier: PollingTier,
     last_probe_at: datetime | None,
     policy: DetectionCadencePolicy,
+    interval_multiplier: int = 1,
 ) -> bool:
-    next_at = due_at(tier=tier, last_probe_at=last_probe_at, policy=policy)
+    next_at = due_at(
+        tier=tier,
+        last_probe_at=last_probe_at,
+        policy=policy,
+        interval_multiplier=interval_multiplier,
+    )
     return next_at is None or _utc(now) >= next_at
