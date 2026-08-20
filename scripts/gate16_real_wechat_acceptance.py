@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Gate 1.6-5 guarded real-WeChat acceptance.
 
-This probe sends exactly one real subscribe message only when ``--send`` is
-provided. It never creates or edits live observations/sessions/events. It reuses
-an already-persisted canonical LIVE_STARTED/TRANSITION event, validates Follow +
-NotificationPreference + positive local grant, creates only the test user's
-logical PENDING delivery when absent, then (only with --send) claims it, sends
-once, atomically finalizes the provider outcome + grant effect, restarts the DB
-runtime, and verifies the persisted result.
+Without ``--send`` this probe is read-only and returns an ARMED plan. With
+``--send`` it sends exactly one real subscribe message. It never creates or
+edits live observations/sessions/events; it reuses an already-persisted canonical
+LIVE_STARTED/TRANSITION event. The send path creates only the test user's logical
+PENDING delivery when absent, claims it, sends once, atomically finalizes the
+provider outcome + grant effect, restarts the DB runtime, and verifies the result.
 """
 from __future__ import annotations
 
@@ -215,15 +214,10 @@ async def _main(args: argparse.Namespace) -> int:
             delivery = build_pending_delivery(decision, event, target)
             assert delivery is not None
             existing = await uow.notifications.get_delivery(delivery.key)
-            if existing is None:
-                created = await uow.notifications.create_delivery(delivery)
-                if not created:
-                    return await _block("logical delivery creation lost a concurrent race")
-                await uow.commit()
-                prepared_delivery = delivery
-            elif existing.state in {DeliveryState.PENDING, DeliveryState.WAITING_RETRY}:
-                prepared_delivery = existing
-            else:
+            if existing is not None and existing.state not in {
+                DeliveryState.PENDING,
+                DeliveryState.WAITING_RETRY,
+            }:
                 return await _block(
                     "logical delivery already exists in a non-sendable state",
                     delivery_state=existing.state.value,
@@ -232,7 +226,7 @@ async def _main(args: argparse.Namespace) -> int:
                 )
 
         async with uow_factory() as uow:
-            account = await uow.creators.get_account(prepared_delivery.account_id)
+            account = await uow.creators.get_account(delivery.account_id)
             profile = None if account is None else await uow.creators.get_profile(account.creator_id)
         anchor_name = (
             profile.display_name
@@ -260,15 +254,26 @@ async def _main(args: argparse.Namespace) -> int:
                 "migration_head": head,
                 "user_id": str(user_id),
                 "event_id": event_id,
-                "delivery_state": prepared_delivery.state.value,
+                "delivery_state": (existing.state.value if existing is not None else "NOT_CREATED"),
                 "grant_available_before": grant_before.available,
                 "real_wechat_called": False,
-                "next_action": "rerun the same command with --send to consume one real grant",
+                "database_write_performed": False,
+                "next_action": (
+                    f"rerun with --user-id {user_id} --event-id {event_id} --send "
+                    "to consume one real grant"
+                ),
                 "provider_exactly_once_claimed": False,
                 "notification_exactly_once_claimed": False,
                 "production_approved": False,
             }, ensure_ascii=False, indent=2))
             return 3
+
+        if existing is None:
+            async with uow_factory() as uow:
+                created = await uow.notifications.create_delivery(delivery)
+                if not created:
+                    return await _block("logical delivery creation lost a concurrent race")
+                await uow.commit()
 
         key = DeliveryKey(str(user_id), event_id, DeliveryChannel.WECHAT_SUBSCRIBE)
         now = datetime.now(timezone.utc).replace(microsecond=0)
