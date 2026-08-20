@@ -25,6 +25,12 @@ from api.services.search_browser import Status as SearchStatus
 from core.db import get_db
 from core.live_state import from_platform_account
 from core.models import Anchor, LiveSession, PlatformAccount, User, UserSubscription
+from stage_letter.infrastructure.db.models import (
+    CreatorModel,
+    CreatorProfileModel,
+    LiveSessionModel,
+    PlatformAccountModel,
+)
 
 router = APIRouter()
 
@@ -441,7 +447,7 @@ async def parse_anchor(
 async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> AnchorDetail:
     anchor = await db.get(Anchor, anchor_id)
     if anchor is None:
-        raise HTTPException(status_code=404, detail="主播不存在")
+        return await _get_formal_creator_detail(anchor_id, db)
 
     # 平台账号 + 实时状态
     pas = (
@@ -516,5 +522,99 @@ async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> Anch
                 started_at_source=s.started_at_source or "probe",
             )
             for s in recent
+        ],
+    )
+
+
+async def _get_formal_creator_detail(
+    creator_id: int,
+    db: AsyncSession,
+) -> AnchorDetail:
+    """Read a canonical Creator when no legacy Anchor mirror exists."""
+
+    creator = await db.get(CreatorModel, creator_id)
+    if creator is None:
+        raise HTTPException(status_code=404, detail="主播不存在")
+    profile = await db.scalar(
+        select(CreatorProfileModel).where(
+            CreatorProfileModel.creator_id == creator_id
+        )
+    )
+    accounts = (
+        await db.execute(
+            select(PlatformAccountModel).where(
+                PlatformAccountModel.creator_id == creator_id
+            )
+        )
+    ).scalars().all()
+
+    platforms: list[PlatformStatus] = []
+    for account in accounts:
+        current = await db.scalar(
+            select(LiveSessionModel)
+            .where(
+                LiveSessionModel.platform_account_id == account.id,
+                LiveSessionModel.closed_at.is_(None),
+            )
+            .order_by(LiveSessionModel.opened_at.desc())
+            .limit(1)
+        )
+        platforms.append(
+            PlatformStatus(
+                platform=account.platform,
+                platform_user_id=account.platform_user_id,
+                canonical_url=account.canonical_url or "",
+                is_live=True if current is not None else None,
+                last_status="LIVE" if current is not None else "UNKNOWN",
+                live_state="LIVE" if current is not None else "UNKNOWN",
+                freshness="fresh" if current is not None else "never",
+                current_session=(
+                    SessionInfo(
+                        id=current.id,
+                        title="正在直播",
+                        started_at=_fmt_time(current.opened_at),
+                        started_at_iso=_fmt_iso(current.opened_at),
+                        started_at_source=current.started_at_source or "probe",
+                    )
+                    if current is not None
+                    else None
+                ),
+            )
+        )
+
+    recent = (
+        await db.execute(
+            select(LiveSessionModel)
+            .join(
+                PlatformAccountModel,
+                LiveSessionModel.platform_account_id == PlatformAccountModel.id,
+            )
+            .where(PlatformAccountModel.creator_id == creator_id)
+            .order_by(LiveSessionModel.opened_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    return AnchorDetail(
+        id=creator_id,
+        display_name=(
+            profile.display_name
+            if profile is not None and profile.display_name
+            else "未知主播"
+        ),
+        avatar=None if profile is None else profile.avatar_url,
+        bio=None if profile is None else profile.bio,
+        platforms=platforms,
+        recent_sessions=[
+            SessionInfo(
+                id=session.id,
+                title="直播",
+                started_at=_fmt_time(session.opened_at),
+                ended_at=_fmt_time(session.closed_at)
+                or ("进行中" if session.closed_at is None else None),
+                started_at_iso=_fmt_iso(session.opened_at),
+                ended_at_iso=_fmt_iso(session.closed_at),
+                started_at_source=session.started_at_source or "probe",
+            )
+            for session in recent
         ],
     )

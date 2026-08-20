@@ -361,13 +361,12 @@ Query:
 
 ### GET /api/v1/notifications/history
 
-通知历史记录。
-
-通知历史记录。
+读取正式 `notification_deliveries` 的用户通知历史。只返回具备 formal event/session
+上下文的 Gate 1.6+ delivery；不再依赖 legacy `notification_jobs`。
 
 Query：
-- `cursor` / `limit`
-- `state` (optional): `SENT` / `FAILED` / `PENDING`
+- `limit`：1–50，默认 20
+- `cursor`：上一页返回的 delivery-id keyset cursor；不是 offset
 
 响应（200）：
 ```json
@@ -375,27 +374,31 @@ Query：
   "items": [
     {
       "id": 1,
-      "anchor": { "id": 1, "display_name": "小杨哥", "avatar": "..." },
+      "anchor_id": 1,
+      "account_id": 101,
+      "display_name": "小杨哥",
+      "avatar": "...",
       "platform": "douyin",
+      "live_event_id": "live-event:...",
       "live_session_id": 92839,
       "started_at": "2026-08-01T20:31:00Z",
-      "channel": "wechat",
+      "ended_at": null,
+      "channel": "WECHAT_SUBSCRIBE",
       "state": "SENT",
-      "sent_at": "2026-08-01T20:32:00Z"
-    },
-    {
-      "id": 2,
-      "anchor": { "id": 2, "display_name": "..." },
-      "platform": "bilibili",
-      "live_session_id": null,
-      "channel": "in_app",
-      "state": "PENDING_FALLBACK",
-      "reason": "no_credit"
+      "error_code": null,
+      "created_at": "2026-08-01T20:31:02Z",
+      "sent_at": "2026-08-01T20:32:00Z",
+      "miniapp_path": "pages/detail/index?id=1",
+      "api_path": "/api/v1/anchors/1"
     }
   ],
-  "next_cursor": "..."
+  "next_cursor": "1"
 }
 ```
+
+`miniapp_path` 是 Gate 3.4 唯一主播详情路由契约，同一路径也写入微信订阅消息的
+`page` 字段。小程序内部导航时在其前面补 `/`。微信 accepted、设备收到、用户点击和
+详情页读取仍是四种不同证据，本接口不声称用户已读。
 
 ### GET /api/v1/notifications/inbox
 

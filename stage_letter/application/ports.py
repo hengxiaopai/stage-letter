@@ -28,6 +28,7 @@ from stage_letter.domain.notifications import (
 )
 from stage_letter.domain.grant_intake import WeChatGrantIntake
 from stage_letter.domain.notification_templates import WeChatTemplateRegistration
+from stage_letter.domain.notification_history import NotificationHistoryEntry
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,16 @@ class NotificationRepository(Protocol):
 
     async def lock_delivery(self, key: DeliveryKey) -> NotificationDelivery | None:
         """Lock one logical delivery if available, skipping an already-locked row."""
+        ...
+
+    async def list_history_for_user(
+        self,
+        user_id: str,
+        *,
+        before_delivery_id: int | None = None,
+        limit: int = 21,
+    ) -> tuple[NotificationHistoryEntry, ...]:
+        """Return formal deliveries newest-first using a stable id cursor."""
         ...
 
 

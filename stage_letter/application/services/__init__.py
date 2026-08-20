@@ -39,6 +39,10 @@ from .notification_enqueue import (
     NotificationEnqueueApplicationService,
     NotificationEnqueueResult,
 )
+from .notification_history import (
+    NotificationHistoryApplicationService,
+    NotificationHistoryPage,
+)
 from .state_replay import (
     ObservationConsumptionPoint,
     StateReconstructionApplicationService,
@@ -78,6 +82,8 @@ __all__ = [
     "NotificationDeliveryApplicationService",
     "NotificationEnqueueApplicationService",
     "NotificationEnqueueResult",
+    "NotificationHistoryApplicationService",
+    "NotificationHistoryPage",
     "ObservationConsumptionPoint",
     "StateReconstructionApplicationService",
     "StateReconstructionResult",

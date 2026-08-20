@@ -13,7 +13,14 @@ from stage_letter.domain.notifications import (
     DeliveryState,
     NotificationDelivery,
 )
-from stage_letter.infrastructure.db.models import LiveEventModel, NotificationDeliveryModel
+from stage_letter.domain.notification_history import NotificationHistoryEntry
+from stage_letter.infrastructure.db.models import (
+    CreatorProfileModel,
+    LiveEventModel,
+    LiveSessionModel,
+    NotificationDeliveryModel,
+    PlatformAccountModel,
+)
 
 from .common import RepositoryMappingError
 from .identity import parse_persistence_id, serialize_persistence_id
@@ -182,6 +189,65 @@ class SQLAlchemyNotificationRepository:
         )
         return None if row is None else self._to_delivery(row, event_row)
 
+    async def list_history_for_user(
+        self,
+        user_id: str,
+        *,
+        before_delivery_id: int | None = None,
+        limit: int = 21,
+    ) -> tuple[NotificationHistoryEntry, ...]:
+        if limit < 1 or limit > 51:
+            raise ValueError("limit must be between 1 and 51")
+        conditions = [
+            NotificationDeliveryModel.user_id
+            == parse_persistence_id(user_id, field="user_id"),
+            NotificationDeliveryModel.channel.in_(
+                channel.value for channel in DeliveryChannel
+            ),
+            NotificationDeliveryModel.state.in_(state.value for state in DeliveryState),
+            LiveEventModel.event_id.is_not(None),
+            NotificationDeliveryModel.live_session_id.is_not(None),
+        ]
+        if before_delivery_id is not None:
+            if before_delivery_id < 1:
+                raise ValueError("before_delivery_id must be positive")
+            conditions.append(NotificationDeliveryModel.id < before_delivery_id)
+
+        rows = (
+            await self.session.execute(
+                select(
+                    NotificationDeliveryModel,
+                    LiveEventModel,
+                    LiveSessionModel,
+                    PlatformAccountModel,
+                    CreatorProfileModel,
+                )
+                .join(
+                    LiveEventModel,
+                    NotificationDeliveryModel.live_event_id == LiveEventModel.id,
+                )
+                .join(
+                    LiveSessionModel,
+                    NotificationDeliveryModel.live_session_id == LiveSessionModel.id,
+                )
+                .join(
+                    PlatformAccountModel,
+                    LiveEventModel.platform_account_id == PlatformAccountModel.id,
+                )
+                .outerjoin(
+                    CreatorProfileModel,
+                    PlatformAccountModel.creator_id == CreatorProfileModel.creator_id,
+                )
+                .where(*conditions)
+                .order_by(NotificationDeliveryModel.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return tuple(
+            self._to_history_entry(delivery, event, session, account, profile)
+            for delivery, event, session, account, profile in rows
+        )
+
     async def _get_event_by_formal_id(self, event_id: str) -> LiveEventModel | None:
         return await self.session.scalar(
             select(LiveEventModel).where(LiveEventModel.event_id == event_id)
@@ -234,4 +300,34 @@ class SQLAlchemyNotificationRepository:
             sent_at=row.sent_at,
             error_code=row.error_code,
             error_message=row.error_message,
+        )
+
+    @staticmethod
+    def _to_history_entry(
+        delivery: NotificationDeliveryModel,
+        event: LiveEventModel,
+        session: LiveSessionModel,
+        account: PlatformAccountModel,
+        profile: CreatorProfileModel | None,
+    ) -> NotificationHistoryEntry:
+        if event.event_id is None:
+            raise RepositoryMappingError("history event has no formal event_id")
+        anchor_id = account.legacy_anchor_id or account.creator_id
+        return NotificationHistoryEntry(
+            delivery_id=delivery.id,
+            user_id=serialize_persistence_id(delivery.user_id, field="user_id"),
+            anchor_id=serialize_persistence_id(anchor_id, field="anchor_id"),
+            account_id=serialize_persistence_id(account.id, field="account_id"),
+            live_event_id=event.event_id,
+            session_id=serialize_persistence_id(session.id, field="session_id"),
+            display_name=None if profile is None else profile.display_name,
+            avatar_url=None if profile is None else profile.avatar_url,
+            platform=account.platform,
+            started_at=session.opened_at,
+            ended_at=session.closed_at,
+            channel=DeliveryChannel(delivery.channel),
+            state=DeliveryState(delivery.state),
+            created_at=delivery.created_at,
+            sent_at=delivery.sent_at,
+            error_code=delivery.error_code,
         )

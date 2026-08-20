@@ -29,8 +29,9 @@ Page({
         id: h.id,
         title: `${h.display_name || '主播'} 开始直播`,
         meta: this.formatTime(h.started_at) + ' · ' + (h.platform || ''),
-        kind: h.channel === 'in_app' ? 'inapp' : (h.state === 'SENT' ? 'sent' : 'fail'),
-        label: h.channel === 'in_app' ? '站内' : (h.state === 'SENT' ? '已发送' : '未送达'),
+        kind: h.channel === 'IN_APP' ? 'inapp' : (h.state === 'SENT' ? 'sent' : 'fail'),
+        label: h.channel === 'IN_APP' ? '站内' : (h.state === 'SENT' ? '已发送' : '未送达'),
+        page: h.miniapp_path,
       }))
       this.setData({
         count: grant ? grant.available : 0,
@@ -82,6 +83,12 @@ Page({
       showCancel: false,
       confirmText: '知道了',
     })
+  },
+
+  onHistoryTap(e) {
+    const page = e.currentTarget.dataset.page
+    if (!page || !page.startsWith('pages/detail/index?id=')) return
+    wx.navigateTo({ url: `/${page}` })
   },
 
   formatTime(iso) {

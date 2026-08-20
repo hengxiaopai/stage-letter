@@ -12,10 +12,6 @@ from api.composition import ApiServiceBundle
 from core.config import settings
 from core.db import get_db
 from core.models import (
-    Anchor,
-    LiveSession,
-    NotificationDelivery,
-    NotificationJob,
     User,
 )
 from stage_letter.application.services import GrantIntakeConflictError
@@ -57,17 +53,6 @@ class RequestGrantResponse(BaseModel):
     request_id: str
     items: list[GrantIntakeItemResponse]
     received_at: datetime
-
-
-async def _get_or_create_user(db: AsyncSession, openid: str) -> User:
-    r = await db.execute(select(User).where(User.openid == openid))
-    user = r.scalar_one_or_none()
-    if user is None:
-        user = User(openid=openid)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    return user
 
 
 async def _get_existing_user(db: AsyncSession, openid: str) -> User:
@@ -173,14 +158,21 @@ async def request_grant(
 class HistoryItem(BaseModel):
     id: int
     anchor_id: int
+    account_id: int
     display_name: str | None = None
+    avatar: str | None = None
     platform: str | None = None
+    live_event_id: str
     live_session_id: int | None = None
     started_at: datetime | None = None
+    ended_at: datetime | None = None
     channel: str | None = None
     state: str
     error_code: str | None = None
+    created_at: datetime
     sent_at: datetime | None = None
+    miniapp_path: str
+    api_path: str
 
 
 class HistoryResponse(BaseModel):
@@ -190,41 +182,43 @@ class HistoryResponse(BaseModel):
 
 @router.get("/notifications/history", response_model=HistoryResponse)
 async def notification_history(
+    request: Request,
     openid: str = Query(...),
     limit: int = Query(20, ge=1, le=50),
-    cursor: int = Query(0, ge=0),
+    cursor: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> HistoryResponse:
-    user = await _get_or_create_user(db, openid)
-
-    rows = (
-        await db.execute(
-            select(NotificationDelivery, NotificationJob, LiveSession, Anchor)
-            .join(NotificationJob, NotificationDelivery.notification_job_id == NotificationJob.id)
-            .outerjoin(LiveSession, NotificationDelivery.live_session_id == LiveSession.id)
-            .join(Anchor, NotificationJob.anchor_id == Anchor.id)
-            .where(NotificationDelivery.user_id == user.id)
-            .order_by(NotificationDelivery.id.desc())
-            .offset(cursor)
-            .limit(limit)
+    user = await _get_existing_user(db, openid)
+    services: ApiServiceBundle = request.app.state.stage_letter_services
+    try:
+        page = await services.notification_history.list_for_user(
+            str(user.id),
+            limit=limit,
+            cursor=cursor,
         )
-    ).all()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     items = [
         HistoryItem(
-            id=d.id,
-            anchor_id=a.id,
-            display_name=a.display_name,
-            platform=ls.platform if ls else None,
-            live_session_id=d.live_session_id,
-            started_at=ls.started_at if ls else None,
-            channel=d.channel,
-            state=d.state,
-            error_code=d.error_code,
-            sent_at=d.sent_at,
+            id=item.delivery_id,
+            anchor_id=int(item.anchor_id),
+            account_id=int(item.account_id),
+            display_name=item.display_name,
+            avatar=item.avatar_url,
+            platform=item.platform,
+            live_event_id=item.live_event_id,
+            live_session_id=int(item.session_id),
+            started_at=item.started_at,
+            ended_at=item.ended_at,
+            channel=item.channel.value,
+            state=item.state.value,
+            error_code=item.error_code,
+            created_at=item.created_at,
+            sent_at=item.sent_at,
+            miniapp_path=item.target.miniapp_path,
+            api_path=item.target.api_path,
         )
-        for d, nj, ls, a in rows
+        for item in page.items
     ]
-
-    next_cursor = str(cursor + limit) if len(items) == limit else None
-    return HistoryResponse(items=items, next_cursor=next_cursor)
+    return HistoryResponse(items=items, next_cursor=page.next_cursor)

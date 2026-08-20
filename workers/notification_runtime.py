@@ -38,6 +38,7 @@ from stage_letter.domain.notifications import (
     DeliveryState,
     NotificationDelivery,
 )
+from stage_letter.domain.notification_history import AnchorDetailTarget
 from stage_letter.application.services.wechat_template import (
     WeChatTemplateRegistryApplicationService,
 )
@@ -218,4 +219,5 @@ class WeChatNotificationRuntime:
             start_time=start_time,
             theme="开播啦",
             activity="点击查看直播",
+            page=AnchorDetailTarget(account.creator_id).miniapp_path,
         )

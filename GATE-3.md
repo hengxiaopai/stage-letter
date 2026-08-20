@@ -88,8 +88,8 @@ Gate 3 therefore owns these remaining capabilities:
 - **3.1** Multi-Channel Delivery + Durable In-App Fallback. **PASS / CLOSED**
 - **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **PASS / CLOSED**
 - **3.3** Grant Intake + Reconciliation + User-Facing Grant API. **PASS / CLOSED**
-- **3.4** Notification Read Model + Anchor Detail Routing Contract. **CURRENT**
-- **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance.
+- **3.4** Notification Read Model + Anchor Detail Routing Contract. **PASS / CLOSED**
+- **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance. **CURRENT**
 
 ### Gate 3.0 acceptance
 
@@ -241,3 +241,49 @@ Gate 3.3 acceptance: Gate 3 `40 passed`; Gate 1 + Gate 2 + Gate 3
 `538 passed, 173 subtests passed`; migration head `d33c4e8a1b60`; controlled
 PostgreSQL grant-intake probe `PASS` with `cleanup_complete=true` and
 `database_restored=true`.
+
+## Gate 3.4 — Notification Read Model + Anchor Detail Routing Contract
+
+Status: PASS / CLOSED
+
+### Accepted design
+
+1. Notification history reads formal `notification_deliveries` joined to formal
+   event, session, platform-account, and creator-profile context. It no longer
+   depends on legacy `notification_jobs` or creates a user as a GET side effect.
+2. Pagination is newest-first keyset pagination on durable delivery identity.
+   The cursor is the last visible delivery id; no offset cursor can duplicate or
+   skip rows merely because newer notifications arrive.
+3. `idx_g34_delivery_user_history (user_id, id)` supports the user-scoped
+   keyset query. No parallel notification-history table or canonical entity is
+   introduced.
+4. One `AnchorDetailTarget` owns both
+   `pages/detail/index?id={anchor_id}` and `/api/v1/anchors/{anchor_id}`. The
+   history API, Mini Program notification row, and WeChat subscribe-message
+   `page` field use that same semantic target.
+5. The existing anchor-detail API keeps its legacy Anchor behavior and adds a
+   read-only formal Creator fallback. A missing open session remains UNKNOWN;
+   it is never fabricated as OFFLINE.
+6. Provider acceptance, device receipt, Mini Program click, and detail-page read
+   remain distinct evidence. Gate 3.4 wires and tests the routing contract but
+   does not claim a real device click or user read; that UI acceptance belongs to
+   Gate 4.
+
+### Gate 3.4 acceptance
+
+- PostgreSQL returns three synthetic formal deliveries newest-first over two
+  keyset pages without duplicates;
+- creator profile and platform metadata are joined from formal tables;
+- both legacy-mirrored and formal-only Creator ids resolve through the same
+  anchor-detail endpoint;
+- WeChat message construction populates the same Mini Program detail path;
+- Mini Program history rows accept only the detail-path contract before
+  navigation;
+- controlled probe performs no provider request, notification send, live-truth
+  mutation, or user-read claim and removes all synthetic rows;
+- Gate 1 + Gate 2 + Gate 3 regression remains green.
+
+Gate 3.4 acceptance: Gate 3 `48 passed`; Gate 1 + Gate 2 + Gate 3
+`546 passed, 173 subtests passed`; migration head `e34d7a2c1b50`; controlled
+PostgreSQL notification-history probe `PASS` with `cleanup_complete=true`,
+`formal_detail_target_resolves=true`, and `database_restored=true`.
