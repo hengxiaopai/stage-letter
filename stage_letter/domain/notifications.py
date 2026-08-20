@@ -260,6 +260,25 @@ def mark_delivery_failed_terminal(
     )
 
 
+def mark_delivery_ambiguous(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    error_code: str = "PROVIDER_OUTCOME_AMBIGUOUS",
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    """Resolve an active attempt whose external side effect cannot be known."""
+
+    return _finish_in_flight(
+        delivery,
+        state=DeliveryState.AMBIGUOUS,
+        now=now,
+        error_code=error_code,
+        error_message=error_message,
+        preserve_in_flight_at=True,
+    )
+
+
 def recover_delivery_as_ambiguous(
     delivery: NotificationDelivery,
     *,
@@ -269,11 +288,9 @@ def recover_delivery_as_ambiguous(
 ) -> NotificationDelivery:
     """Recover stale IN_FLIGHT conservatively: never put it back on blind retry."""
 
-    return _finish_in_flight(
+    return mark_delivery_ambiguous(
         delivery,
-        state=DeliveryState.AMBIGUOUS,
         now=now,
         error_code=error_code,
         error_message=error_message,
-        preserve_in_flight_at=True,
     )

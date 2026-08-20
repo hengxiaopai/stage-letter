@@ -31,6 +31,11 @@ from .state_replay import (
     StateReconstructionApplicationService,
     StateReconstructionResult,
 )
+from .wechat_delivery import (
+    WeChatDeliveryAttemptApplicationService,
+    WeChatDeliveryAttemptResult,
+    WeChatRetryPolicy,
+)
 
 __all__ = [
     "CreatorApplicationService",
@@ -51,5 +56,8 @@ __all__ = [
     "StateReconstructionApplicationService",
     "StateReconstructionResult",
     "TransitionPersistenceResult",
+    "WeChatDeliveryAttemptApplicationService",
+    "WeChatDeliveryAttemptResult",
+    "WeChatRetryPolicy",
     "make_live_event_id",
 ]

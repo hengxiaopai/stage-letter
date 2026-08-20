@@ -12,6 +12,7 @@ from stage_letter.domain.notifications import (
     DeliveryState,
     NotificationDelivery,
     claim_delivery,
+    mark_delivery_ambiguous,
     mark_delivery_blocked_config,
     mark_delivery_failed_terminal,
     mark_delivery_sent,
@@ -152,6 +153,22 @@ class NotificationDeliveryApplicationService:
             error_message=error_message,
         )
 
+    async def mark_ambiguous(
+        self,
+        key: DeliveryKey,
+        *,
+        now: datetime,
+        error_code: str = "PROVIDER_OUTCOME_AMBIGUOUS",
+        error_message: str | None = None,
+    ) -> NotificationDelivery:
+        return await self._finish(
+            key,
+            now=now,
+            transition="ambiguous",
+            error_code=error_code,
+            error_message=error_message,
+        )
+
     async def recover_stale_in_flight(
         self,
         *,
@@ -221,6 +238,12 @@ class NotificationDeliveryApplicationService:
                 delivery,
                 now=now,
                 error_code=error_code,
+                error_message=error_message,
+            ),
+            "ambiguous": lambda delivery: mark_delivery_ambiguous(
+                delivery,
+                now=now,
+                error_code=error_code or "PROVIDER_OUTCOME_AMBIGUOUS",
                 error_message=error_message,
             ),
         }
