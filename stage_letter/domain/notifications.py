@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from enum import Enum
 
 
@@ -89,10 +89,58 @@ class NotificationDelivery:
     session_id: str
     created_at: datetime
     state: DeliveryState = DeliveryState.PENDING
+    attempt: int = 0
+    next_attempt_at: datetime | None = None
+    in_flight_at: datetime | None = None
+    sent_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
     def __post_init__(self) -> None:
         _required(self.account_id, "account_id")
         _required(self.session_id, "session_id")
+        if self.attempt < 0:
+            raise ValueError("attempt must be non-negative")
+        if self.error_code is not None and not self.error_code.strip():
+            raise ValueError("error_code must not be blank")
+
+        if self.state is DeliveryState.PENDING:
+            if self.attempt != 0:
+                raise ValueError("PENDING delivery must have attempt=0")
+            if any((self.next_attempt_at, self.in_flight_at, self.sent_at)):
+                raise ValueError("PENDING delivery cannot carry execution timestamps")
+            return
+
+        if self.attempt < 1:
+            raise ValueError(f"{self.state.value} delivery requires at least one attempt")
+
+        if self.state is DeliveryState.IN_FLIGHT:
+            if self.in_flight_at is None:
+                raise ValueError("IN_FLIGHT delivery requires in_flight_at")
+            if self.next_attempt_at is not None or self.sent_at is not None:
+                raise ValueError("IN_FLIGHT delivery cannot be retry-scheduled or sent")
+            return
+
+        if self.state is DeliveryState.WAITING_RETRY:
+            if self.next_attempt_at is None:
+                raise ValueError("WAITING_RETRY delivery requires next_attempt_at")
+            if self.in_flight_at is not None or self.sent_at is not None:
+                raise ValueError("WAITING_RETRY delivery cannot remain in flight or sent")
+            return
+
+        if self.state is DeliveryState.SENT:
+            if self.sent_at is None:
+                raise ValueError("SENT delivery requires sent_at")
+            if self.in_flight_at is not None or self.next_attempt_at is not None:
+                raise ValueError("SENT delivery cannot remain in flight or retry-scheduled")
+            return
+
+        if self.next_attempt_at is not None or self.sent_at is not None:
+            raise ValueError(
+                f"{self.state.value} delivery cannot be retry-scheduled or marked sent"
+            )
+        if self.state is not DeliveryState.AMBIGUOUS and self.in_flight_at is not None:
+            raise ValueError(f"{self.state.value} delivery cannot remain in flight")
 
     @property
     def is_terminal(self) -> bool:
@@ -100,4 +148,152 @@ class NotificationDelivery:
 
     @property
     def allows_blind_retry(self) -> bool:
-        return self.state is not DeliveryState.AMBIGUOUS
+        return self.state in {DeliveryState.PENDING, DeliveryState.WAITING_RETRY}
+
+    def is_due(self, now: datetime) -> bool:
+        if self.state is DeliveryState.PENDING:
+            return True
+        return (
+            self.state is DeliveryState.WAITING_RETRY
+            and self.next_attempt_at is not None
+            and self.next_attempt_at <= now
+        )
+
+
+def claim_delivery(delivery: NotificationDelivery, *, now: datetime) -> NotificationDelivery:
+    """Claim one due delivery for external work without performing that work."""
+
+    if not delivery.is_due(now):
+        raise ValueError(f"delivery in {delivery.state.value} is not due for claim")
+    return replace(
+        delivery,
+        state=DeliveryState.IN_FLIGHT,
+        attempt=delivery.attempt + 1,
+        next_attempt_at=None,
+        in_flight_at=now,
+        sent_at=None,
+        error_code=None,
+        error_message=None,
+    )
+
+
+def schedule_delivery_retry(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    delay_seconds: float,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    """Move a known failed attempt to an explicit future retry time."""
+
+    if delivery.state is not DeliveryState.IN_FLIGHT:
+        raise ValueError("only IN_FLIGHT delivery can be scheduled for retry")
+    if delay_seconds <= 0:
+        raise ValueError("retry delay_seconds must be positive")
+    return replace(
+        delivery,
+        state=DeliveryState.WAITING_RETRY,
+        next_attempt_at=now + timedelta(seconds=delay_seconds),
+        in_flight_at=None,
+        sent_at=None,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def _finish_in_flight(
+    delivery: NotificationDelivery,
+    *,
+    state: DeliveryState,
+    now: datetime,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    preserve_in_flight_at: bool = False,
+) -> NotificationDelivery:
+    if delivery.state is not DeliveryState.IN_FLIGHT:
+        raise ValueError("only IN_FLIGHT delivery can resolve an attempt outcome")
+    return replace(
+        delivery,
+        state=state,
+        next_attempt_at=None,
+        in_flight_at=delivery.in_flight_at if preserve_in_flight_at else None,
+        sent_at=now if state is DeliveryState.SENT else None,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def mark_delivery_sent(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+) -> NotificationDelivery:
+    return _finish_in_flight(delivery, state=DeliveryState.SENT, now=now)
+
+
+def mark_delivery_waiting_auth(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    return _finish_in_flight(
+        delivery,
+        state=DeliveryState.WAITING_AUTH,
+        now=now,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def mark_delivery_blocked_config(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    return _finish_in_flight(
+        delivery,
+        state=DeliveryState.BLOCKED_CONFIG,
+        now=now,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def mark_delivery_failed_terminal(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    return _finish_in_flight(
+        delivery,
+        state=DeliveryState.FAILED_TERMINAL,
+        now=now,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def recover_delivery_as_ambiguous(
+    delivery: NotificationDelivery,
+    *,
+    now: datetime,
+    error_code: str = "CRASH_RECOVERY_AMBIGUOUS",
+    error_message: str | None = None,
+) -> NotificationDelivery:
+    """Recover stale IN_FLIGHT conservatively: never put it back on blind retry."""
+
+    return _finish_in_flight(
+        delivery,
+        state=DeliveryState.AMBIGUOUS,
+        now=now,
+        error_code=error_code,
+        error_message=error_message,
+        preserve_in_flight_at=True,
+    )

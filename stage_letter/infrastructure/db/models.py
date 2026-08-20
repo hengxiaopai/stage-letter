@@ -223,6 +223,18 @@ class NotificationDeliveryModel(Base):
             name="uq_g11_delivery_user_event_channel",
         ),
         Index("idx_g11_delivery_state", "state"),
+        Index(
+            "idx_g163_delivery_due",
+            "state",
+            "next_attempt_at",
+            "id",
+        ),
+        Index(
+            "idx_g163_delivery_inflight",
+            "state",
+            "in_flight_at",
+            "id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

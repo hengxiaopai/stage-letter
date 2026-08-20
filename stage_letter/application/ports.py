@@ -189,6 +189,28 @@ class NotificationRepository(Protocol):
 
     async def save_delivery(self, delivery: NotificationDelivery) -> None: ...
 
+    async def list_due_delivery_keys(
+        self,
+        now: datetime,
+        *,
+        limit: int = 100,
+    ) -> tuple[DeliveryKey, ...]:
+        """Return PENDING / due WAITING_RETRY keys in stable persistence order."""
+        ...
+
+    async def list_stale_in_flight_keys(
+        self,
+        stale_before: datetime,
+        *,
+        limit: int = 100,
+    ) -> tuple[DeliveryKey, ...]:
+        """Return stale IN_FLIGHT keys for conservative crash recovery."""
+        ...
+
+    async def lock_delivery(self, key: DeliveryKey) -> NotificationDelivery | None:
+        """Lock one logical delivery if available, skipping an already-locked row."""
+        ...
+
 
 @runtime_checkable
 class GrantRepository(Protocol):

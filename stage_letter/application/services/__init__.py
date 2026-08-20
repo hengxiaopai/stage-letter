@@ -18,6 +18,10 @@ from .monitoring_probe import (
     MonitoringProbeRequest,
     MonitoringProbeResult,
 )
+from .notification_delivery import (
+    DeliveryRecoveryResult,
+    NotificationDeliveryApplicationService,
+)
 from .notification_enqueue import (
     NotificationEnqueueApplicationService,
     NotificationEnqueueResult,
@@ -30,6 +34,7 @@ from .state_replay import (
 
 __all__ = [
     "CreatorApplicationService",
+    "DeliveryRecoveryResult",
     "FollowApplicationService",
     "LiveObservationApplicationService",
     "LiveObservationConsumptionApplicationService",
@@ -39,6 +44,7 @@ __all__ = [
     "MonitoringProbeRequest",
     "MonitoringProbeResult",
     "MonitoringTargetApplicationService",
+    "NotificationDeliveryApplicationService",
     "NotificationEnqueueApplicationService",
     "NotificationEnqueueResult",
     "ObservationConsumptionPoint",
