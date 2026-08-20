@@ -41,7 +41,7 @@
 }
 
 /* §2.4: 破坏性操作 Destructive 红 */
-.sheet-row[data-key="danger"] {
+.sheet-row-danger {
   color: var(--destructive);
   font-weight: 500;
 }

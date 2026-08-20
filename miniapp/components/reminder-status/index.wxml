@@ -3,5 +3,5 @@
     <view class="rs-title t-body">开播提醒</view>
     <view class="rs-sub t-meta">{{on ? '开播后第一时间告诉你' : '已关闭'}}</view>
   </view>
-  <switch checked="{{on}}" color="#176B8A" bindchange="onChange"/>
+  <switch class="rs-switch" checked="{{on}}" color="#176B8A" bindchange="onChange"/>
 </view>

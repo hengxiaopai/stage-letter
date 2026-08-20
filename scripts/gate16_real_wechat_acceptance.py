@@ -59,6 +59,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--user-id", help="formal numeric test user id; auto-selects only when unambiguous")
     parser.add_argument("--event-id", help="existing canonical LIVE_STARTED/TRANSITION event id")
     parser.add_argument("--room-title", default="开场信 Gate 1.6 真实通知验收")
+    parser.add_argument(
+        "--miniprogram-state",
+        choices=("formal", "trial", "developer"),
+        default="formal",
+        help="WeChat Mini Program version opened by the message",
+    )
     parser.add_argument("--send", action="store_true", help="actually send one real WeChat message")
     return parser
 
@@ -228,6 +234,11 @@ async def _main(args: argparse.Namespace) -> int:
         async with uow_factory() as uow:
             account = await uow.creators.get_account(delivery.account_id)
             profile = None if account is None else await uow.creators.get_profile(account.creator_id)
+        if account is None or not account.creator_id.isdigit() or int(account.creator_id) < 1:
+            return await _block(
+                "accepted delivery account lacks a valid anchor detail target",
+                account_id=delivery.account_id,
+            )
         anchor_name = (
             profile.display_name
             if profile is not None and profile.display_name
@@ -244,6 +255,8 @@ async def _main(args: argparse.Namespace) -> int:
             start_time=start_time,
             theme="开播提醒验收",
             activity="Gate 1.6",
+            page=f"pages/detail/index?id={account.creator_id}",
+            miniprogram_state=args.miniprogram_state,
         )
 
         if not args.send:

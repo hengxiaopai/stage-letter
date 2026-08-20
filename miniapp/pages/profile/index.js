@@ -2,11 +2,21 @@
 const { getGrants, getHistory, requestGrant } = require('../../services/notifications')
 const { parseISO } = require('../../utils/time')
 
+const DETAIL_PAGE_RE = /^pages\/detail\/index\?id=([1-9]\d*)$/
+
+function canonicalDetailPage(anchorId, page) {
+  const id = String(anchorId || '')
+  const expected = `pages/detail/index?id=${id}`
+  if (!DETAIL_PAGE_RE.test(expected) || page !== expected) return null
+  return page
+}
+
 Page({
   data: {
     count: 0,
     granted: 0,
     loading: true,
+    error: null,
     history: [],
   },
 
@@ -31,28 +41,40 @@ Page({
         meta: this.formatTime(h.started_at) + ' · ' + (h.platform || ''),
         kind: h.channel === 'IN_APP' ? 'inapp' : (h.state === 'SENT' ? 'sent' : 'fail'),
         label: h.channel === 'IN_APP' ? '站内' : (h.state === 'SENT' ? '已发送' : '未送达'),
-        page: h.miniapp_path,
+        page: canonicalDetailPage(h.anchor_id, h.miniapp_path),
       }))
       this.setData({
         count: grant ? grant.available : 0,
         granted: grant ? grant.granted_count : 0,
         history: items,
         loading: false,
+        error: null,
       })
     } catch (err) {
-      this.setData({ loading: false })
+      this.setData({ loading: false, error: err.message })
     }
+  },
+
+  retryLoad() {
+    this.setData({ loading: true, error: null })
+    this.load()
   },
 
   /** 补充提醒次数: 调微信授权,同意 N 次 = N 条额度(单飞锁 + fail 静默) */
   async onTopUp() {
     if (this._topUpPending) return // 单飞锁(UI-2.1A)
     this._topUpPending = true
-    const openid = await getApp().ensureLogin()
     try {
+      const app = getApp()
+      const openid = await app.ensureLogin()
+      const templateId = app.globalData.liveStartTemplateId
+      if (!templateId) {
+        wx.showToast({ title: '微信提醒暂不可用', icon: 'none' })
+        return
+      }
       const res = await new Promise((resolve) => {
         wx.requestSubscribeMessage({
-          tmplIds: ['VehDuOW2xRXubcWgFvcgnFnp42wdA3uesHpjfmBP-Cs'],
+          tmplIds: [templateId],
           success: resolve,
           fail: () => resolve(null), // fail 静默,不误导
         })
@@ -87,7 +109,10 @@ Page({
 
   onHistoryTap(e) {
     const page = e.currentTarget.dataset.page
-    if (!page || !page.startsWith('pages/detail/index?id=')) return
+    if (!page || !DETAIL_PAGE_RE.test(page)) {
+      wx.showToast({ title: '通知链接无效', icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: `/${page}` })
   },
 

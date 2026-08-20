@@ -312,7 +312,9 @@ class SQLAlchemyNotificationRepository:
     ) -> NotificationHistoryEntry:
         if event.event_id is None:
             raise RepositoryMappingError("history event has no formal event_id")
-        anchor_id = account.legacy_anchor_id or account.creator_id
+        # Mini Program detail is a Gate 1 Creator route.  A legacy Anchor is a
+        # compatibility bridge and must never replace the canonical identity.
+        anchor_id = account.creator_id
         return NotificationHistoryEntry(
             delivery_id=delivery.id,
             user_id=serialize_persistence_id(delivery.user_id, field="user_id"),

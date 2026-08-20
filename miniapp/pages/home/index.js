@@ -112,6 +112,11 @@ Page({
     }
   },
 
+  retryLoad() {
+    this.setData({ loading: true, error: null })
+    this.loadAll()
+  },
+
   onPullDownRefresh() {
     this.loadAll().finally(() => wx.stopPullDownRefresh())
   },

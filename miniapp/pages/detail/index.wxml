@@ -17,7 +17,7 @@
       <view class="empty-icon">!</view>
       <view class="empty-title">加载失败</view>
       <view class="empty-sub">{{error}}</view>
-      <primary-button bindtap="load">重新加载</primary-button>
+      <primary-button bindtap="retryLoad">重新加载</primary-button>
     </view>
   </block>
 
@@ -48,9 +48,13 @@
         <primary-button bindtap="onGoLive">复制直播间链接</primary-button>
       </view>
     </view>
-    <view class="detail-session" wx:else>
+    <view class="detail-session" wx:elif="{{liveLabel === '未开播'}}">
       <view class="detail-session-meta t-meta">暂时还没开播</view>
       <view class="detail-session-sub t-meta">开播后会第一时间通知你</view>
+    </view>
+    <view class="detail-session" wx:else>
+      <view class="detail-session-meta t-meta">直播状态暂时无法确认</view>
+      <view class="detail-session-sub t-meta">系统会持续重试，请稍后刷新</view>
     </view>
 
     <!-- §3.4/4.3 开播提醒(统一 Reminder 组件) -->

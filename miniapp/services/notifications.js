@@ -23,7 +23,7 @@ function requestGrant(openid, grantResults, requestId) {
 }
 
 /** 通知历史 */
-function getHistory(openid, limit = 20, cursor = 0) {
+function getHistory(openid, limit = 20, cursor = null) {
   return request('/notifications/history', {
     query: { openid, limit, cursor },
   })

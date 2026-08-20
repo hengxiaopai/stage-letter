@@ -68,6 +68,11 @@ Page({
     }
   },
 
+  retryLoad() {
+    this.setData({ loading: true, error: null })
+    this.load()
+  },
+
   /** 行点击 → 进详情 */
   goDetail(e) {
     const id = e.currentTarget.dataset.id
@@ -133,7 +138,7 @@ Page({
       wx.showToast({ title: '已取消', icon: 'success' })
     } catch (err) {
       // 幂等: 404 = 已经没订阅了 → 视为成功
-      if (err.message.includes('404') || err.message.includes('not found')) {
+      if (err.statusCode === 404) {
         this.removeLocal(id)
         wx.showToast({ title: '已取消', icon: 'success' })
       } else {
@@ -150,7 +155,7 @@ Page({
     this.setData({
       subs,
       total: subs.length,
-      liveCount: subs.filter((s) => s.is_live).length,
+      liveCount: subs.filter((s) => s.isLiveFlag).length,
     })
   },
 

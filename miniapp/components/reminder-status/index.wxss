@@ -16,7 +16,7 @@
   margin-top: 2px;
 }
 /* §3.4: switch 垂直居中 + 触控完整 */
-.rs switch {
+.rs-switch {
   flex-shrink: 0;
   margin-left: 12px;
   transform: scale(0.9);
