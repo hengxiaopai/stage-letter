@@ -14,19 +14,19 @@
 
 ## 项目状态
 
-**当前阶段：Gate 3 — Notification Engine（3.5 进行中）**
+**当前阶段：Gate 4 — 微信小程序（4.0 基线梳理）**
 
 ```
 Gate 0  Feasibility Evidence  ⚠️ DEGRADED（历史实测保留；不补写缺失生命周期证据）
 Gate 1  Domain Core          ✅ PASS / CLOSED
 Gate 2  Detection Engine     ✅ PASS / CLOSED
-Gate 3  Notification Engine  🚧 3.0–3.4 CLOSED；3.5 CURRENT
-Gate 4  微信小程序             📝 待 Gate 3 完整封板后进入
+Gate 3  Notification Engine  ✅ PASS / CLOSED
+Gate 4  微信小程序             🚧 4.0 CURRENT
 ```
 
-最新已验收基线：Gate 1–3 回归 `546 passed, 173 subtests passed`，Alembic
-head `e34d7a2c1b50`。Gate 3.4 已完成多通道 fallback、微信模板级禁用/恢复、
-grant intake 对账、正式通知历史和主播详情路由契约。详细冻结证据见
+最新已验收基线：Gate 1–3 回归 `556 passed, 173 subtests passed`，Alembic
+head `e34d7a2c1b50`。Gate 3 已完成多通道 fallback、微信模板级禁用/恢复、
+grant intake 对账、正式通知历史、主播详情路由和重启/多 worker E2E。详细冻结证据见
 [GATE-2.md](./GATE-2.md) 与 [GATE-3.md](./GATE-3.md)。
 
 > GitHub 默认分支必须通过 PR 才会更新；push 功能分支不等于合并。README 中以下

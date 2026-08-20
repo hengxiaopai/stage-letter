@@ -1,18 +1,14 @@
 # ROADMAP.md — 路线图
 
-## 总览 (v0.2 重构)
+## 总览（当前执行状态）
 
 ```
-Gate 0A — 微信通知真实性实验       [2-3 天]  ←  当前阶段,先做这个
-Gate 0B — 单主播 Adapter 正确性    [3-4 天]
-Gate 0C — 平台吞吐 / 风控 / 容量    [3-5 天]  ←  V1 主播上限由这里定
-Gate 0D — 72h 稳定性              [3-5 天]
-Gate 0E — 状态机 + 端到端          [2-3 天]
+Gate 0 — Feasibility Evidence      ⚠️ DEGRADED（历史证据，不补写缺口）
 ──────────────────────────────────────────
-Gate 1 — Domain Core              [1-2 周]
-Gate 2 — Detection Engine         [2-3 周]
-Gate 3 — Notification Engine      [2-3 周]
-Gate 4 — 微信小程序 (Taro 版本待定)  [2-3 周]
+Gate 1 — Domain Core              ✅ PASS / CLOSED
+Gate 2 — Detection Engine         ✅ PASS / CLOSED
+Gate 3 — Notification Engine      ✅ PASS / CLOSED
+Gate 4 — 微信小程序                 🚧 4.0 CURRENT
 Gate 5 — Admin / Observability    [1-2 周]
 ──────────────────────────────────────────
 V1 Alpha 内测                      2 周
@@ -23,8 +19,8 @@ V2:  跨平台身份合并 + 静默时间      2-3 月
 V3:  创作者订阅情报中心            6+ 月
 ```
 
-> **v0.2 关键变化**: Gate 0 拆为 0A-0E,0A 微信通知真实性实验**排第一**(详见 [GATE-0.md](./GATE-0.md))。  
-> **不再假定** V1 主播上限 18,000(由 Gate 0C 实测确定)。
+> Gate 0 的原始计划和实验记录继续保留用于审计，但当前开发入口是 Gate 4；
+> Gate 1–3 的最终冻结证据分别以 Gate 文档和自动化验收为准。
 
 ## Gate 0 — 技术可行性 (v0.2 拆 0A-0E)
 
@@ -88,13 +84,7 @@ V3:  创作者订阅情报中心            6+ 月
 - 单平台故障可自动 DEGRADED → DISABLE
 - probe_runs 表持续写入
 
-**验收**:
-- [ ] 单平台 `max_anchors` 内 demo 跑通
-- [ ] disable 抖音后,B 站 / 虎牙 / 斗鱼正常调度
-- [ ] 连续注入错误,平台自动 DEGRADED
-- [ ] DEGRADED 状态下事件仍写 + 标 low confidence
-- [ ] 限流生效(mock 平台返回 429,QPS 不会超过限制)
-- [ ] probe_runs 持续写入,可用作审计
+**验收**：✅ PASS / CLOSED。最终证据见 [GATE-2.md](./GATE-2.md)。
 
 ## Gate 3 — Notification Engine
 
@@ -118,21 +108,18 @@ V3:  创作者订阅情报中心            6+ 月
 - request-grant 流程跑通
 - 微信 43101 / 45009 / 40037 等错误正确处理
 
-**验收**:
-- [ ] 真机收到微信订阅消息
-- [ ] 点通知能跳到 anchor 详情页
-- [ ] grant 用完后自动转站内
-- [ ] 用户 request-grant 后 granted +1
-- [ ] 微信 40037 触发后 disable 模板(不影响平台 adapter)
-- [ ] 微信失败自动 fallback in_app
+**验收**：✅ PASS / CLOSED。真实 provider `errcode=0` 与手机收件证据复用
+Gate 1.6；grant、40037、fallback、restart、多 worker、history 和详情路径契约
+均已验收，见 [GATE-3.md](./GATE-3.md)。真实点击/页面交互属于 Gate 4，
+不得用静态路径测试冒充。
 
-## Gate 4 — 微信小程序 (v0.2 Taro 版本待定)
+## Gate 4 — 微信小程序
 
 **时长**:2-3 周  
 **目标**:用户能完整使用 4 个核心页面
 
 **任务**:
-- **v0.2 决策推迟**: Taro 3 / Taro 4 在 Gate 4 启动时再选(届时评估兼容性 + 团队熟悉度)
+- 复用当前原生微信小程序（WXML / WXSS / JavaScript），不重新迁移到 Taro
 - 微信登录集成
 - 4 个核心页面:
   - 首页(正在直播 / 最近开播)
