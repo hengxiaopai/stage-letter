@@ -1,5 +1,7 @@
 # Gate 3 — Notification Engine
 
+Status: PASS / CLOSED
+
 ## Gate 3.0 — Baseline / Gap Freeze
 
 Status: PASS / CLOSED
@@ -89,7 +91,7 @@ Gate 3 therefore owns these remaining capabilities:
 - **3.2** WeChat Template Registry + 40037 Disable / Administrative Recovery. **PASS / CLOSED**
 - **3.3** Grant Intake + Reconciliation + User-Facing Grant API. **PASS / CLOSED**
 - **3.4** Notification Read Model + Anchor Detail Routing Contract. **PASS / CLOSED**
-- **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance. **CURRENT**
+- **3.5** Restart / Fallback / End-to-End Notification Engine Acceptance. **PASS / CLOSED**
 
 ### Gate 3.0 acceptance
 
@@ -287,3 +289,58 @@ Gate 3.4 acceptance: Gate 3 `48 passed`; Gate 1 + Gate 2 + Gate 3
 `546 passed, 173 subtests passed`; migration head `e34d7a2c1b50`; controlled
 PostgreSQL notification-history probe `PASS` with `cleanup_complete=true`,
 `formal_detail_target_resolves=true`, and `database_restored=true`.
+
+## Gate 3.5 — Restart / Fallback / End-to-End Acceptance
+
+Status: PASS / CLOSED
+
+### Accepted end-to-end behavior
+
+1. One formal `LIVE_STARTED / TRANSITION` event fans out by persisted follow,
+   preference, template, and optimistic grant evidence. A user without grant
+   receives `IN_APP`; a user with grant receives `WECHAT_SUBSCRIBE`.
+2. Concurrent WeChat workers use durable row locking and only one claims a
+   logical delivery. This is a single-winner database claim, not a claim that
+   workers or external providers execute exactly once.
+3. A process restart observing stale `IN_FLIGHT` resolves it to `AMBIGUOUS` and
+   never returns it to blind provider retry.
+4. `WAITING_AUTH`, `BLOCKED_CONFIG`, `FAILED_TERMINAL`, and `AMBIGUOUS` create one
+   separate durable `IN_APP` fallback. Reconciliation/restart replay reuses the
+   same fallback identity.
+5. The DB-only in-app runtime publishes pending fallback/direct deliveries to
+   `SENT`, after which the Gate 3.4 history read model exposes both the original
+   WeChat outcome and the internal fallback with the same anchor-detail target.
+6. No-provider acceptance preserves the optimistic grant ledger. It cannot
+   consume a grant or claim provider acceptance without an actual send result.
+7. Notification execution never creates/closes live sessions or events. Provider
+   acceptance, device receipt, click, and user read remain separate evidence.
+
+### Gate 3.5 acceptance
+
+- controlled PostgreSQL fan-out creates exactly one channel choice for each of
+  two synthetic users from the same canonical event;
+- two independent workers race for WeChat work and exactly one database claim
+  wins;
+- an independently composed restart worker recovers one stale delivery as
+  `AMBIGUOUS`, then fallback creation is idempotent;
+- two in-app deliveries become `SENT` and a third run is `IDLE`;
+- notification history exposes the direct in-app path and the
+  WeChat-ambiguous-plus-fallback path without duplicates;
+- grant remains `1 granted / 0 consumed` because no provider call occurred;
+- the canonical session remains open and exactly one live event remains;
+- all synthetic users, follows, preferences, grants, deliveries, event, session,
+  account, profile, and creator are removed;
+- no migration is added; expected head remains `e34d7a2c1b50`.
+
+Gate 3.5 acceptance: Gate 3 `58 passed`; Gate 1 + Gate 2 + Gate 3
+`556 passed, 173 subtests passed`; migration head `e34d7a2c1b50`; controlled
+PostgreSQL restart/fallback/E2E probe `PASS` with
+`multiworker_single_claim_winner=true`, `restart_recovered_one_ambiguous=true`,
+`live_truth_preserved=true`, and `database_restored=true`.
+
+## Gate 3 Closure
+
+Gate 3 is **PASS / CLOSED**. Gate 4.0 — Mini Program Baseline / Product-Flow
+Reconciliation is now current. Gate 4 must reuse the accepted backend contracts,
+perform real WeChat Developer Tools/device interaction where required, and must
+not reopen notification truth merely for UI redesign.

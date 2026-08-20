@@ -28,7 +28,7 @@ logger = logging.getLogger("stage-letter")
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.7",
+    version="0.3.8",
     docs_url="/docs" if settings.debug else None,
     redoc_url=None,
 )
