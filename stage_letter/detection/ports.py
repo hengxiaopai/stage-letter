@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from stage_letter.detection.health import CircuitBreakerPolicy
 from stage_letter.detection.telemetry import (
+    PlatformHealthSnapshot,
     ProbeTelemetryPersistenceResult,
     ProbeTelemetryRecord,
 )
@@ -17,6 +19,7 @@ class DetectionScheduleRow:
     account: PlatformAccount
     polling_tier_raw: str | None
     last_probe_at: datetime | None
+    platform_health_state_raw: str | None = None
 
 
 class DetectionScheduleRepository(Protocol):
@@ -35,3 +38,29 @@ class DetectionTelemetryRepository(Protocol):
         self,
         record: ProbeTelemetryRecord,
     ) -> ProbeTelemetryPersistenceResult: ...
+
+
+class DetectionHealthRepository(Protocol):
+    """Persist Gate 2.4 health-state transitions outside canonical live truth."""
+
+    async def apply_probe_outcome(
+        self,
+        *,
+        platform: str,
+        success: bool,
+        policy: CircuitBreakerPolicy,
+    ) -> PlatformHealthSnapshot: ...
+
+    async def administrative_disable(
+        self,
+        *,
+        platform: str,
+        at: datetime,
+    ) -> PlatformHealthSnapshot: ...
+
+    async def administrative_enable(
+        self,
+        *,
+        platform: str,
+        at: datetime,
+    ) -> PlatformHealthSnapshot: ...
