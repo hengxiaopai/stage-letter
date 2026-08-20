@@ -48,6 +48,7 @@ class DetectionHealthRepository(Protocol):
         *,
         platform: str,
         success: bool,
+        at: datetime,
         policy: CircuitBreakerPolicy,
     ) -> PlatformHealthSnapshot: ...
 
