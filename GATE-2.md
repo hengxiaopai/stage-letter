@@ -7,8 +7,11 @@ Status: PASS / CLOSED
 Gate 1 closed with `435 / 435`. Gate 2 extends detection runtime without rewriting
 accepted live-truth or notification semantics. Provider failure is not live truth,
 provider I/O stays outside DB transactions, detection metadata stays operational,
-the Gate 1 canonical Base stays frozen, the legacy probe worker remains reference
-only, no exactly-once claim is introduced, and Gate 0A remains DEGRADED.
+and the Gate 1 canonical Base stays frozen.
+
+The legacy `workers/probe/worker.py` remains `LEGACY_REFERENCE_ONLY` and must not
+be revived by later Gate 2 slices. No exactly-once claim is introduced, and
+Gate 0A remains DEGRADED.
 
 Gate 2.0 acceptance: `442 passed, 173 subtests passed`, migration head
 `a63f4b2d9e71`.
