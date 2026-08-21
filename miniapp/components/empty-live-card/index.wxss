@@ -1,11 +1,45 @@
 .empty-card {
-  margin: 32rpx;
-  padding: 64rpx 32rpx;
-  border-radius: 32rpx;
-  background: #ffffff;
+  margin: 48rpx 32rpx;
+  padding: 80rpx 36rpx;
+  border-radius: 36rpx;
+  background: rgba(255,255,255,.96);
   text-align: center;
+  box-shadow: 0 12rpx 40rpx rgba(42,90,180,.08);
 }
-.empty-icon { font-size: 72rpx; }
-.empty-title { margin-top: 24rpx; font-size: 36rpx; font-weight: 700; }
-.empty-desc { margin-top: 16rpx; color: #6b7280; font-size: 28rpx; }
-button { margin-top: 32rpx; background: #2563eb; color: #fff; border-radius: 48rpx; }
+
+.empty-illustration {
+  width: 180rpx;
+  height: 140rpx;
+  margin: 0 auto 32rpx;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#eef5ff;
+  border-radius:90rpx;
+}
+
+.mail-box {
+  font-size:72rpx;
+  color:#3b82f6;
+}
+
+.empty-title {
+  font-size:40rpx;
+  font-weight:700;
+  color:#14213d;
+}
+
+.empty-desc {
+  margin-top:20rpx;
+  color:#7b879c;
+  font-size:30rpx;
+  line-height:1.6;
+}
+
+button {
+  margin-top:44rpx;
+  width:320rpx;
+  background:#2563eb;
+  color:#fff;
+  border-radius:48rpx;
+}
