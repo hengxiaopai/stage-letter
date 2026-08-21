@@ -1,0 +1,1 @@
+.search-bar{height:88rpx;background:#fff;border-radius:24rpx;padding:0 28rpx;display:flex;align-items:center;color:var(--text-tertiary);font-size:28rpx}
