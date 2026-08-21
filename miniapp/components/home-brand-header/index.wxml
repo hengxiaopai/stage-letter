@@ -1,0 +1,7 @@
+<view class="brand-header">
+  <text class="brand-mark">✉</text>
+  <view class="brand-copy">
+    <text class="brand-title">开场信</text>
+    <text class="brand-subtitle">StageLetter</text>
+  </view>
+</view>
