@@ -1,6 +1,8 @@
 /* 首页 Empty State UI */
 .home-page {
-  padding-top: 20px;
+  padding-top: 24rpx;
+  background: #f7f9fd;
+  min-height: 100vh;
 }
 
 .wait-row {
