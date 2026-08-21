@@ -7,6 +7,11 @@
     "anchor-row": "/components/anchor-row/index",
     "live-anchor-feature": "/components/live-anchor-feature/index",
     "primary-button": "/components/primary-button/index",
-    "empty-state": "/components/empty-state/index"
+    "empty-state": "/components/empty-state/index",
+    "home-brand-header": "/components/home-brand-header/index",
+    "home-search-bar": "/components/home-search-bar/index",
+    "announcement-bar": "/components/announcement-bar/index",
+    "empty-live-card": "/components/empty-live-card/index",
+    "empty-subscription-card": "/components/empty-subscription-card/index"
   }
 }
