@@ -1,128 +1,27 @@
-/* 首页 — 编辑式 Live Radar (UI-2 精修) */
-
+/* 首页 Empty State UI */
 .home-page {
   padding-top: 20px;
 }
 
-/* ─── §1.1 编辑式大标题 ─── */
-.home-head {
-  padding: 12px 0 8px;
-}
-
-.home-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.home-title {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  line-height: 1.15;
-  color: var(--text-primary);
-}
-
-/* + 添加: 与标题基线对齐,右边缘对齐页面 gutter */
-.home-add {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand);
-  padding: 8px 0 8px 16px;
-  line-height: 1;
-}
-
-.home-meta {
-  margin-top: 8px;
-}
-
-/* ─── 骨架屏 ─── */
-.sk-row {
-  display: flex;
-  align-items: center;
-}
-
-.sk-lines {
-  flex: 1;
-  margin-left: 12px;
-}
-
-/* ─── §1.3 等待开播列表(弱化) ─── */
 .wait-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  position: relative;
-}
-
-.wait-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.wait-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display:flex;
+  align-items:center;
+  min-height:64px;
+  padding:0 32rpx;
 }
 
 .wait-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size:28rpx;
+  color:var(--text-primary);
 }
 
-.wait-meta {
-  margin-top: 2px;
-  color: var(--text-tertiary);
+.sk-row {
+  display:flex;
+  align-items:center;
 }
 
-/* CSS Chevron(统一图标,非 HTML Entity) */
-.wait-arrow {
-  width: 8px;
-  height: 8px;
-  border-top: 1.5px solid var(--text-tertiary);
-  border-right: 1.5px solid var(--text-tertiary);
-  transform: rotate(45deg);
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-/* Divider 从文字区起始(不穿过 Avatar): 用 border-bottom + 左偏移 */
-.wait-row::after {
-  content: '';
-  position: absolute;
-  left: 48px; /* Avatar 36px + gap 12px */
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--border);
-}
-
-.wait-row:last-child::after {
-  display: none;
-}
-
-/* 等待开播整体弱化 */
-.wait-row {
-  opacity: 0.75;
-}
-
-/* P0-L4: 状态确认中 — 独立语义(非直播非等待), 橙色弱提示 */
-.confirm-meta {
-  color: var(--text-tertiary);
-}
-.confirm-meta::before {
-  content: '· ';
-}
-
-/* P0-LiveTruth: 检测失败(UNKNOWN/DEGRADED)弱提示 — 与"确认中"区分 */
-.fail-meta {
-  color: var(--text-tertiary);
-}
-.fail-meta::before {
-  content: '⚠ ';
+.home-page announcement-bar,
+.home-page empty-live-card,
+.home-page empty-subscription-card {
+  display:block;
 }
