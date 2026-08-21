@@ -1,0 +1,14 @@
+.announcement {
+  margin: 20rpx 32rpx;
+  padding: 22rpx 28rpx;
+  border-radius: 20rpx;
+  background: #f1f6ff;
+  color: #2563eb;
+  font-size: 28rpx;
+  display: flex;
+  align-items: center;
+}
+
+.icon {
+  margin-right: 14rpx;
+}
