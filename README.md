@@ -26,6 +26,7 @@ Gate 5  Admin / Observability  ✅ PASS / CLOSED
 - Gate 5.3：受保护、分页且脱敏的用户、订阅与通知投递查询 `PASS`
 - Gate 5.4：受保护的固定维度指标与错误聚合 `PASS`
 - Gate 5.5：独立数据库引擎重启后的只读 Admin 投影验收 `PASS`
+- 2026-08-25 直播状态与首页定向回归：`29 passed`（refresh 契约、状态机、Gate 1/2 关键路径）
 - 下一阶段：V1 Alpha 内测准备（仍未获得生产发布批准）
 
 Gate 0A 的平台生命周期证据仍标记为 `DEGRADED`。后续 Gate 的通过不覆盖或伪造这项历史限制。
@@ -35,10 +36,11 @@ Gate 0A 的平台生命周期证据仍标记为 `DEGRADED`。后续 Gate 的通�
 ### 直播检测
 
 - 抖音、哔哩哔哩、虎牙、斗鱼四个平台适配器
-- `LIVE / OFFLINE / UNKNOWN` 正式状态模型，平台失败不会被误判为下播
+- `LIVE / OFFLINE / CHECKING / UNKNOWN / DEGRADED` 状态模型：确认中与暂时无法确认均为显式状态，平台失败不会被误判为下播
 - HOT / WARM / COLD 检测节奏与 PostgreSQL due selection
 - PostgreSQL lease、多 worker 竞争、过期接管和按平台容量隔离
 - 重试、限流、熔断、观测记录及可回放状态转换
+- 首页刷新接口只返回任务是否受理与建议回读窗口；客户端不会将“已受理”伪装为“已确认”
 
 ### 通知引擎
 
@@ -52,9 +54,11 @@ Gate 0A 的平台生命周期证据仍标记为 `DEGRADED`。后续 Gate 的通�
 ### 微信小程序
 
 - 原生 WXML / WXSS / JavaScript 工程
-- 登录、首页、主播搜索与订阅管理
-- 通知授权、通知历史、个人页和主播详情基础链路
-- Gate 4 将继续完成真实开发者工具、真机和视觉交互验收
+- 登录、首页、主播搜索、订阅管理与主播详情链路
+- 首页按真实数据呈现直播横滑卡、状态确认卡或空直播卡；订阅行提供明确的详情入口与提醒管理
+- 抖音昵称搜索支持可选 TikHub 传输；未配置时会明确提示，避免伪造“未找到”结果
+- 通知授权、通知历史、个人页和自定义底部导航
+- UI 原型与功能设计先于后续社区/主播乐园功能实现，详见 `docs/features/`
 
 ## 核心架构
 
@@ -101,7 +105,7 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 docker compose up -d postgres redis
 python -m alembic upgrade head
-python -m uvicorn api.main:app --host 127.0.0.1 --port 8899 --reload
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8899 --reload
 ```
 
 Git Bash 可使用：
@@ -113,10 +117,20 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 docker compose up -d postgres redis
 python -m alembic upgrade head
-python -m uvicorn api.main:app --host 127.0.0.1 --port 8899 --reload
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8899 --reload
 ```
 
-启动前请检查 `.env` 中的数据库、Redis 和微信配置。默认本地 API 地址为 `http://127.0.0.1:8899/api/v1`。
+启动前请检查 `.env` 中的数据库、Redis 和微信配置。服务监听 `0.0.0.0:8899`，以便本机及局域网调试访问；微信开发者工具中的本机客户端地址仍使用 `http://127.0.0.1:8899/api/v1`。两者分别是**服务监听地址**与**客户端访问地址**，并不冲突。
+
+### 可选：抖音昵称搜索
+
+若要启用稳定的“昵称搜索 → 用户主页标识”能力，在根目录 `.env` 设置：
+
+```dotenv
+STAGE_LETTER_TIKHUB_API_KEY=你的_TikHub_Key
+```
+
+该配置是可选能力；缺少凭据时，应用会明确显示搜索暂不可用，而不会把网络/权限问题误报为没有主播。真实 Key 只能放入 `.env`，禁止提交。
 
 ### 打开微信小程序
 
@@ -148,6 +162,7 @@ e34d7a2c1b50
 | 配置 | 处理方式 |
 | --- | --- |
 | 微信 AppSecret | 仅写入根目录 `.env` 或部署平台的 secret store，禁止提交 |
+| TikHub API Key | 仅写入根目录 `.env` 或部署平台的 secret store，禁止提交 |
 | 数据库密码、访问令牌、用户 openid | 视为敏感信息，禁止写入日志、文档、测试快照或 Git 历史 |
 | 微信 AppID、模板 ID | 属于客户端可见标识符，不等同于 AppSecret；仍应通过现有配置入口维护，避免无必要复制 |
 | 开发者工具个人配置 | 使用已忽略的 `miniapp/project.private.config.json` |
@@ -176,7 +191,8 @@ README 只呈现当前可执行入口。详细冻结契约、历史 soak 记录�
 
 - Gate 0A 仍为 `DEGRADED`，不能据此宣称四个平台已经完成长期生产级真实性证明。
 - 尚未批准生产部署；生产认证、密钥托管、域名和监控仍需独立验收。
-- Gate 4 的开发者工具、真机点击链路、可用性和 UI 视觉质量仍在推进。
+- Gate 4 的视觉还原仍需在微信开发者工具与真机完成逐屏验收；设计稿不是自动通过的视觉验收。
+- 抖音昵称搜索依赖可选的 TikHub 凭据与上游可用性；失效时必须显示明确的降级状态。
 - 当前通知保证以持久化状态机、幂等边界和可恢复性为核心，不承诺端到端 exactly-once。
 
 ## License
