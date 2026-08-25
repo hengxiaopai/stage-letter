@@ -108,6 +108,9 @@
 
 获取主播详情。
 
+Query：
+- `openid` (optional): 当前查看者身份。传入后，每个平台账号返回真实关注与提醒偏好；未传时不推断用户状态。
+
 响应（200）：
 ```json
 {
@@ -117,12 +120,15 @@
   "bio": "...",
   "platforms": [
     {
+      "platform_account_id": 100,
       "platform": "douyin",
       "platform_user_id": "MS4wLjABAAAA...",
       "canonical_url": "https://www.douyin.com/user/...",
       "is_live": true,
       "last_status": "ONLINE",
       "last_checked_at": "2026-08-01T20:35:00Z",
+      "is_following": true,
+      "reminder_enabled": true,
       "current_session": {
         "id": 92839,
         "title": "今晚给大家聊聊创业",
@@ -188,6 +194,36 @@
 
 错误：
 - `40401`: 订阅不存在
+
+### GET /api/v1/notification-preferences/{platform_account_id}
+
+读取当前用户对已关注平台账号的开播提醒偏好。
+
+Query：
+- `openid` (required): 当前用户身份。
+
+响应（200）：
+```json
+{
+  "platform_account_id": 100,
+  "enabled": true,
+  "updated_at": "2026-08-26T12:00:00Z"
+}
+```
+
+### PATCH /api/v1/notification-preferences/{platform_account_id}
+
+更新开播提醒偏好。写入 Formal `notification_preferences`，并在兼容期同步 Legacy `user_subscriptions.notify_enabled`。
+
+请求：
+```json
+{
+  "openid": "o8pzc4...",
+  "enabled": false
+}
+```
+
+响应同 GET。未关注该平台账号时返回 404，不允许替其他用户修改偏好。
 
 ### GET /api/v1/subscriptions
 

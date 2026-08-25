@@ -28,7 +28,9 @@ from core.models import Anchor, LiveSession, PlatformAccount, User, UserSubscrip
 from stage_letter.infrastructure.db.models import (
     CreatorModel,
     CreatorProfileModel,
+    FollowModel,
     LiveSessionModel,
+    NotificationPreferenceModel,
     PlatformAccountModel,
 )
 
@@ -140,6 +142,7 @@ def _fmt_iso(dt: datetime | None) -> str | None:
 
 
 class PlatformStatus(BaseModel):
+    platform_account_id: int
     platform: str
     platform_user_id: str
     canonical_url: str
@@ -151,6 +154,8 @@ class PlatformStatus(BaseModel):
     freshness: str = "stale"
     last_probe_at: str | None = None
     current_session: SessionInfo | None = None
+    is_following: bool = False
+    reminder_enabled: bool | None = None
 
 
 class AnchorDetail(BaseModel):
@@ -160,6 +165,51 @@ class AnchorDetail(BaseModel):
     bio: str | None = None
     platforms: list[PlatformStatus] = []
     recent_sessions: list[SessionInfo] = []
+
+
+async def _viewer_context_by_account(
+    db: AsyncSession,
+    *,
+    openid: str | None,
+    account_ids: list[int],
+) -> dict[int, dict[str, bool | None]]:
+    """Return the authenticated viewer's formal follow/reminder facts."""
+    if not openid or not account_ids:
+        return {}
+
+    user = await db.scalar(select(User).where(User.openid == openid))
+    if user is None:
+        return {}
+
+    follows = (
+        await db.execute(
+            select(FollowModel).where(
+                FollowModel.user_id == user.id,
+                FollowModel.platform_account_id.in_(account_ids),
+            )
+        )
+    ).scalars().all()
+    preferences = (
+        await db.execute(
+            select(NotificationPreferenceModel).where(
+                NotificationPreferenceModel.user_id == user.id,
+                NotificationPreferenceModel.platform_account_id.in_(account_ids),
+            )
+        )
+    ).scalars().all()
+
+    followed_ids = {follow.platform_account_id for follow in follows}
+    enabled_by_id = {
+        preference.platform_account_id: preference.enabled
+        for preference in preferences
+    }
+    return {
+        account_id: {
+            "is_following": account_id in followed_ids,
+            "reminder_enabled": enabled_by_id.get(account_id),
+        }
+        for account_id in account_ids
+    }
 
 
 def _parse_url(url: str) -> dict:
@@ -444,10 +494,14 @@ async def parse_anchor(
 
 
 @router.get("/anchors/{anchor_id}", response_model=AnchorDetail)
-async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> AnchorDetail:
+async def get_anchor(
+    anchor_id: int,
+    openid: str | None = Query(None, description="current viewer openid"),
+    db: AsyncSession = Depends(get_db),
+) -> AnchorDetail:
     anchor = await db.get(Anchor, anchor_id)
     if anchor is None:
-        return await _get_formal_creator_detail(anchor_id, db)
+        return await _get_formal_creator_detail(anchor_id, db, openid=openid)
 
     # 平台账号 + 实时状态
     pas = (
@@ -455,6 +509,12 @@ async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> Anch
             select(PlatformAccount).where(PlatformAccount.anchor_id == anchor_id)
         )
     ).scalars().all()
+
+    viewer_by_account = await _viewer_context_by_account(
+        db,
+        openid=openid,
+        account_ids=[pa.id for pa in pas],
+    )
 
     platforms = []
     for pa in pas:
@@ -471,8 +531,10 @@ async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> Anch
         cur = sess_r.scalar_one_or_none()
         # P0-L3: 统一 Current Live State
         ls = from_platform_account(pa)
+        viewer = viewer_by_account.get(pa.id, {})
         platforms.append(
             PlatformStatus(
+                platform_account_id=pa.id,
                 platform=pa.platform,
                 platform_user_id=pa.platform_user_id,
                 canonical_url=pa.canonical_url,
@@ -482,6 +544,8 @@ async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> Anch
                 live_state=ls["state"],
                 freshness=ls["freshness"],
                 last_probe_at=ls["last_probe_at"],
+                is_following=bool(viewer.get("is_following", False)),
+                reminder_enabled=viewer.get("reminder_enabled"),
                 current_session=SessionInfo(
                     id=cur.id,
                     title=cur.title or "正在直播",
@@ -529,6 +593,8 @@ async def get_anchor(anchor_id: int, db: AsyncSession = Depends(get_db)) -> Anch
 async def _get_formal_creator_detail(
     creator_id: int,
     db: AsyncSession,
+    *,
+    openid: str | None = None,
 ) -> AnchorDetail:
     """Read a canonical Creator when no legacy Anchor mirror exists."""
 
@@ -548,8 +614,15 @@ async def _get_formal_creator_detail(
         )
     ).scalars().all()
 
+    viewer_by_account = await _viewer_context_by_account(
+        db,
+        openid=openid,
+        account_ids=[account.id for account in accounts],
+    )
+
     platforms: list[PlatformStatus] = []
     for account in accounts:
+        viewer = viewer_by_account.get(account.id, {})
         current = await db.scalar(
             select(LiveSessionModel)
             .where(
@@ -561,6 +634,7 @@ async def _get_formal_creator_detail(
         )
         platforms.append(
             PlatformStatus(
+                platform_account_id=account.id,
                 platform=account.platform,
                 platform_user_id=account.platform_user_id,
                 canonical_url=account.canonical_url or "",
@@ -568,6 +642,8 @@ async def _get_formal_creator_detail(
                 last_status="LIVE" if current is not None else "UNKNOWN",
                 live_state="LIVE" if current is not None else "UNKNOWN",
                 freshness="fresh" if current is not None else "never",
+                is_following=bool(viewer.get("is_following", False)),
+                reminder_enabled=viewer.get("reminder_enabled"),
                 current_session=(
                     SessionInfo(
                         id=current.id,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
@@ -47,6 +47,37 @@ class SubscriptionResponse(BaseModel):
     live_state: str = "UNKNOWN"   # LIVE / OFFLINE / CONFIRMING / UNKNOWN
     freshness: str = "stale"      # fresh / stale / never
     last_probe_at: str | None = None
+
+
+class ReminderPreferencePatch(BaseModel):
+    openid: str
+    enabled: bool
+
+
+class ReminderPreferenceResponse(BaseModel):
+    platform_account_id: int
+    enabled: bool
+    updated_at: str | None = None
+
+
+async def _owned_follow(
+    db: AsyncSession,
+    *,
+    openid: str,
+    platform_account_id: int,
+) -> tuple[User, FollowModel]:
+    user = await db.scalar(select(User).where(User.openid == openid))
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    follow = await db.scalar(
+        select(FollowModel).where(
+            FollowModel.user_id == user.id,
+            FollowModel.platform_account_id == platform_account_id,
+        )
+    )
+    if follow is None:
+        raise HTTPException(status_code=404, detail="尚未订阅该主播")
+    return user, follow
 
 
 async def _resolve_user_id(db: AsyncSession, req: SubscribeRequest) -> int:
@@ -283,6 +314,86 @@ async def list_subscriptions(
             )
         )
     return out
+
+
+@router.get(
+    "/notification-preferences/{platform_account_id}",
+    response_model=ReminderPreferenceResponse,
+)
+async def get_reminder_preference(
+    platform_account_id: int,
+    openid: str,
+    db: AsyncSession = Depends(get_db),
+) -> ReminderPreferenceResponse:
+    user, _ = await _owned_follow(
+        db,
+        openid=openid,
+        platform_account_id=platform_account_id,
+    )
+    preference = await db.scalar(
+        select(NotificationPreferenceModel).where(
+            NotificationPreferenceModel.user_id == user.id,
+            NotificationPreferenceModel.platform_account_id == platform_account_id,
+        )
+    )
+    if preference is None:
+        raise HTTPException(status_code=409, detail="提醒偏好尚未初始化")
+    return ReminderPreferenceResponse(
+        platform_account_id=platform_account_id,
+        enabled=preference.enabled,
+        updated_at=preference.updated_at.isoformat() if preference.updated_at else None,
+    )
+
+
+@router.patch(
+    "/notification-preferences/{platform_account_id}",
+    response_model=ReminderPreferenceResponse,
+)
+async def patch_reminder_preference(
+    platform_account_id: int,
+    req: ReminderPreferencePatch,
+    db: AsyncSession = Depends(get_db),
+) -> ReminderPreferenceResponse:
+    user, _ = await _owned_follow(
+        db,
+        openid=req.openid,
+        platform_account_id=platform_account_id,
+    )
+    preference = await db.scalar(
+        select(NotificationPreferenceModel).where(
+            NotificationPreferenceModel.user_id == user.id,
+            NotificationPreferenceModel.platform_account_id == platform_account_id,
+        )
+    )
+    if preference is None:
+        preference = NotificationPreferenceModel(
+            user_id=user.id,
+            platform_account_id=platform_account_id,
+            enabled=req.enabled,
+        )
+        db.add(preference)
+    else:
+        preference.enabled = req.enabled
+        preference.updated_at = func.now()
+
+    # Compatibility window: the notification engine still has legacy readers.
+    legacy = await db.scalar(
+        select(UserSubscription).where(
+            UserSubscription.user_id == user.id,
+            UserSubscription.platform_account_id == platform_account_id,
+        )
+    )
+    if legacy is not None:
+        legacy.notify_enabled = req.enabled
+        legacy.updated_at = func.now()
+
+    await db.commit()
+    await db.refresh(preference)
+    return ReminderPreferenceResponse(
+        platform_account_id=platform_account_id,
+        enabled=preference.enabled,
+        updated_at=preference.updated_at.isoformat() if preference.updated_at else None,
+    )
 
 
 @router.delete("/subscriptions/{sub_id}", status_code=204)

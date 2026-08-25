@@ -2,8 +2,8 @@
 const { request } = require('./api')
 
 /** 主播详情 */
-function getAnchor(anchorId) {
-  return request(`/anchors/${anchorId}`)
+function getAnchor(anchorId, openid) {
+  return request(`/anchors/${anchorId}`, { query: openid ? { openid } : {} })
 }
 
 module.exports = { getAnchor }

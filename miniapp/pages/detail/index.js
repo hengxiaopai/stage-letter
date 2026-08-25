@@ -1,5 +1,6 @@
 // pages/detail/index.js — 主播详情(主播消费页, UI-2 精修)
 const { getAnchor } = require('../../services/anchors')
+const { updateReminderPreference } = require('../../services/subscriptions')
 const { fmtDur } = require('../../utils/time')
 
 const PLATFORM_LABEL = { douyin: '抖音', bilibili: 'B站', huya: '虎牙', douyu: '斗鱼' }
@@ -17,7 +18,9 @@ Page({
     sessionTitle: '',
     sessionMeta: '',
     canonicalUrl: '',
-    remindOn: true,
+    remindOn: false,
+    remindSaving: false,
+    isFollowing: false,
     history: [],
   },
 
@@ -33,7 +36,8 @@ Page({
 
   async load() {
     try {
-      const anchor = await getAnchor(this.anchorId)
+      const openid = await getApp().ensureLogin()
+      const anchor = await getAnchor(this.anchorId, openid)
       const platform = (anchor.platforms || []).sort((a, b) =>
         // P0: 仅确认 LIVE+fresh 排前(不按 is_live 旧 bool 排序)
         ((b.live_state === 'LIVE' && b.freshness !== 'stale') ? 1 : 0) -
@@ -74,7 +78,9 @@ Page({
         sessionTitle: (sess && sess.title) || '',
         sessionMeta,
         canonicalUrl: platform ? platform.canonical_url : '',
-        remindOn: true,
+        platformAccountId: platform ? platform.platform_account_id : null,
+        isFollowing: Boolean(platform && platform.is_following),
+        remindOn: Boolean(platform && platform.reminder_enabled),
         // §3.5: 当前 live session 显示"进行中",不显示"已结束"
         history: (anchor.recent_sessions || []).map((s, i) => {
           const isCurrent = isLiveConfirmed && i === 0 && s.id === (sess && sess.id)
@@ -114,8 +120,30 @@ Page({
     })
   },
 
-  onRemindChange(e) {
-    this.setData({ remindOn: e.detail.on })
-    wx.showToast({ title: e.detail.on ? '开播提醒已开启' : '开播提醒已关闭', icon: 'none' })
+  async onRemindChange(e) {
+    const enabled = e.detail.on
+    const previous = this.data.remindOn
+    if (!this.data.isFollowing || !this.data.platformAccountId) {
+      wx.showToast({ title: '请先订阅该主播', icon: 'none' })
+      return
+    }
+    if (this.data.remindSaving) return
+
+    this.setData({ remindOn: enabled, remindSaving: true })
+    try {
+      const openid = await getApp().ensureLogin()
+      const preference = await updateReminderPreference(
+        openid,
+        this.data.platformAccountId,
+        enabled
+      )
+      this.setData({ remindOn: Boolean(preference.enabled) })
+      wx.showToast({ title: preference.enabled ? '开播提醒已开启' : '开播提醒已关闭', icon: 'none' })
+    } catch (err) {
+      this.setData({ remindOn: previous })
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ remindSaving: false })
+    }
   },
 })

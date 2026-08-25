@@ -59,7 +59,7 @@
 
     <!-- §3.4/4.3 开播提醒(统一 Reminder 组件) -->
     <view class="divider"></view>
-    <reminder-status on="{{remindOn}}" bind:change="onRemindChange"/>
+    <reminder-status on="{{remindOn}}" disabled="{{remindSaving}}" bind:change="onRemindChange"/>
 
     <!-- §3.5/4.4 最近直播记录 -->
     <view class="divider"></view>

@@ -136,6 +136,26 @@ CREATE INDEX idx_user_subs_pa ON user_subscriptions(platform_account_id);
 > **v0.2 关键变更**: UNIQUE 由 `(user_id, anchor_id)` 改为 `(user_id, platform_account_id)`,避免一个用户在不同平台订阅同一个主播(逻辑上)时被错误合并。  
 > V1 anchor 与 platform_account 1:1,但 UNIQUE 选择 platform_account_id 更直接、更反映业务。
 
+### Formal follow / notification preference（Gate 1+）
+
+`follows` 表示“用户关注了哪个 Creator/PlatformAccount”；`notification_preferences` 表示独立的提醒策略。两者不得折叠。
+
+```sql
+CREATE TABLE notification_preferences (
+    id                  BIGSERIAL PRIMARY KEY,
+    user_id             BIGINT NOT NULL REFERENCES users(id),
+    platform_account_id BIGINT NOT NULL REFERENCES platform_accounts(id),
+    enabled             BOOLEAN NOT NULL DEFAULT true,
+    silent_start        TIME,
+    silent_end          TIME,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, platform_account_id)
+);
+```
+
+唯一约束同时支持按 `(user_id, platform_account_id)` 的所有权读取。兼容迁移期间，偏好写操作必须同步 `user_subscriptions.notify_enabled`；Formal 记录是新接口的读取真相。
+
 ## 5. live_sessions
 
 一次直播会话。

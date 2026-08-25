@@ -27,6 +27,14 @@ function unsubscribe(subId) {
   return request(`/subscriptions/${subId}`, { method: 'DELETE' })
 }
 
+/** 更新已订阅平台账号的开播提醒偏好 */
+function updateReminderPreference(openid, platformAccountId, enabled) {
+  return request(`/notification-preferences/${platformAccountId}`, {
+    method: 'PATCH',
+    data: { openid, enabled },
+  })
+}
+
 /** 解析主播 URL */
 function parseAnchor(url) {
   return request('/anchors/parse', { method: 'POST', data: { url } })
@@ -59,4 +67,11 @@ function searchAnchors(openid, platform, keyword, limit = 15) {
   })
 }
 
-module.exports = { subscribe, listSubscriptions, unsubscribe, parseAnchor, searchAnchors }
+module.exports = {
+  subscribe,
+  listSubscriptions,
+  unsubscribe,
+  updateReminderPreference,
+  parseAnchor,
+  searchAnchors,
+}
