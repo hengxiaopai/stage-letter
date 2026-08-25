@@ -1,0 +1,33 @@
+# 抖音测试主播(5 个)— Gate 0B 用
+# 格式:每行一个 web_rid(10-13 位数字)、live URL 或短链
+#
+# v0.3 更新(2026-08-06 晚): 5 个 placeholder 已替换为真实 web_rid!
+# 来源:浏览器自动化(playwright 无头 chromium)监听 live.douyin.com/webcast/feed
+# API 响应,提取 item 顶层 web_rid 字段(注意:web_rid 是 10-13 位,不是 19 位;
+# 19 位 id_str 是内部 room_id,两者不同,adapter 已适配)。
+# 验证:douyin adapter 新版解析(2026-08-06 适配 enter API 改版)全部 state=ONLINE,
+# 且 playwright 打开直播间页面确认有 <video> 播放器(真实在播)。
+#
+# 备注:推荐列表实时变化,主播可能随时下播;若 24h soak 中出现 OFFLINE,
+# 属正常(主播下播),不代表 web_rid 失效。
+#
+# 未来替换方法(用户可自行更新):
+# 1. 抖音 App 进入主播"正在直播"页面 → 分享 → 复制短链
+#    https://v.douyin.com/xxx(adapter 自动展开成 web_rid)
+# 2. 或浏览器打开 https://live.douyin.com/{web_rid},地址栏数字即 web_rid
+# 3. 替换后跑 experiments/verify_douyin.py 验证 ONLINE
+
+# 婉婉连线 (心屿咨询) — 第一次开播就上热门了！！！(验证 ONLINE)
+496999661018
+
+# 正浩在美国 — 18年美漂分享真实美国生活(验证 ONLINE)
+772056670329
+
+# LH-训练营 — 体力不好不要进！！！(验证 ONLINE)
+58404181921
+
+# 小刚总（人间清醒）— 小刚总（人间清醒）正在直播(验证 ONLINE)
+593870128227
+
+# 盛小帅（招人）— 我外爷空军司令(验证 ONLINE)
+218106061256

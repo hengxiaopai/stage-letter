@@ -1,128 +1,239 @@
-/* 首页 — 编辑式 Live Radar (UI-2 精修) */
-
+/* 首页 Empty State UI */
 .home-page {
-  padding-top: 20px;
+  padding-top: 14rpx;
+  padding-bottom: calc(148rpx + env(safe-area-inset-bottom));
+  background: #f5f8ff;
+  min-height: 100vh;
 }
 
-/* ─── §1.1 编辑式大标题 ─── */
-.home-head {
-  padding: 12px 0 8px;
-}
-
-.home-title-row {
+.section-heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  margin-top: 38rpx;
+  margin-bottom: 20rpx;
 }
 
-.home-title {
-  font-size: 30px;
+.section-title {
+  display: flex;
+  align-items: center;
+  font-size: 38rpx;
+  line-height: 1.2;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  line-height: 1.15;
-  color: var(--text-primary);
+  color: #142353;
 }
 
-/* + 添加: 与标题基线对齐,右边缘对齐页面 gutter */
-.home-add {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand);
-  padding: 8px 0 8px 16px;
-  line-height: 1;
+.live-dot {
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: 12rpx;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 6rpx rgba(255, 77, 79, .12);
 }
 
-.home-meta {
-  margin-top: 8px;
+.section-more {
+  font-size: 26rpx;
+  color: #6d7b9e;
 }
 
-/* ─── 骨架屏 ─── */
+.live-heading { margin-bottom: 18rpx; }
+
+.refresh-action {
+  padding: 8rpx 18rpx;
+  border-radius: 18rpx;
+  background: #edf3ff;
+  color: #2c6ef2;
+  font-size: 23rpx;
+  font-weight: 700;
+}
+
+.refresh-action-disabled { color: #8aa9e8; }
+
+.live-scroll {
+  width: calc(100% + 32rpx);
+  margin-right: -32rpx;
+  white-space: nowrap;
+}
+
+.live-scroll-inner {
+  display: flex;
+  padding-right: 32rpx;
+}
+
+.live-mini-card {
+  position: relative;
+  width: 192rpx;
+  min-height: 268rpx;
+  box-sizing: border-box;
+  margin-right: 16rpx;
+  padding: 42rpx 18rpx 18rpx;
+  white-space: normal;
+  text-align: center;
+  border: 1rpx solid #e5ebfa;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 10rpx 30rpx rgba(50, 101, 215, .07);
+}
+
+.live-mini-badge {
+  position: absolute;
+  left: 12rpx;
+  top: 12rpx;
+  padding: 5rpx 12rpx;
+  border-radius: 10rpx;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+
+.live-mini-card anchor-avatar { display: inline-flex; }
+
+.live-mini-name {
+  margin-top: 12rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 27rpx;
+  font-weight: 700;
+  color: #1b2546;
+}
+
+.live-mini-card platform-badge {
+  display: inline-flex;
+  margin-top: 8rpx;
+}
+
+.live-mini-title {
+  margin-top: 12rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 22rpx;
+  color: #7c89a6;
+}
+
+.subscription-heading { margin-top: 44rpx; }
+
+.subscription-filters {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12rpx;
+  margin: 0 0 18rpx;
+}
+
+.subscription-filter {
+  min-width: 66rpx;
+  box-sizing: border-box;
+  padding: 9rpx 12rpx;
+  text-align: center;
+  border-radius: 14rpx;
+  color: #73809e;
+  font-size: 25rpx;
+  line-height: 1.2;
+}
+
+.subscription-filter-on { background: #edf3ff; color: #2468e9; font-weight: 700; }
+
+.subscription-list {
+  overflow: hidden;
+  border: 1rpx solid #e7edf9;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 10rpx 30rpx rgba(50, 101, 215, .06);
+}
+
+.subscription-row {
+  min-height: 140rpx;
+  padding: 20rpx 22rpx;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  box-sizing: border-box;
+  border-bottom: 1rpx solid #edf1f8;
+}
+
+.subscription-row:last-child { border-bottom: none; }
+
+.subscription-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.subscription-topline,
+.subscription-meta {
+  display: flex;
+  align-items: center;
+}
+
+.subscription-topline { gap: 10rpx; }
+
+.subscription-name {
+  max-width: 190rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1b2546;
+}
+
+.subscription-state {
+  padding: 3rpx 9rpx;
+  border-radius: 8rpx;
+  font-size: 21rpx;
+  line-height: 1.2;
+}
+
+.status-live { background: #fff0f0; color: #ff4d4f; }
+.status-checking { background: #fff7e8; color: #d99118; }
+.status-unknown { background: #fff7e8; color: #bb821b; }
+.status-offline { background: #f0f3f8; color: #8b96ac; }
+
+.subscription-meta {
+  margin-top: 9rpx;
+  gap: 8rpx;
+  min-width: 0;
+}
+
+.subscription-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 23rpx;
+  color: #7c89a6;
+}
+
+.row-actions { display: flex; align-items: center; gap: 8rpx; flex: 0 0 auto; }
+
+.row-detail-button,
+.row-button {
+  flex: 0 0 auto;
+  min-height: 58rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11rpx 14rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.row-detail-button { border: 1rpx solid #d6e0f2; background: #fff; color: #566886; }
+.row-button { background: #2c6ef2; color: #fff; }
+
+.filtered-empty { padding: 46rpx 20rpx; text-align: center; color: #8490a9; font-size: 25rpx; }
+
 .sk-row {
   display: flex;
   align-items: center;
 }
 
-.sk-lines {
-  flex: 1;
-  margin-left: 12px;
-}
-
-/* ─── §1.3 等待开播列表(弱化) ─── */
-.wait-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  position: relative;
-}
-
-.wait-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.wait-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.wait-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.wait-meta {
-  margin-top: 2px;
-  color: var(--text-tertiary);
-}
-
-/* CSS Chevron(统一图标,非 HTML Entity) */
-.wait-arrow {
-  width: 8px;
-  height: 8px;
-  border-top: 1.5px solid var(--text-tertiary);
-  border-right: 1.5px solid var(--text-tertiary);
-  transform: rotate(45deg);
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-/* Divider 从文字区起始(不穿过 Avatar): 用 border-bottom + 左偏移 */
-.wait-row::after {
-  content: '';
-  position: absolute;
-  left: 48px; /* Avatar 36px + gap 12px */
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--border);
-}
-
-.wait-row:last-child::after {
-  display: none;
-}
-
-/* 等待开播整体弱化 */
-.wait-row {
-  opacity: 0.75;
-}
-
-/* P0-L4: 状态确认中 — 独立语义(非直播非等待), 橙色弱提示 */
-.confirm-meta {
-  color: var(--text-tertiary);
-}
-.confirm-meta::before {
-  content: '· ';
-}
-
-/* P0-LiveTruth: 检测失败(UNKNOWN/DEGRADED)弱提示 — 与"确认中"区分 */
-.fail-meta {
-  color: var(--text-tertiary);
-}
-.fail-meta::before {
-  content: '⚠ ';
+.home-page announcement-bar,
+.home-page empty-live-card,
+.home-page empty-subscription-card {
+  display: block;
 }

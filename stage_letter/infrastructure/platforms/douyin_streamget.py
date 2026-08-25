@@ -78,6 +78,28 @@ def _clean_optional(value: object) -> str | None:
     return text or None
 
 
+def _room_id(room: dict[str, object]) -> str | None:
+    """Return a usable live-room identity from StreamGet's schema variants."""
+    for value in (room.get("id"), room.get("room_id"), room.get("web_rid")):
+        cleaned = _clean_optional(value)
+        if cleaned:
+            return cleaned
+
+    owner = room.get("owner")
+    if isinstance(owner, dict):
+        for value in (owner.get("web_rid"), owner.get("webRid")):
+            cleaned = _clean_optional(value)
+            if cleaned:
+                return cleaned
+
+    live_url = _clean_optional(room.get("live_url"))
+    if live_url:
+        match = re.search(r"live\.douyin\.com/(\d{5,25})", live_url)
+        if match:
+            return match.group(1)
+    return None
+
+
 def _parse_started_at(value: object) -> datetime | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -194,7 +216,7 @@ class StreamGetDouyinGateway:
         return DouyinIdentityRecord(
             sec_uid=sec_uid,
             display_name=_clean_optional(room.get("anchor_name")),
-            room_id=_clean_optional(room.get("id") or room.get("room_id")),
+            room_id=_room_id(room),
             canonical_url=self.canonical_profile_url(sec_uid),
         )
 
@@ -215,7 +237,7 @@ class StreamGetDouyinGateway:
             observed_at=self._clock(),
             raw_status=room.get("status"),
             source=STREAMGET_DOUYIN_SOURCE,
-            room_id=_clean_optional(room.get("id") or room.get("room_id")),
+            room_id=_room_id(room),
             title=_clean_optional(room.get("title")),
             source_started_at=_parse_started_at(room.get("start_time")),
         )

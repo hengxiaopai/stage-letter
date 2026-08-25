@@ -18,12 +18,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-# 探测超过该秒数未更新 → stale
-STALE_AFTER_S = 90
+# 探测超过该秒数未更新 → stale。正常离线轮询为 30 秒，留出一次调度/网络抖动余量。
+STALE_AFTER_S = 45
 
-# stale 超过该秒数 → 不再"确认中", 回退 UNKNOWN(状态未知·检测失败)
-# P0-L4: 防止主播无限期停留在中间态(用户反馈 3 位主播长期"状态确认中")
-CONFIRM_TIMEOUT_S = 600  # 10 分钟
+# stale 超过该秒数 → 不再"确认中", 回退 UNKNOWN(状态未知·检测失败)。
+# 45 秒首次判定 stale 后保留最多 30 秒确认窗口；到 75 秒仍无可信结果
+# 必须退出中间态，不能让用户等数分钟。
+CONFIRM_TIMEOUT_S = 75
 
 # 连续不可信探测次数达到该值 → DEGRADED(平台检测能力异常)
 DEGRADED_FAILURES = 5
@@ -86,8 +87,23 @@ def current_live_state(
             "stale_after_s": stale_after_s,
         }
 
-    # 从未可信探测过 → 无法断言任何状态
+    # 从未可信探测过 → 无法断言任何状态。历史上此处对 ONLINE 无条件返回
+    # CONFIRMING，使 provider 首次结果无法完成确认时永远卡在中间态；同样
+    # 以最近心跳为界限，过时后必须明确降级为 UNKNOWN。
     if last_successful_probe_at is None:
+        if heartbeat_at is not None:
+            if heartbeat_at.tzinfo is None:
+                heartbeat_at = heartbeat_at.replace(tzinfo=timezone.utc)
+            if (now - heartbeat_at).total_seconds() > confirm_timeout_s:
+                return {
+                    "state": "UNKNOWN",
+                    "is_live": None,
+                    "freshness": STALE,
+                    "last_probe_at": heartbeat_at.isoformat(),
+                    "last_successful_probe_at": None,
+                    "consecutive_probe_failures": consecutive_failures,
+                    "stale_after_s": stale_after_s,
+                }
         return {
             "state": "CONFIRMING" if last_status == "ONLINE" else "UNKNOWN",
             "is_live": None,
@@ -121,8 +137,20 @@ def current_live_state(
 
     stale = age_s > stale_after_s
 
-    # stale(过渡期): 状态可能已过期 → 显示"状态确认中", 不断言
+    # stale 的已确认离线结果仍可作为「未开播」展示，直到 hard timeout。
+    # 把每次正常调度间隙都渲染成「确认中」会使多主播列表频繁闪烁，且并不
+    # 提高真实直播发现速度。真正需要二次确认的是状态翻转后的 SUSPECT_*。
     if stale:
+        if last_status == "OFFLINE":
+            return {
+                "state": "OFFLINE",
+                "is_live": False,
+                "freshness": STALE,
+                "last_probe_at": heartbeat_at.isoformat() if heartbeat_at else None,
+                "last_successful_probe_at": last_successful_probe_at.isoformat(),
+                "consecutive_probe_failures": consecutive_failures,
+                "stale_after_s": stale_after_s,
+            }
         return {
             "state": "CONFIRMING",
             "is_live": None,

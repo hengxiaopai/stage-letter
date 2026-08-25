@@ -310,6 +310,9 @@ class LiveEvent(Base):
     live_session_id = Column(BigInteger, ForeignKey("live_sessions.id"))
     event_type = Column(String(32), nullable=False)
     confidence = Column(String(16), nullable=False, default="normal")
+    # Formal event time.  The production schema has required this since Gate
+    # 1.1; keep detected_at as the probe-observation time for legacy reads.
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
     detected_at = Column(DateTime(timezone=True), nullable=False)
     payload = Column(JSONBCompat)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

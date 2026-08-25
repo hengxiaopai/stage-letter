@@ -3,9 +3,10 @@ Component({
   data: {
     selected: 0,
     list: [
-      { pagePath: '/pages/home/index', text: '首页', icon: 'home' },
-      { pagePath: '/pages/subscriptions/index', text: '订阅', icon: 'star' },
-      { pagePath: '/pages/profile/index', text: '我的', icon: 'user' },
+      { pagePath: '/pages/home/index', text: '首页', icon: '/assets/tabbar/home-mail.png' },
+      { pagePath: '/pages/add/index', text: '发现', icon: '/assets/tabbar/discover-compass.png' },
+      { pagePath: '/pages/messages/index', text: '消息', icon: '/assets/tabbar/messages-bubble.png' },
+      { pagePath: '/pages/profile/index', text: '我的', icon: '/assets/tabbar/profile-user.png' },
     ],
   },
 

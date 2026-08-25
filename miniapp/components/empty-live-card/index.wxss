@@ -1,0 +1,60 @@
+.empty-card {
+  height: 444rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 20rpx 0 20rpx;
+  padding: 22rpx 36rpx;
+  border: 1rpx solid #e8eefb;
+  border-radius: 30rpx;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 16rpx 44rpx rgba(50, 101, 215, .07);
+}
+
+.empty-illustration {
+  width: 260rpx;
+  height: 158rpx;
+  display: block;
+  margin: 0 0 8rpx;
+}
+
+.empty-title {
+  font-size: 38rpx;
+  line-height: 1.5;
+  font-weight: 800;
+  color: #142353;
+}
+
+.empty-desc {
+  margin-top: 10rpx;
+  color: #8290ae;
+  font-size: 27rpx;
+  line-height:1.6;
+}
+
+.empty-action {
+  margin-top: auto;
+  width: 240rpx;
+  min-width: 0;
+  height: 70rpx;
+  line-height: 70rpx;
+  padding: 0;
+  border: none;
+  border-radius: 35rpx;
+  background: #2c6ef2;
+  color: #fff;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 28rpx;
+  font-weight: 600;
+  letter-spacing: .2rpx;
+  background: linear-gradient(180deg, #347cf7 0%, #2468ee 100%);
+  box-shadow: 0 8rpx 18rpx rgba(44, 110, 242, .16);
+}
+
+.empty-action::after { border: none; }
+
+.empty-card-compact {
+  margin: 52rpx 0 32rpx;
+}

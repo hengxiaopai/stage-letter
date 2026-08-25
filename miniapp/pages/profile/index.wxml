@@ -1,50 +1,13 @@
 <view class="page profile-page">
-  <!-- §5.1 Page Header -->
-  <view class="profile-head">
-    <text class="profile-title">我的</text>
-  </view>
-
-  <!-- 骨架屏 -->
-  <view wx:if="{{loading}}">
-    <view class="skeleton" style="height:120px;"></view>
-    <view class="skeleton" style="height:80px;"></view>
-  </view>
-
-  <view wx:elif="{{error}}" class="empty">
-    <view class="empty-icon">!</view>
-    <view class="empty-title">加载失败</view>
-    <view class="empty-sub">{{error}}</view>
-    <primary-button bindtap="retryLoad">重新加载</primary-button>
-  </view>
-
+  <home-brand-header />
+  <view wx:if="{{loading}}" class="profile-loading">正在加载个人中心…</view>
+  <view wx:elif="{{error}}" class="empty"><view class="empty-title">加载失败</view><view class="empty-sub">{{error}}</view><primary-button bindtap="retryLoad">重新加载</primary-button></view>
   <block wx:else>
-    <!-- §5.2 开播提醒额度(用户语言) -->
-    <view class="quota-block">
-      <reminder-quota count="{{count}}" sub="开播后第一时间通知你"/>
-      <view class="quota-action">
-        <primary-button bindtap="onTopUp">补充提醒次数</primary-button>
-      </view>
-      <!-- §5.4 精简解释(2-3 行) + 了解更多 -->
-      <view class="quota-note t-meta" bindtap="onWhy">
-        微信要求你主动授权订阅消息。每次点击「允许」，会增加 1 次开播提醒额度。
-      </view>
-      <view class="quota-more t-meta" bindtap="onWhy">为什么需要补充提醒？ ›</view>
-    </view>
-
-    <!-- §5.5 通知记录(第二核心) -->
-    <view class="divider"></view>
-    <section-header title="通知记录"/>
-    <block wx:if="{{history.length > 0}}">
-      <view wx:for="{{history}}" wx:key="id">
-        <view bindtap="onHistoryTap" data-page="{{item.page}}">
-          <notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/>
-        </view>
-      </view>
-    </block>
-    <view wx:else class="history-empty">
-      <view class="history-empty-icon"></view>
-      <view class="t-meta">暂无通知记录</view>
-      <view class="t-meta history-empty-sub">订阅的主播开播后会显示在这里</view>
-    </view>
+    <view class="profile-hero"><image src="/assets/profile/profile-letter-banner.png" mode="aspectFill"/></view>
+    <view class="profile-card"><image class="profile-avatar" src="/assets/profile/profile-mascot.png" mode="aspectFill"/><view class="profile-copy"><view><text class="profile-name">开场信用户</text><text class="profile-level">Lv.10</text></view><text class="profile-id">ID：已登录用户</text><text class="profile-motto">用开场信，连接每一次心动开场</text></view></view>
+    <view class="quota-card"><view class="quota-copy"><text class="quota-label">本月通知剩余次数</text><view><text class="quota-number">{{count}}</text><text class="quota-unit"> / {{granted || count}} 次</text></view><text class="quota-detail">通过微信授权补充开播提醒额度</text></view><button class="quota-button" bindtap="onTopUp">增加次数</button></view>
+    <view class="profile-menu"><view class="menu-row" bindtap="goSubscriptions"><image src="/assets/tabbar/home-mail.png"/><text>我的订阅</text><text>›</text></view><view class="menu-row" bindtap="goMessages"><image src="/assets/tabbar/messages-bubble.png"/><text>通知历史</text><text>›</text></view><view class="menu-row" bindtap="onWhy"><image src="/assets/brand/stage-letter-mark.png"/><text>提醒说明</text><text>›</text></view></view>
+    <view class="profile-menu menu-secondary"><view class="menu-row" bindtap="onSettings"><image src="/assets/tabbar/profile-user.png"/><text>设置</text><text>›</text></view><view class="menu-row" bindtap="onAbout"><image src="/assets/brand/stage-letter-mark.png"/><text>关于开场信</text><text>›</text></view></view>
+    <view wx:if="{{historyPreview.length > 0}}" class="history-preview"><view class="history-head"><text>最近通知</text><text bindtap="goMessages">查看全部</text></view><view wx:for="{{historyPreview}}" wx:key="id" bindtap="onHistoryTap" data-page="{{item.page}}"><notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/></view></view>
   </block>
 </view>

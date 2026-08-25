@@ -1,0 +1,62 @@
+.announcement {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 70rpx;
+  margin: 18rpx 0 0;
+  padding: 0 20rpx;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 14rpx;
+  background: #edf4ff;
+  color: #2c6ef2;
+}
+
+.announce-icon {
+  flex: 0 0 auto;
+  width: 38rpx;
+  height: 38rpx;
+  margin-right: 8rpx;
+}
+
+.announce-label {
+  flex: 0 0 auto;
+  margin-right: 14rpx;
+  color: #2c6ef2;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.announce-viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.announce-track {
+  display: flex;
+  width: 1020rpx;
+  white-space: nowrap;
+  font-size: 25rpx;
+  line-height: 70rpx;
+  animation: announce-marquee 18s linear infinite;
+}
+
+.announce-track text { flex: 0 0 auto; }
+
+/* 右端渐隐而非半个字符被硬截断，保持公告条干净的收束。 */
+.announcement::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 42rpx;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(237, 244, 255, 0), #edf4ff 70%);
+}
+
+@keyframes announce-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

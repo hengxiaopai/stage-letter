@@ -371,7 +371,6 @@ def search_douyin_logged_in(
     # 2. 页面内签名搜索
     p = None
     try:
-        deadline = t0 + timeout_s
         p = sync_playwright().start()
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),
@@ -380,11 +379,18 @@ def search_douyin_logged_in(
             user_agent=UA,
             viewport={"width": 1280, "height": 900},
         )
+        # 浏览器启动和持久化 profile 恢复不应消耗页面签名器的整个等待预算。
+        # 否则冷启动后只剩数秒，已登录用户会被错误报成搜索超时。
+        deadline = _clock() + timeout_s
         page = ctx.new_page()
-        page.goto("https://www.douyin.com", timeout=min(8000, int(remaining_ms(deadline))),
-                  wait_until="domcontentloaded")
-        # 等 byted_acrawler 就绪
-        page.wait_for_timeout(2500)
+        # 抖音首页的 DOMContentLoaded 在网络抖动时会延后；此前把剩余预算
+        # 压到 3~4 秒并等待 domcontentloaded，导致“已登录”也直接超时。
+        # 搜索只需要页面上下文和签名器，先在 commit 后继续，再显式等签名器。
+        page.goto("https://www.douyin.com", timeout=8000, wait_until="commit")
+        page.wait_for_function(
+            "() => Boolean(window.byted_acrawler && window.byted_acrawler.frontierSign)",
+            timeout=min(6000, max(1000, int(remaining_ms(deadline)))),
+        )
 
         users = page.evaluate(
             """async (kw) => {

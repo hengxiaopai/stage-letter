@@ -101,7 +101,8 @@ async def seed_job(db: AsyncSession, grant_count: int = 0) -> dict:
 
     event = LiveEvent(
         platform_account_id=pa.id, anchor_id=anchor.id, live_session_id=session.id,
-        event_type="CONFIRMED_ONLINE", confidence="normal", detected_at=T0,
+        event_type="CONFIRMED_ONLINE", confidence="normal", occurred_at=T0,
+        detected_at=T0,
     )
     db.add(event)
     await db.flush()

@@ -1,0 +1,33 @@
+# 虎牙测试主播(5 个)— Gate 0B 用
+# 格式:每行一个 room_id(数字)或 URL
+#
+# v0.2 修正(2026-08-02): 用 cache.php LiveList API 抓当前在播房间,筛出能解析的。
+# v0.2 修正(2026-08-06): 头部 5 房间 11.4h 全 ONLINE 无转换,替换 3 个为"时段性强"的
+# 中尾部房间(选手/活动/轮播),提高捕获 ONLINE↔OFFLINE 转换的概率。
+#
+# v0.3 修正(2026-08-13 14:30): 用户指定替换为 LOL 电竞主播(姿态/水晶哥/宁王/米勒)。
+# 上一版(JackeyLove/CF活动/狼人杀轮播)仍无转换;电竞主播作息更接近普通主播
+# (晚上开播、白天下播),捕获 OFFLINE ground truth 概率高。
+# 验证: adapter + 房间页 title/nick 双重确认(4 个全部 ONLINE,身份无误)。
+#
+# **关键发现**: API 返回的 `channel` 字段 ≠ 真实 mobile room ID,必须用 `profileRoom`。
+#
+# 验证状态标签:
+#   KNOWN_BASELINE      — 长期在播/停播基线
+#   VERIFIED_ONLINE     — 手动 curl 确认含 eLiveStatus 且当前在播
+#   TIMED_SCHEDULE      — 时段性开播(选手/活动/轮播),下播概率高
+
+# 虎牙英雄联盟赛事(长期在播赛事基线)  KNOWN_BASELINE
+660000
+
+# Zz1tai姿态(姿态,755.5万粉,电竞主播)  TIMED_SCHEDULE
+333003
+
+# kRYST4L水晶哥(314.6万粉,电竞主播)  TIMED_SCHEDULE
+222523
+
+# Ning宁王(284.7万粉,电竞主播)  TIMED_SCHEDULE
+980312
+
+# 解说米勒(21.1万粉,中尾部解说,下播概率高)  TIMED_SCHEDULE
+149361

@@ -1,0 +1,6 @@
+<view class="empty-card {{compact ? 'empty-card-compact' : ''}}">
+  <image class="empty-illustration" src="/assets/empty/no-live-letter.png" mode="aspectFit"/>
+  <view class="empty-title">暂无主播在直播</view>
+  <view class="empty-desc">当前没有主播正在直播，稍后再来看看吧～</view>
+  <button class="empty-action" bindtap="discover">去发现主播</button>
+</view>

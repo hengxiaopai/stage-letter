@@ -1,0 +1,29 @@
+# B 站测试主播(5 个)— Gate 0B 用
+# 格式:每行一个 URL / uid / room_id
+# 选用标准:公开知名 UP 主 / 长期存在的房间(即使不在播,我们也能验证 API 调通 + 状态检测)
+# 用户可随时替换,只要符合 adapter.parse_url 接受的格式即可
+#
+# v0.2 修正(2026-08-02): 5 个全部替换为 WebFetch 抓取 live.bilibili.com/all 当前
+# 列表(2026-08-02 12:30 CST) 出现的真实短房间号。这些房间在抓取时被平台官方列表
+# 标记为"正在直播",所以 EXPECTED state = ONLINE,但 24h 浸泡期间可能下播。
+# 用户可保留 / 替换;若需 OFFLINE ground truth 验证,需至少 1 个已知不播的房间
+# (例如各头部 UP 的 space URL,本身无直播间)。
+#
+# verification_status 标签:
+#   CURRENTLY_LISTED_ON_HOME — 抓取时在 live.bilibili.com/all 出现,大概率当前 ONLINE
+#   KNOWN_OFFLINE            — 已知不直播(头部 UP 的 space URL,无活跃直播间)
+
+# 巨浪-闪耀点唱 顶尖歌手 优质演唱(2026-08-02 12:30 在列表)  CURRENTLY_LISTED_ON_HOME
+https://live.bilibili.com/1796297556
+
+# YK-与你邂逅-招战神 全麦颜值女明星  CURRENTLY_LISTED_ON_HOME
+https://live.bilibili.com/31751478
+
+# Listen-听-纯女声点唱  CURRENTLY_LISTED_ON_HOME
+https://live.bilibili.com/1993299468
+
+# 罗翔说刑法(知识区头部 UP,偶尔直播)— 保留作为 KNOWN_OFFLINE ground truth
+https://space.bilibili.com/528738158
+
+# 影视飓风(科技区头部 UP)— 保留作为 KNOWN_OFFLINE ground truth
+https://space.bilibili.com/57863910

@@ -27,6 +27,7 @@ from api.services.search_browser import (
     search_douyu,
     search_huya,
 )
+from api.services.douyin_tikhub import search_users as search_douyin_tikhub
 from core.models import Anchor, PlatformAccount
 
 logger = logging.getLogger("stageletter.search")
@@ -182,10 +183,9 @@ async def search_anchors(
     if platform == "bilibili":
         result = await _search_bilibili(keyword, limit, timeout_s)
     elif platform == "douyin":
-        # P0-S1: 登录态搜索(管理员扫码后可用); 未登录 → AUTH_REQUIRED
-        result = await asyncio.to_thread(search_douyin_logged_in, keyword, limit, 10)
-        if result.status == Status.BLOCKED and result.source == "auth_required":
-            result.hint = "抖音搜索需登录态: 请管理员运行 tools/douyin_login_cli.py login 扫码后重试"
+        # A provider-backed nickname index is deterministic.  Do not make the
+        # request path wait on a fragile headless page signer when it is absent.
+        result = await asyncio.to_thread(search_douyin_tikhub, keyword, limit, timeout_s)
     elif platform == "huya":
         # 虎牙交互式(主播tab)固有 ~8-10s: 放宽到 10s, 精确结果 > 速度
         result = await asyncio.to_thread(search_huya, keyword, limit, 10)
@@ -377,7 +377,7 @@ async def search_all_platforms(
             elif platform == "douyu":
                 r = await asyncio.to_thread(search_douyu, keyword, limit, timeout_s)
             elif platform == "douyin":
-                r = await asyncio.to_thread(search_douyin_logged_in, keyword, limit, 10)
+                r = await asyncio.to_thread(search_douyin_tikhub, keyword, limit, timeout_s)
             else:
                 return {"platform": platform, "status": Status.PARSE_ERROR, "items": [], "hint": "unknown"}
             return {

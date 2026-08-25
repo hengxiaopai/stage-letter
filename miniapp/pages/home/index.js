@@ -11,11 +11,20 @@ Page({
     checkingList: [], // 状态确认中(CHECKING/SUSPECT 短暂过渡态)
     unknownList: [],  // 暂时无法确认(UNKNOWN/PROBE_FAILED/DEGRADED — 检测失败)
     waitList: [],    // 等待开播(弱化)
+    subscriptionRows: [],
+    visibleSubscriptionRows: [],
+    subscriptionFilter: 'all',
+    subscriptionFilters: [
+      { value: 'all', label: '全部' },
+      { value: 'live', label: '直播中' },
+      { value: 'offline', label: '未开播' },
+    ],
     total: 0,
     liveCount: 0,
     checkingCount: 0,
     unknownCount: 0,
     loading: true,
+    refreshing: false,
     error: null,
   },
 
@@ -31,12 +40,30 @@ Page({
 
   /** P0-L3: 触发可见主播即时探测(前端不等待, 失败静默) */
   async refreshStatus() {
+    return this.requestLiveRefresh()
+  },
+
+  /** 用户主动刷新与进入页面的首轮刷新共用同一条受理/回读链路。 */
+  async requestLiveRefresh() {
+    if (this.data.refreshing) return
+    this.setData({ refreshing: true })
     try {
       const openid = await getApp().ensureLogin()
-      await refreshActive(openid)
+      const accepted = await refreshActive(openid)
+      // 服务端只返回任务受理信息，不伪装成已更新的状态。遵从它给出的
+      // 回读窗口，避免前端写死等待时间或把旧快照当作新结论。
+      const pollAfterMs = Math.max(1000, Number(accepted.poll_after_ms) || 10000)
+      setTimeout(() => {
+        this.loadAll().finally(() => this.setData({ refreshing: false }))
+      }, pollAfterMs)
     } catch (e) {
       // 刷新失败静默 — 主 loadAll 已展示缓存状态
+      this.setData({ refreshing: false })
     }
+  },
+
+  manualRefresh() {
+    this.requestLiveRefresh()
   },
 
   async loadAll() {
@@ -95,11 +122,36 @@ Page({
         }
       }
 
+      const stateMeta = {
+        LIVE: { label: '直播中', className: 'status-live' },
+        CHECKING: { label: '状态确认中', className: 'status-checking' },
+        CONFIRMING: { label: '状态确认中', className: 'status-checking' },
+        UNKNOWN: { label: '暂时无法确认', className: 'status-unknown' },
+        DEGRADED: { label: '暂时无法确认', className: 'status-unknown' },
+        OFFLINE: { label: '未开播', className: 'status-offline' },
+      }
+      const rowOf = (item) => {
+        const state = stateMeta[item.live_state] || stateMeta.UNKNOWN
+        return {
+          ...item,
+          stateLabel: state.label,
+          stateClass: state.className,
+          rowMeta: item.title || item.meta || (state.label === '未开播' ? '等待下一次开播' : '直播状态暂时无法确认'),
+        }
+      }
+      const subscriptionRows = [
+        ...liveList.map(rowOf),
+        ...checkingList.map(rowOf),
+        ...unknownList.map(rowOf),
+        ...waitList.map(rowOf),
+      ]
+
       this.setData({
         liveList,
         checkingList,
         unknownList,
         waitList,
+        subscriptionRows,
         total: liveList.length + checkingList.length + unknownList.length + waitList.length,
         liveCount: liveList.length,
         checkingCount: checkingList.length,
@@ -107,6 +159,7 @@ Page({
         loading: false,
         error: null,
       })
+      this.applySubscriptionFilter(subscriptionRows)
     } catch (err) {
       this.setData({ loading: false, error: err.message })
     }
@@ -122,7 +175,37 @@ Page({
   },
 
   goAdd() {
-    wx.navigateTo({ url: '/pages/add/index' })
+    // “发现”是 TabBar 页面；navigateTo 不允许跳转到 tabBar 页面，
+    // 会失败且不展示输入页，必须用 switchTab。
+    wx.switchTab({ url: '/pages/add/index' })
+  },
+
+  goSearch() {
+    // 首页不是“我的订阅”筛选器。这里进入全平台发现页，输入后搜索主播。
+    this.goAdd()
+  },
+
+  applySubscriptionFilter(rows) {
+    const source = rows || this.data.subscriptionRows || []
+    const filter = this.data.subscriptionFilter
+    const matches = {
+      live: ['LIVE'],
+      offline: ['OFFLINE'],
+    }
+    const visibleSubscriptionRows = filter === 'all'
+      ? source
+      : source.filter((item) => (matches[filter] || []).includes(item.live_state))
+    this.setData({ visibleSubscriptionRows })
+  },
+
+  selectSubscriptionFilter(e) {
+    this.setData({ subscriptionFilter: e.currentTarget.dataset.value })
+    this.applySubscriptionFilter()
+  },
+
+  showLiveSubscriptions() {
+    this.setData({ subscriptionFilter: 'live' })
+    this.applySubscriptionFilter()
   },
 
   goDetail(e) {

@@ -1,10 +1,25 @@
 // app.js — StageLetter 小程序入口
 const { login } = require('./services/auth')
 
+const LOOPBACK_API_BASE = 'http://127.0.0.1:8899/api/v1'
+const LAN_API_BASE = 'http://192.168.1.6:8899/api/v1'
+
+function resolveApiBase() {
+  // 开发者工具和后端运行在同一台电脑时必须走 loopback。
+  // 真机才走局域网地址（后端需以 --host 0.0.0.0 启动）。
+  try {
+    return wx.getSystemInfoSync().platform === 'devtools'
+      ? LOOPBACK_API_BASE
+      : LAN_API_BASE
+  } catch (e) {
+    return LOOPBACK_API_BASE
+  }
+}
+
 App({
   globalData: {
     openid: null,
-    apiBase: 'http://192.168.1.6:8899/api/v1',
+    apiBase: resolveApiBase(),
     liveStartTemplateId: null,
     loginState: 'idle',
     loginError: null,

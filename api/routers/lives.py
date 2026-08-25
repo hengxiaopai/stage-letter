@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -24,6 +26,13 @@ from core.models import (
 )
 
 router = APIRouter()
+
+# Per-process admission control for the manual refresh endpoint. Provider work
+# is additionally protected by the durable account lease below, so a process
+# restart cannot create concurrent probes; this guard avoids needless repeated
+# requests from the same Mini Program session during normal operation.
+_REFRESH_COOLDOWNS: dict[str, datetime] = {}
+_REFRESH_COOLDOWN_SECONDS = 30
 
 
 class ActiveSession(BaseModel):
@@ -50,6 +59,15 @@ class ActiveItem(BaseModel):
 
 class ActiveResponse(BaseModel):
     items: list[ActiveItem]
+
+
+class RefreshAcceptedResponse(BaseModel):
+    """Accepted asynchronous refresh work; never misrepresent a stale snapshot."""
+
+    status: Literal["accepted", "cooldown"] = "accepted"
+    target_count: int
+    poll_after_ms: int = 10_000
+    cooldown_until: datetime
 
 
 class RecentItem(BaseModel):
@@ -132,17 +150,29 @@ async def lives_active(
     return ActiveResponse(items=items)
 
 
-@router.post("/lives/refresh", response_model=ActiveResponse)
+@router.post("/lives/refresh", response_model=RefreshAcceptedResponse)
 async def lives_refresh(
     openid: str = Query(...),
     db: AsyncSession = Depends(get_db),
-) -> ActiveResponse:
+) -> RefreshAcceptedResponse:
     """P0-L3: 首页高优先级 Refresh — 对用户可见主播触发即时探测。
 
     前端 onShow 时调用: 拿到当前订阅主播, 后台立即探测一轮,
-    返回探测后的最新 active 列表。不阻塞(后端异步探测, 此请求返回触发后快照)。
+    返回明确的“已受理”契约。不阻塞 HTTP 请求；前端应在 poll_after_ms 后
+    重新读取状态，而不是把此请求的旧快照误作最新探测结论。
     """
     user = await _get_or_create_user(db, openid)
+    now = datetime.now(timezone.utc)
+    existing_cooldown = _REFRESH_COOLDOWNS.get(openid)
+    if existing_cooldown is not None and existing_cooldown > now:
+        return RefreshAcceptedResponse(
+            status="cooldown",
+            target_count=0,
+            poll_after_ms=max(
+                1_000, int((existing_cooldown - now).total_seconds() * 1000)
+            ),
+            cooldown_until=existing_cooldown,
+        )
 
     # 当前订阅的 platform_accounts(含 canonical_url)
     subs = (
@@ -153,26 +183,104 @@ async def lives_refresh(
         )
     ).scalars().all()
 
-    # 触发一轮即时探测(异步, 不等待完成 — 探测结果下次拉取生效)
-    if subs:
+    # 触发当前用户订阅的优先探测（异步，不把 provider I/O 放进本请求的 DB 事务）。
+    # 不能调用 run_once：它只会挑全库前一批 due 账号，既不保证覆盖当前用户，
+    # 也不会在 Uvicorn 进程中自动加载 platform adapters。
+    account_ids = list(dict.fromkeys(pa.id for pa in subs))
+    cooldown_until = now + timedelta(seconds=_REFRESH_COOLDOWN_SECONDS)
+    _REFRESH_COOLDOWNS[openid] = cooldown_until
+    if account_ids:
         import asyncio
 
-        async def _probe_now():
+        async def _probe_account(account_id: int) -> bool:
+            """Run one isolated probe and report whether a second confirmation is due."""
             try:
-                from workers.probe.worker import run_once
+                from workers.probe.worker import _load_adapters, probe_one
                 from core.live_session_engine import LiveSessionEngine
                 from core.db import async_session
+                from stage_letter.application.services.detection_lease import (
+                    DetectionLeaseApplicationService,
+                )
+                from stage_letter.infrastructure.detection.leases import (
+                    SQLAlchemyDetectionLeaseRepository,
+                )
 
+                _load_adapters()
+                leases = DetectionLeaseApplicationService(
+                    SQLAlchemyDetectionLeaseRepository(async_session)
+                )
                 async with async_session() as s:
-                    await run_once(s, LiveSessionEngine(s))
+                    engine = LiveSessionEngine(s)
+                    owner_token = f"refresh:{uuid4().hex}"[:64]
+                    lease_acquired = False
+                    try:
+                        # Same durable lease as the detection runtime: a manual
+                        # refresh must not duplicate an in-flight worker probe.
+                        acquisition = await leases.try_acquire(
+                            account_id=str(account_id),
+                            probe_id=f"monitor:manual-refresh:{uuid4().hex}",
+                            owner_token=owner_token,
+                        )
+                        if not acquisition.acquired:
+                            return False
+                        lease_acquired = True
+                        account = await s.get(PlatformAccount, account_id)
+                        if account is None or account.is_disabled:
+                            return False
+                        await probe_one(s, account, engine)
+                        await s.commit()
+                        return account.last_status in ("SUSPECT_ONLINE", "SUSPECT_OFFLINE")
+                    except Exception as account_error:
+                        # A single platform's provider or persistence failure
+                        # must not leave the shared session failed and prevent
+                        # every later subscription from being refreshed.
+                        await s.rollback()
+                        import logging
+                        logging.getLogger("stageletter.lives").warning(
+                            "refresh probe account=%s: %s",
+                            account_id,
+                            account_error,
+                        )
+                        return False
+                    finally:
+                        if lease_acquired:
+                            try:
+                                await leases.release(
+                                    account_id=str(account_id),
+                                    owner_token=owner_token,
+                                )
+                            except Exception as lease_error:
+                                import logging
+                                logging.getLogger("stageletter.lives").warning(
+                                    "refresh release lease account=%s: %s",
+                                    account_id,
+                                    lease_error,
+                                )
             except Exception as e:
                 import logging
-                logging.getLogger("stageletter.lives").warning("refresh probe: %s", e)
+                logging.getLogger("stageletter.lives").warning(
+                    "refresh probe account=%s: %s", account_id, e
+                )
+                return False
 
-        asyncio.create_task(_probe_now())
+        async def _confirm_after_delay(account_id: int) -> None:
+            # The state machine intentionally needs two independent matching
+            # observations. Do not wait for the next 60s worker sweep when the
+            # user explicitly requested a refresh.
+            await asyncio.sleep(8)
+            await _probe_account(account_id)
 
-    # 返回当前快照(探测结果下一轮生效)
-    return await lives_active(openid=openid, db=db)
+        async def _probe_now(ids: list[int]):
+            for account_id in ids:
+                if await _probe_account(account_id):
+                    asyncio.create_task(_confirm_after_delay(account_id))
+
+        asyncio.create_task(_probe_now(account_ids))
+
+    return RefreshAcceptedResponse(
+        target_count=len(account_ids),
+        cooldown_until=cooldown_until,
+    )
 
 
 @router.get("/lives/recent", response_model=RecentResponse)

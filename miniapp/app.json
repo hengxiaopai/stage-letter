@@ -2,22 +2,23 @@
   "pages": [
     "pages/home/index",
     "pages/add/index",
+    "pages/messages/index",
     "pages/subscriptions/index",
     "pages/profile/index",
     "pages/detail/index"
   ],
   "window": {
     "navigationBarTitleText": "开场信",
-    "navigationBarBackgroundColor": "#F7F8F7",
+    "navigationBarBackgroundColor": "#F5F8FF",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#F7F8F7",
+    "backgroundColor": "#F5F8FF",
     "backgroundTextStyle": "dark",
     "enablePullDownRefresh": false
   },
   "tabBar": {
     "custom": true,
     "color": "#9CA29F",
-    "selectedColor": "#176B8A",
+    "selectedColor": "#2C6EF2",
     "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [
@@ -26,8 +27,12 @@
         "text": "首页"
       },
       {
-        "pagePath": "pages/subscriptions/index",
-        "text": "订阅"
+        "pagePath": "pages/add/index",
+        "text": "发现"
+      },
+      {
+        "pagePath": "pages/messages/index",
+        "text": "消息"
       },
       {
         "pagePath": "pages/profile/index",

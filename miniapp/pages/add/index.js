@@ -26,6 +26,14 @@ Page({
       { label: '虎牙', value: 'huya' },
       { label: '斗鱼', value: 'douyu' },
     ],
+    topicTabs: [
+      { label: '推荐主播', value: 'recommended' },
+      { label: '热门游戏', value: 'games' },
+      { label: '娱乐', value: 'entertainment' },
+      { label: '颜值', value: 'beauty' },
+      { label: '聊天', value: 'chat' },
+    ],
+    activeTopic: 'recommended',
     platformLabelMap: PLATFORM_LABEL,
     // 链接
     url: '',
@@ -51,6 +59,9 @@ Page({
 
   /** P0-08: 从订阅页返回时,同步搜索结果行的订阅状态(取消后立即恢复「订阅」) */
   onShow() {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 1 })
+    }
     if (this.data.results.length > 0) this.syncSubStatus()
   },
 
@@ -88,8 +99,14 @@ Page({
   // P0-10: Tab 切换 = 纯本地筛选, 绝不重新触发搜索
   onFilterChange(e) {
     const platform = e.detail.value
-    this.setData({ platform })
-    this.applyFilter()
+    this.setData({ platform }, () => {
+      this.applyFilter()
+      // 不能把“该平台请求超时/受限”误报为“没有这个主播”。
+      this.applySearchMeta({
+        items: this.data.allResults,
+        platform_status: this.data.platformStatus,
+      })
+    })
   },
 
   /** 按当前 Tab 从 allResults 筛选展示(P0-10: Tab 不改搜索语义) — 必须过 renderRows 才有 meta/platformLabel/用户 key 等 */
@@ -102,8 +119,24 @@ Page({
     this.setData({ results })
   },
 
+  onTopicTap(e) {
+    // 当前后端没有“按内容标签推荐”接口；此处只保持清晰的 UI 选中状态，
+    // 搜索结果仍严格由上方关键词和平台筛选决定。
+    this.setData({ activeTopic: e.currentTarget.dataset.value })
+  },
+
   onKeywordInput(e) {
     this.setData({ keyword: e.detail.value })
+  },
+
+  onUniversalInput(e) {
+    if (this.data.mode === 'search') this.onKeywordInput(e)
+    else this.onUrlInput(e)
+  },
+
+  onUniversalConfirm() {
+    if (this.data.mode === 'search') this.onSearch()
+    else this.onParse()
   },
 
   onClearKeyword() {
@@ -167,16 +200,33 @@ Page({
     const ps = resp.platform_status || {}
     let searchMsg = ''
     let showPasteLinkCta = false
+    const activeResultCount = this.data.platform === 'all'
+      ? items.length
+      : items.filter((item) => item.platform === this.data.platform).length
 
     const douyinPs = ps.douyin || {}
-    if (douyinPs.status === 'BLOCKED') {
-      // 抖音需登录 → 提示粘贴链接(不影响其他平台结果展示)
+    const activePs = this.data.platform === 'all' ? null : (ps[this.data.platform] || {})
+
+    if (activePs && activePs.status === 'TIMEOUT') {
+      searchMsg = `${PLATFORM_LABEL[this.data.platform] || this.data.platform}搜索超时，暂时无法确认；请稍后重试`
+      showPasteLinkCta = this.data.platform === 'douyin'
+    } else if (activePs && activePs.status === 'BLOCKED') {
+      searchMsg = activePs.hint || `${PLATFORM_LABEL[this.data.platform] || this.data.platform}搜索暂不可用`
+      showPasteLinkCta = this.data.platform === 'douyin'
+    } else if (activePs && activePs.status === 'PARSE_ERROR') {
+      searchMsg = `${PLATFORM_LABEL[this.data.platform] || this.data.platform}搜索服务暂时不可用，请稍后重试`
+      showPasteLinkCta = this.data.platform === 'douyin'
+    } else if (douyinPs.status === 'BLOCKED') {
+      // 抖音配置/上游不可用不能遮蔽其它平台的有效结果。
       if (items.length > 0) {
-        searchMsg = '抖音需登录，已显示其他平台结果；抖音主播请粘贴链接'
+        searchMsg = `${douyinPs.hint || '抖音昵称搜索暂不可用'}；已显示其他平台结果，可粘贴抖音主页链接`
       } else {
-        searchMsg = douyinPs.hint || '抖音需登录才能搜主播，请粘贴链接'
+        searchMsg = douyinPs.hint || '抖音昵称搜索暂不可用，请粘贴主页链接'
       }
       showPasteLinkCta = true
+    } else if (this.data.platform !== 'all' && (activePs.status === 'EMPTY' || activePs.status === 'SUCCESS') && activeResultCount === 0) {
+      searchMsg = '没有找到相关主播，换个名字试试'
+      showPasteLinkCta = this.data.platform === 'douyin'
     } else if (items.length === 0) {
       searchMsg = '没有找到相关主播，换个名字试试'
       showPasteLinkCta = true

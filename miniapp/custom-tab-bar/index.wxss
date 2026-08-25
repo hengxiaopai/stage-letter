@@ -1,146 +1,42 @@
-/* custom-tab-bar — 编辑式导航(§十/§十三) */
-
 .tabbar {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
   z-index: 90;
+  display: flex;
+  min-height: 108rpx;
+  box-sizing: border-box;
+  padding: 10rpx 0 calc(12rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #e7edf8;
+  background: #fff;
+  box-shadow: 0 -8rpx 24rpx rgba(43, 89, 185, .04);
 }
 
 .tab-item {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 2px 0;
+  gap: 4rpx;
 }
 
-/* ─── Icon Soft Surface(仅选中, 32x24 小底) ─── */
-.tab-icon-wrap {
-  width: 44px;
-  height: 26px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.16s ease;
-}
-
-.icon-on {
-  background: var(--brand-soft);
-}
-
-/* ─── CSS 图标 ─── */
 .tab-icon {
-  position: relative;
-  width: 20px;
-  height: 20px;
-  transition: all 0.16s ease;
+  width: 66rpx;
+  height: 66rpx;
+  opacity: .42;
 }
 
-/* 首页: 房子 */
-.icon-home {
-  border: 1.5px solid var(--text-tertiary);
-  border-radius: 2px;
-  width: 18px;
-  height: 15px;
-  margin-top: 4px;
-}
-
-.icon-home::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 2px;
-  width: 13px;
-  height: 13px;
-  border-left: 1.5px solid var(--text-tertiary);
-  border-top: 1.5px solid var(--text-tertiary);
-  transform: rotate(45deg);
-  background: var(--surface);
-}
-
-/* 订阅: 星形(菱形叠加) */
-.icon-star {
-  width: 18px;
-  height: 18px;
-}
-
-.icon-star::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid var(--text-tertiary);
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 2px;
-}
-
-.icon-star::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid var(--text-tertiary);
-  transform: translate(-50%, -50%) rotate(45deg) scale(0.45);
-  border-radius: 2px;
-}
-
-/* 我的: 人形 */
-.icon-user {
-  width: 18px;
-  height: 18px;
-}
-
-.icon-user::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 1px;
-  transform: translateX(-50%);
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid var(--text-tertiary);
-  border-radius: 50%;
-}
-
-.icon-user::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 14px;
-  height: 7px;
-  border: 1.5px solid var(--text-tertiary);
-  border-radius: 10px 10px 8px 8px;
-  border-top: none;
-}
-
-/* ─── 选中态: 图标 + 文字 Brand Primary ─── */
-.icon-path-on,
-.icon-path-on::before,
-.icon-path-on::after {
-  border-color: var(--brand) !important;
-}
+.tab-icon-on { opacity: 1; }
 
 .tab-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  transition: color 0.16s ease, font-weight 0.16s ease;
+  font-size: 22rpx;
+  line-height: 1.2;
+  color: #929cb2;
 }
 
 .tab-text-on {
-  color: var(--brand);
-  font-weight: 600;
+  color: #2c6ef2;
+  font-weight: 700;
 }
