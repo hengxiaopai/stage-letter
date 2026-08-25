@@ -1,0 +1,8 @@
+<view class="confirm-card">
+  <image class="confirm-illustration" src="/assets/empty/no-live-letter.png" mode="aspectFit" />
+  <view class="confirm-copy">
+    <view class="confirm-title">正在确认直播状态</view>
+    <view class="confirm-desc">正在核对 {{count}} 位主播，请稍候自动更新</view>
+    <view class="confirm-action {{refreshing ? 'confirm-action-disabled' : ''}}" bindtap="refresh">{{refreshing ? '正在检查' : '立即刷新'}}</view>
+  </view>
+</view>

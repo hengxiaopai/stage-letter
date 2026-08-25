@@ -18,7 +18,7 @@ Page({
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 1 })
+      this.getTabBar().setData({ selected: -1 })
     }
     this.load()
   },
@@ -164,6 +164,6 @@ Page({
   },
 
   goAdd() {
-    wx.navigateTo({ url: '/pages/add/index' })
+    wx.switchTab({ url: '/pages/add/index' })
   },
 })

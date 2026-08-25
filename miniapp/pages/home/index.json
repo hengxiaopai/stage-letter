@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "开场信",
+  "navigationBarTitleText": "",
   "enablePullDownRefresh": true,
   "usingComponents": {
     "page-title": "/components/page-title/index",
@@ -12,6 +12,9 @@
     "home-search-bar": "/components/home-search-bar/index",
     "announcement-bar": "/components/announcement-bar/index",
     "empty-live-card": "/components/empty-live-card/index",
-    "empty-subscription-card": "/components/empty-subscription-card/index"
+    "empty-subscription-card": "/components/empty-subscription-card/index",
+    "live-confirming-card": "/components/live-confirming-card/index",
+    "anchor-avatar": "/components/anchor-avatar/index",
+    "platform-badge": "/components/platform-badge/index"
   }
 }

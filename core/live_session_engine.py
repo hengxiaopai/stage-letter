@@ -257,6 +257,7 @@ class LiveSessionEngine:
             live_session_id=session_id,
             event_type=event_type,
             confidence=confidence,
+            occurred_at=now,
             detected_at=now,
             payload=meta,
         )

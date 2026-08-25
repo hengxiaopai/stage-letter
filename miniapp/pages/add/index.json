@@ -1,9 +1,10 @@
 {
-  "navigationBarTitleText": "添加订阅",
+  "navigationBarTitleText": "",
   "usingComponents": {
     "section-header": "/components/section-header/index",
     "anchor-row": "/components/anchor-row/index",
     "search-field": "/components/search-field/index",
-    "filter-tabs": "/components/filter-tabs/index"
+    "filter-tabs": "/components/filter-tabs/index",
+    "home-brand-header": "/components/home-brand-header/index"
   }
 }

@@ -1,1 +1,23 @@
-.search-bar{height:88rpx;background:#fff;border-radius:24rpx;padding:0 28rpx;display:flex;align-items:center;color:var(--text-tertiary);font-size:28rpx}
+.search-bar {
+  height: 96rpx;
+  box-sizing: border-box;
+  padding: 0 28rpx;
+  display: flex;
+  align-items: center;
+  border: 1rpx solid #d7e2fa;
+  border-radius: 48rpx;
+  background: #fff;
+  box-shadow: 0 10rpx 28rpx rgba(50, 101, 215, .055);
+}
+
+.search-bar-hover { opacity: .7; }
+
+.search-bar icon {
+  flex: 0 0 auto;
+  margin-right: 18rpx;
+}
+
+.search-placeholder {
+  font-size: 26rpx;
+  color: #8c97ae;
+}

@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "anchor-avatar": "/components/anchor-avatar/index",
+    "empty-state": "/components/empty-state/index",
+    "primary-button": "/components/primary-button/index",
+    "home-brand-header": "/components/home-brand-header/index"
+  }
+}

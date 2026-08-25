@@ -9,7 +9,7 @@
     → Deduplicate           (platform+platform_user_id)
     → Subscription Enrichment
     → Profile Metadata Merge (null 不覆盖)
-    → Ranking               (订阅 > 匹配 > 粉丝权重)
+    → Ranking               (订阅 > 匹配 > 直播状态 > 粉丝 > 稳定兜底)
     → SearchResult[]
 
 SearchResult DTO:
@@ -17,17 +17,14 @@ SearchResult DTO:
   follower_count | is_subscribed | subscription_id | match_type | match_score |
   live_state | last_probe_at | source
 
-Rank Model(2026-08-14 方案 B + 高粉升级):
-  已订阅                    +1000
-  nickname == query        +500   (EXACT, 绝对优先)
-  normalized 完全匹配        +480   (NORMALIZED)
-  昵称以 query 开头          +350   (PREFIX)
-  昵称包含 query            +250   (CONTAINS)
-  alias 完全匹配             +220   (ALIAS)
-  模糊相似                   +0~150 (FUZZY)
-  粉丝量                     +0~200 (log10×30, 105万粉≈+180; 同档内决定先后)
-  高粉升级: EXACT 为僵尸号(<1000粉)或缺失时, ≥10万粉 CONTAINS 按 PREFIX 档打分
-            (平台搜索"四五六"时 105万粉主播必然排最前)
+Rank Model(2026-08-22, 分层排序):
+  1. 已订阅
+  2. 匹配级别: EXACT > NORMALIZED > PREFIX > CONTAINS > ALIAS > FUZZY
+  3. 同一匹配级别内: 直播中 > 非直播/未知
+  4. 同一直播状态内: 粉丝数降序
+  5. 平台、用户 ID 的稳定兜底
+
+粉丝量不再跨越匹配层级，避免高粉前缀/包含候选压过完全匹配的同名主播。
   NO_MATCH → 丢弃
 """
 from __future__ import annotations
@@ -38,10 +35,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 logger = logging.getLogger("stageletter.search.core")
-
-SUBSCRIPTION_BOOST = 1000
-FANS_MAX_BOOST = 200   # 2026-08-14 方案 B: 50→200, 让百万粉 PREFIX 可反超低粉 EXACT (匹配 → 现实意图)
-FANS_SCALE = 30        # × 30 让 log10(fans+1) × 30 的中位数落在 100-180, 1万以上都很可观
 
 # ── 匹配类型 ──
 EXACT = "EXACT"
@@ -173,7 +166,7 @@ def deduplicate(candidates: list[dict]) -> list[dict]:
     return list(seen.values())
 
 
-def rank_items(items: list[dict], query: str) -> list[dict]:
+def _rank_items_legacy(items: list[dict], query: str) -> list[dict]:
     """Rank Model(2026-08-14 方案 B + 高粉升级):
       已订阅 +1000 > 匹配分(EXACT 350...FUZZY 150) > 粉丝权重(0-200, 对数放大)
       高粉升级: EXACT 为僵尸号(<1000粉)或不存在时, ≥10万粉 CONTAINS 按 PREFIX 档打分
@@ -221,6 +214,29 @@ def rank_items(items: list[dict], query: str) -> list[dict]:
     items.sort(key=lambda x: (x.get("_rank_score", 0), x.get("follower_count") or x.get("fans") or 0), reverse=True)
     for it in items:
         it.pop("_rank_score", None)
+    return items
+
+
+def rank_items(items: list[dict], query: str) -> list[dict]:
+    """按订阅、匹配、实时直播状态、粉丝数分层排序。
+
+    ``is_live`` 是搜索供应商的即时值；已入库账号则可由 ``live_state``
+    补充。只有任一字段明确为直播，才获得同级的直播优先级。
+    """
+    def sort_key(it: dict) -> tuple:
+        fans = it.get("follower_count") or it.get("fans") or 0
+        is_live = bool(it.get("is_live")) or it.get("live_state") == "LIVE"
+        return (
+            -int(bool(it.get("is_subscribed"))),
+            -int(it.get("match_score", 0)),
+            -int(is_live),
+            -int(fans),
+            normalize_query(it.get("display_name") or ""),
+            str(it.get("platform") or ""),
+            str(it.get("user_id") or it.get("platform_user_id") or ""),
+        )
+
+    items.sort(key=sort_key)
     return items
 
 

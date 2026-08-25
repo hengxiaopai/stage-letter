@@ -18,11 +18,12 @@ Page({
     loading: true,
     error: null,
     history: [],
+    historyPreview: [],
   },
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 2 })
+      this.getTabBar().setData({ selected: 3 })
     }
     this.load()
   },
@@ -47,6 +48,7 @@ Page({
         count: grant ? grant.available : 0,
         granted: grant ? grant.granted_count : 0,
         history: items,
+        historyPreview: items.slice(0, 2),
         loading: false,
         error: null,
       })
@@ -104,6 +106,26 @@ Page({
       content: '微信规定：每次向你发送开播提醒前，都需要你主动点一次「允许」授权。\n\n每点一次「允许」= 增加 1 次提醒额度。额度用完后，开播通知会转为站内记录，不会消失。',
       showCancel: false,
       confirmText: '知道了',
+    })
+  },
+
+  goSubscriptions() {
+    wx.navigateTo({ url: '/pages/subscriptions/index' })
+  },
+
+  goMessages() {
+    wx.switchTab({ url: '/pages/messages/index' })
+  },
+
+  onSettings() {
+    wx.showToast({ title: '设置功能即将开放', icon: 'none' })
+  },
+
+  onAbout() {
+    wx.showModal({
+      title: '关于开场信',
+      content: '开场信为你汇集关注主播的开播状态，并在可用时及时提醒。',
+      showCancel: false,
     })
   },
 

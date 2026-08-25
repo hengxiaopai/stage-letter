@@ -1,6 +1,6 @@
 <view class="empty-card">
-  <view class="empty-icon">📬</view>
+  <image class="empty-illustration" src="/assets/empty/no-subscriptions-parcel.png" mode="aspectFit"/>
   <view class="empty-title">暂无订阅的主播</view>
-  <view class="empty-desc">订阅后及时收到开播提醒～</view>
-  <button>订阅主播</button>
+  <view class="empty-desc">你还没有订阅任何主播，订阅后及时收到开播提醒～</view>
+  <button class="empty-action" bindtap="discover">去订阅主播</button>
 </view>

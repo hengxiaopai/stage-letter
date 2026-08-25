@@ -1,0 +1,31 @@
+# 斗鱼测试主播(5 个)— Gate 0B 用
+# 格式:每行一个 room_id(数字)或 URL
+#
+# v0.3 更新(2026-08-06 晚): 房间 1000 已浏览器验证为权威 OFFLINE 基线 ✅
+#   playwright 打开 https://www.douyu.com/1000:
+#   - 标题「hsj1207直播_hsj1207棋牌娱乐直播...」→ 房间存在,主播 hsj1207
+#   - video 元素为空占位(readyState=0, src='')→ 当前未开播
+#   - adapter 返回 show_status=2 → OFFLINE
+#   - 8/2 与 8/6 两次探测均 OFFLINE,稳定
+#   注意:该主播会开播(SEO 标题带"直播"),未来可能转为 ONLINE —— 反而能提供
+#   OFFLINE→ONLINE 转换证据,适合 Gate 0B 转换观测。
+#
+# 验证状态标签:
+#   CURRENTLY_LISTED_ON_HOME — 抓取时在 www.douyu.com/directory/all 出现,大概率当前 ONLINE
+#   KNOWN_OFFLINE_BROWSER_VERIFIED — 浏览器验证房间存在但未播(2026-08-06)
+#   KNOWN_BASELINE           — 长期在播/不播基线
+
+# 斗鱼 yyfyyf(长期在播基线,与 README 一致)  KNOWN_BASELINE
+9999
+
+# 小若早上10点来(若若跑的贼快,2026-08-02 12:30 热度 637.6 万)  CURRENTLY_LISTED_ON_HOME
+171717
+
+# 预告丨CFPL夏季赛总决赛KZvs白鲨(穿越火线运营团队,182.1 万)  CURRENTLY_LISTED_ON_HOME
+605964
+
+# 送！三百亿助力卡！！！(靓旭,217.3 万)  CURRENTLY_LISTED_ON_HOME
+1165924
+
+# OFFLINE ground truth(浏览器验证 2026-08-06):房间存在但未播(主播 hsj1207)
+1000

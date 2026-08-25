@@ -52,6 +52,10 @@ class Settings:
     wx_secret: str = _env("WX_SECRET", "")
     wx_template_live_start: str = _env("WX_TEMPLATE_LIVE_START", "")
 
+    # Optional commercial lookup source for Douyin nickname -> sec_uid.
+    # Keep compatibility with the Gate 0A experiment's unprefixed local key.
+    tikhub_api_key: str = os.environ.get("TIKHUB_API_KEY", "").strip() or _env("TIKHUB_API_KEY", "")
+
     # ── Internal admin (Gate 5; configure only in local/deployed secrets) ──
     admin_username: str = _env("ADMIN_USERNAME", "")
     admin_password: str = _env("ADMIN_PASSWORD", "")

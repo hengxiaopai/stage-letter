@@ -1,0 +1,37 @@
+<view class="container">
+  <view class="header">
+    <text class="title">StageLetter 授权测试</text>
+    <text class="sub">Gate 0A · 订阅消息 grant 模型验证</text>
+  </view>
+
+  <view class="card">
+    <text class="label">模板 ID(直播开播通知)</text>
+    <text class="tid" user-select>{{templateId}}</text>
+  </view>
+
+  <view class="card">
+    <text class="label">wx.login code</text>
+    <text class="code" user-select>{{loginCode || '(未获取,点下方按钮)'}}</text>
+    <view class="btn-row">
+      <button class="btn" size="mini" type="default" bindtap="doLogin">重新获取 code</button>
+      <button class="btn" size="mini" type="default" bindtap="copyCode">复制 code</button>
+    </view>
+  </view>
+
+  <button class="main-btn" bindtap="requestSub" disabled="{{busy}}">
+    {{busy ? '调用中...' : '触发订阅授权弹窗'}}
+  </button>
+
+  <view class="card log-card" wx:if="{{lastResult}}">
+    <text class="label">上次授权结果</text>
+    <text class="result">{{lastResult}}</text>
+  </view>
+
+  <view class="card log-card">
+    <view class="log-header">
+      <text class="label">操作日志</text>
+      <text class="clear" bindtap="clearLog">清空</text>
+    </view>
+    <view class="log-item" wx:for="{{log}}" wx:key="index">{{item}}</view>
+  </view>
+</view>

@@ -158,6 +158,7 @@ e34d7a2c1b50
 
 - [产品说明](PRODUCT.md)
 - [产品需求](PRD.md)
+- [功能设计与交付规范](docs/FEATURE-DESIGN-DELIVERY.md)
 - [系统架构](ARCHITECTURE.md)
 - [数据模型](DATA-MODEL.md)
 - [API 规范](API-SPEC.md)

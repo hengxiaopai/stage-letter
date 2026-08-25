@@ -19,6 +19,7 @@ API:
 - 字段名(status / status_str)随版本会变,adapter 保留 status_str 作为 fallback
 - ttwid 有效期 ~14 天,生产环境需在 cookie 失效时自动续期(见 §2)
 """
+import asyncio
 import json
 import logging
 import re
@@ -153,6 +154,38 @@ class DouyinAdapter:
             return m.group(1)
         return None
 
+    @staticmethod
+    def _probe_profile_via_streamget(sec_uid: str) -> dict:
+        """Resolve a stable Douyin profile identity without browser signing.
+
+        The signed web ``profile/other`` route is useful when it is available,
+        but it must not be the only way to inspect a subscribed creator.  The
+        formal StreamGet gateway already accepts the canonical ``sec_uid`` and
+        exposes explicit room status.  Keep the old status contract here so
+        Gate 0B callers can consume the result without importing formal types.
+        """
+        from stage_letter.infrastructure.platforms.douyin_streamget import (
+            StreamGetDouyinGateway,
+        )
+
+        record = asyncio.run(StreamGetDouyinGateway().fetch_live(sec_uid))
+        raw_status = record.raw_status
+        if raw_status == 2:
+            state = LiveStatus.ONLINE.value
+        elif raw_status == 4:
+            state = LiveStatus.OFFLINE.value
+        else:
+            state = LiveStatus.UNKNOWN.value
+        return {
+            "ok": state != LiveStatus.UNKNOWN.value,
+            "room_id": record.room_id,
+            "nickname": None,
+            "title": record.title,
+            "raw_status": raw_status,
+            "source": record.source,
+            "state": state,
+        }
+
     # ---------- API 调用 ----------
     def _fetch_status(self, web_rid: str) -> dict:
         self._ensure_ttwid()
@@ -279,12 +312,34 @@ class DouyinAdapter:
         else:
             room_id = parsed["room_id"]
 
-        # user 主页: 登录态探测(P0-LiveTruth — profile/other API live_status)
-        #   实测: live_status=0 → 未开播(room_id=0); 1 → 直播中(room_id>0)
+        # user 主页: stable sec_uid → first use the formal StreamGet gateway.
+        # The browser-signed profile API remains a secondary source because its
+        # signature script is not guaranteed to initialize in a headless worker.
         if room_id is None and parsed.get("is_user_page"):
+            sec_uid = parsed.get("user_id")
+            try:
+                pr = self._probe_profile_via_streamget(sec_uid)
+                if pr.get("ok"):
+                    return {
+                        "ok": True,
+                        "room_id": pr.get("room_id"),
+                        "nickname": pr.get("nickname"),
+                        "title": pr.get("title"),
+                        "raw_status": pr.get("raw_status"),
+                        "source": pr.get("source"),
+                        "raw": url,
+                        "user_id": sec_uid,
+                        "state": pr["state"],
+                    }
+                streamget_error = (
+                    f"unrecognized explicit status={pr.get('raw_status')!r}"
+                )
+            except Exception as e:
+                streamget_error = str(e)[:60]
+
             try:
                 from api.services.douyin_session import probe_user_live_status
-                pr = probe_user_live_status(parsed.get("user_id"))
+                pr = probe_user_live_status(sec_uid)
                 if pr.get("ok"):
                     return {
                         "ok": True,
@@ -292,27 +347,22 @@ class DouyinAdapter:
                         "live_status": pr.get("live_status"),
                         "nickname": pr.get("nickname"),
                         "follower_count": pr.get("followers"),
+                        "source": "douyin_logged_in_profile",
                         "raw": url,
-                        "user_id": parsed.get("user_id"),
+                        "user_id": sec_uid,
                         "state": pr["state"],
                     }
-                return {
-                    "ok": False,
-                    "errcode": -8,
-                    "errmsg": pr.get("error") or "登录态探测失败",
-                    "raw": url,
-                    "user_id": parsed.get("user_id"),
-                    "state": LiveStatus.UNKNOWN.value,
-                }
+                session_error = pr.get("error") or "登录态探测失败"
             except Exception as e:
-                return {
-                    "ok": False,
-                    "errcode": -8,
-                    "errmsg": f"登录态探测异常: {str(e)[:60]}",
-                    "raw": url,
-                    "user_id": parsed.get("user_id"),
-                    "state": LiveStatus.UNKNOWN.value,
-                }
+                session_error = f"登录态探测异常: {str(e)[:60]}"
+            return {
+                "ok": False,
+                "errcode": -8,
+                "errmsg": f"主页探测失败: StreamGet={streamget_error}; session={session_error}",
+                "raw": url,
+                "user_id": sec_uid,
+                "state": LiveStatus.UNKNOWN.value,
+            }
 
         payload = self._fetch_status(room_id)
         result = self._parse_status_payload(payload)

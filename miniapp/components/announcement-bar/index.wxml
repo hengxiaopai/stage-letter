@@ -1,4 +1,10 @@
 <view class="announcement">
-  <text class="icon">📢</text>
-  <text>开场信小程序新版上线啦！订阅提醒更及时～</text>
+  <image class="announce-icon" src="/assets/ui/announcement-megaphone.png" mode="aspectFit" />
+  <text class="announce-label">公告</text>
+  <view class="announce-viewport">
+    <view class="announce-track">
+      <text>开场信小程序新版上线啦！订阅提醒更及时～　　</text>
+      <text>开场信小程序新版上线啦！订阅提醒更及时～　　</text>
+    </view>
+  </view>
 </view>

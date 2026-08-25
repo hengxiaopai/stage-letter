@@ -1,0 +1,9 @@
+{
+  "desc": "StageLetter Gate 0A 订阅消息授权测试",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

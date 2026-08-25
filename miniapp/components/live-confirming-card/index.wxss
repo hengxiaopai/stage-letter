@@ -1,0 +1,61 @@
+.confirm-card {
+  box-sizing: border-box;
+  min-height: 244rpx;
+  display: flex;
+  align-items: center;
+  margin: 0 0 28rpx;
+  padding: 26rpx 30rpx;
+  border: 1rpx solid #e8eefb;
+  border-radius: 30rpx;
+  background: #fff;
+  box-shadow: 0 16rpx 44rpx rgba(50, 101, 215, .07);
+}
+
+.confirm-illustration {
+  width: 214rpx;
+  height: 166rpx;
+  flex: 0 0 auto;
+}
+
+.confirm-copy {
+  min-width: 0;
+  margin-left: 24rpx;
+}
+
+.confirm-title {
+  color: #142353;
+  font-size: 32rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.confirm-desc {
+  margin-top: 8rpx;
+  color: #7c89a6;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.confirm-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 148rpx;
+  height: 54rpx;
+  box-sizing: border-box;
+  margin-top: 16rpx;
+  padding: 0 20rpx;
+  border-radius: 27rpx;
+  background: linear-gradient(180deg, #347cf7 0%, #2468ee 100%);
+  box-shadow: 0 8rpx 18rpx rgba(44, 110, 242, .16);
+  color: #fff;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 54rpx;
+}
+
+.confirm-action-disabled {
+  background: #c4d4f6;
+  box-shadow: none;
+}

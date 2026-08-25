@@ -1,11 +1,12 @@
 {
-  "navigationBarTitleText": "我的",
+  "navigationBarTitleText": "",
   "enablePullDownRefresh": true,
   "backgroundTextStyle": "dark",
   "usingComponents": {
     "section-header": "/components/section-header/index",
     "reminder-quota": "/components/reminder-quota/index",
     "primary-button": "/components/primary-button/index",
-    "notification-row": "/components/notification-row/index"
+    "notification-row": "/components/notification-row/index",
+    "home-brand-header": "/components/home-brand-header/index"
   }
 }

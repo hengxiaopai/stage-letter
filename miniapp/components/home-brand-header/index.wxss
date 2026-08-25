@@ -1,1 +1,33 @@
-.brand-header{display:flex;align-items:center;padding:24rpx 0}.brand-mark{font-size:48rpx;color:var(--brand)}.brand-copy{display:flex;flex-direction:column;margin-left:18rpx}.brand-title{font-size:40rpx;font-weight:800;color:var(--text-primary)}.brand-subtitle{font-size:24rpx;color:var(--text-tertiary)}
+.brand-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0 20rpx;
+}
+
+.brand-mark {
+  width: 66rpx;
+  height: 66rpx;
+  flex: 0 0 auto;
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  margin-left: 14rpx;
+}
+
+.brand-title {
+  font-size: 42rpx;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+  color: #2c6ef2;
+}
+
+.brand-subtitle {
+  margin-top: 3rpx;
+  font-size: 21rpx;
+  line-height: 1.1;
+  letter-spacing: .4rpx;
+  color: #2c6ef2;
+}

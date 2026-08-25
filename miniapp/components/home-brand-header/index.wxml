@@ -1,5 +1,5 @@
 <view class="brand-header">
-  <text class="brand-mark">✉</text>
+  <image class="brand-mark" src="/assets/brand/stage-letter-mark.png" mode="aspectFit"/>
   <view class="brand-copy">
     <text class="brand-title">开场信</text>
     <text class="brand-subtitle">StageLetter</text>

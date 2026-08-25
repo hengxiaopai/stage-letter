@@ -46,7 +46,9 @@ logger = logging.getLogger("stageletter.probe")
 # tier → 轮询间隔秒
 # P0-L3: 小规模阶段高频轮询(warm 300→60s), 状态新鲜度优先;
 # 规模上来后再做冷热分层(hot=30 / warm=60 / cold=300)
-TIER_INTERVALS = {"hot": 30, "warm": 60, "cold": 300}
+# 用户已订阅主播优先保证新鲜度：在小规模阶段，在线 15 秒、离线 30 秒
+# 可在不超过各平台保护节奏的前提下给出明显更快的状态反馈。
+TIER_INTERVALS = {"hot": 15, "warm": 30, "cold": 180}
 
 # 每平台最大并发探测
 PLATFORM_MAX_CONCURRENCY = 3
@@ -60,6 +62,12 @@ DEGRADED_INTERVAL_MULT = 5
 
 # 平台 → adapter 类
 ADAPTERS: dict[str, type] = {}
+
+# Provider session/cookie is intentionally process-scoped. Recreating a Douyin
+# adapter per account re-fetches ttwid and turns a six-account refresh into six
+# slow bootstrap requests; the platform limiter serializes access so reuse is
+# safe for the synchronous adapters in this worker.
+_ADAPTER_INSTANCES: dict[str, object] = {}
 
 
 def _load_adapters() -> None:
@@ -85,14 +93,25 @@ def _load_adapters() -> None:
 # 每平台限流器(启动时按已知平台建)
 _LIMITERS: dict[str, AsyncLimiter] = {}
 
+# 项目内的保护阈值，不是平台公开配额声明。抖音适配器自身建议 3 秒最小间隔；
+# worker 在每次 probe 新建 adapter，因此必须在这里保持跨账号、跨 adapter 的节流。
+PLATFORM_MIN_INTERVAL_S = {
+    "douyin": 3.0,
+    "bilibili": 1.0,
+    "douyu": 2.0,
+    "huya": 2.0,
+}
+
 # 每平台健康度缓存(进程内,避免每账号查 DB)
 _HEALTH_CACHE: dict[str, dict] = {}
 
 
 def get_limiter(platform: str) -> AsyncLimiter:
-    """每平台限流器: 默认 1 req/s 上限(可被 platform_health 调整)。"""
+    """跨账号平台限流器，遵守本项目的保守访问间隔。"""
     if platform not in _LIMITERS:
-        _LIMITERS[platform] = AsyncLimiter(1, 1.0)
+        _LIMITERS[platform] = AsyncLimiter(
+            1, PLATFORM_MIN_INTERVAL_S.get(platform, 1.0)
+        )
     return _LIMITERS[platform]
 
 
@@ -110,16 +129,16 @@ async def pick_due_accounts(
             select(PlatformAccount).where(PlatformAccount.is_disabled.is_(False))
         )
     ).scalars().all():
-        # P0: SUSPECT 中间态 20-30s 加速确认(尽快收敛到确定态)
+        # 状态翻转后的二次确认走高优先级节奏，避免用户长时间等待。
         if pa.last_status in ("SUSPECT_ONLINE", "SUSPECT_OFFLINE"):
-            interval = 20
+            interval = 8
         else:
             interval = TIER_INTERVALS.get(pa.polling_tier, 300)
-            # ONLINE(在播) 优先 30s 级; OFFLINE 60s 级(用户 P0 验收: ONLINE 30-60s / OFFLINE 60-120s)
+            # ONLINE 优先 15s；已订阅但离线的主播维持 30s。
             if pa.last_status == "ONLINE":
-                interval = min(interval, 30)
+                interval = min(interval, 15)
             elif pa.last_status == "OFFLINE":
-                interval = min(interval, 60)
+                interval = min(interval, 30)
         # DEGRADED 平台降频
         hp = health.get(pa.platform)
         if hp and hp.state == "DEGRADED":
@@ -151,8 +170,13 @@ async def probe_one(
     try:
         # 限流: 每平台令牌桶
         async with limiter:
-            # adapter 是同步代码(requests,含构造函数里的 ttwid 获取)
-            adapter = await asyncio.to_thread(adapter_cls)
+            # adapter 是同步代码(requests,含构造函数里的 ttwid 获取)。
+            # 复用平台会话以避免每个账号重复 bootstrap cookie；限流器保证
+            # 同一平台只有一个调用在途。
+            adapter = _ADAPTER_INSTANCES.get(pa.platform)
+            if adapter is None:
+                adapter = await asyncio.to_thread(adapter_cls)
+                _ADAPTER_INSTANCES[pa.platform] = adapter
             result = await asyncio.to_thread(adapter.get_status, pa.canonical_url)
 
         latency_ms = int((time.monotonic() - probe_start) * 1000)
