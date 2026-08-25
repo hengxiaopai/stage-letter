@@ -25,6 +25,7 @@ def _obs(
     minute: int,
     *,
     source_started_at: datetime | None = None,
+    room_id: str | None = None,
 ) -> LiveObservation:
     return LiveObservation(
         observation_id=oid,
@@ -33,6 +34,7 @@ def _obs(
         observed_at=datetime(2026, 8, 19, 8, minute, tzinfo=timezone.utc),
         source="gate15.contract",
         source_started_at=source_started_at,
+        room_id=room_id,
     )
 
 
@@ -132,6 +134,28 @@ class Gate15StateReducerContractTests(unittest.TestCase):
         self.assertTrue(reducer.session_open)
         self.assertEqual(0, reducer.offline_streak)
         self.assertEqual((), result.emitted_intents)
+
+    def test_confirmed_live_room_change_rolls_session_without_deciding_live_state(self) -> None:
+        reducer = LiveStateReducer()
+        reducer.process(_obs("monitor:o1", LiveStatus.OFFLINE, 1))
+        reducer.process(_obs("monitor:l1", LiveStatus.LIVE, 2, room_id="room-1"))
+        reducer.process(_obs("monitor:l2", LiveStatus.LIVE, 3, room_id="room-1"))
+
+        unchanged = reducer.process(
+            _obs("monitor:l3", LiveStatus.LIVE, 4, room_id="room-1")
+        )
+        changed = reducer.process(
+            _obs("monitor:l4", LiveStatus.LIVE, 5, room_id="room-2")
+        )
+
+        self.assertEqual((), unchanged.emitted_intents)
+        self.assertEqual(1, len(changed.emitted_intents))
+        self.assertIs(
+            TransitionIntentType.ROLLOVER_SESSION,
+            changed.emitted_intents[0].intent_type,
+        )
+        self.assertTrue(reducer.session_open)
+        self.assertEqual("room-2", reducer.open_room_id)
 
     def test_duplicate_id_is_idempotent_and_wins_over_stale_classification(self) -> None:
         reducer = LiveStateReducer()

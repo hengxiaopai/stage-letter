@@ -122,6 +122,41 @@ class LiveTransitionPersistenceApplicationService:
                     opened_at=intent.occurred_at,
                     origin=intent.origin,
                     source_started_at=intent.source_started_at,
+                    observation=observation,
+                )
+            elif intent.intent_type is TransitionIntentType.ROLLOVER_SESSION:
+                open_session = await uow.live.get_open_session(observation.account_id)
+                if open_session is None:
+                    raise ApplicationInvariantError(
+                        "ROLLOVER_SESSION intent requires one open session"
+                    )
+                if intent.occurred_at < open_session.opened_at:
+                    raise ApplicationInvariantError(
+                        "session rollover cannot precede its persisted open time"
+                    )
+                await uow.live.save_session(
+                    LiveSession(
+                        session_id=open_session.session_id,
+                        account_id=open_session.account_id,
+                        opened_at=open_session.opened_at,
+                        origin=open_session.origin,
+                        closed_at=intent.occurred_at,
+                        source_started_at=open_session.source_started_at,
+                        title=open_session.title,
+                        cover=open_session.cover,
+                        viewer_count=open_session.viewer_count,
+                        provider_room_id=open_session.provider_room_id,
+                        metadata_source=open_session.metadata_source,
+                        metadata_observed_at=open_session.metadata_observed_at,
+                    )
+                )
+                assert intent.origin is not None
+                session = await uow.live.create_session(
+                    observation.account_id,
+                    opened_at=intent.occurred_at,
+                    origin=intent.origin,
+                    source_started_at=intent.source_started_at,
+                    observation=observation,
                 )
             else:
                 open_session = await uow.live.get_open_session(observation.account_id)
@@ -140,6 +175,12 @@ class LiveTransitionPersistenceApplicationService:
                     origin=open_session.origin,
                     closed_at=intent.occurred_at,
                     source_started_at=open_session.source_started_at,
+                    title=open_session.title,
+                    cover=open_session.cover,
+                    viewer_count=open_session.viewer_count,
+                    provider_room_id=open_session.provider_room_id,
+                    metadata_source=open_session.metadata_source,
+                    metadata_observed_at=open_session.metadata_observed_at,
                 )
                 await uow.live.save_session(session)
 
@@ -174,11 +215,14 @@ class LiveTransitionPersistenceApplicationService:
                 "transition occurred_at must equal its decisive observation timestamp"
             )
 
-        if intent.intent_type is TransitionIntentType.OPEN_SESSION:
+        if intent.intent_type in (
+            TransitionIntentType.OPEN_SESSION,
+            TransitionIntentType.ROLLOVER_SESSION,
+        ):
             if observation.status is not LiveStatus.LIVE:
-                raise ApplicationInvariantError("OPEN_SESSION requires decisive LIVE evidence")
+                raise ApplicationInvariantError("session-open intent requires decisive LIVE evidence")
             if intent.origin is None:
-                raise ApplicationInvariantError("OPEN_SESSION intent requires origin")
+                raise ApplicationInvariantError("session-open intent requires origin")
             expected_cause = (
                 LiveEventCause.BOOTSTRAP_LIVE
                 if intent.origin.value == "BOOTSTRAP_LIVE"
@@ -186,11 +230,11 @@ class LiveTransitionPersistenceApplicationService:
             )
             if intent.cause is not expected_cause:
                 raise ApplicationInvariantError(
-                    "OPEN_SESSION cause does not match session origin"
+                    "session-open cause does not match session origin"
                 )
             if intent.source_started_at != observation.source_started_at:
                 raise ApplicationInvariantError(
-                    "OPEN_SESSION source_started_at must come from the decisive observation"
+                    "session-open source_started_at must come from the decisive observation"
                 )
             return LiveEventType.LIVE_STARTED
 

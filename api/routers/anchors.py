@@ -548,10 +548,10 @@ async def get_anchor(
                 reminder_enabled=viewer.get("reminder_enabled"),
                 current_session=SessionInfo(
                     id=cur.id,
-                    title=cur.title or "正在直播",
+                    title=cur.title,
                     cover=cur.cover,
-                    started_at=_fmt_time(cur.started_at),
-                    started_at_iso=_fmt_iso(cur.started_at),
+                    started_at=_fmt_time(cur.source_started_at or cur.started_at),
+                    started_at_iso=_fmt_iso(cur.source_started_at or cur.started_at),
                     viewer_count=cur.viewer_count,
                     started_at_source=cur.started_at_source or "probe",
                 ) if cur else None,
@@ -577,10 +577,11 @@ async def get_anchor(
         recent_sessions=[
             SessionInfo(
                 id=s.id,
-                title=s.title or "直播",
-                started_at=_fmt_time(s.started_at),
+                title=s.title,
+                cover=s.cover,
+                started_at=_fmt_time(s.source_started_at or s.started_at),
                 ended_at=_fmt_time(s.ended_at) or ("进行中" if s.ended_at is None else None),
-                started_at_iso=_fmt_iso(s.started_at),
+                started_at_iso=_fmt_iso(s.source_started_at or s.started_at),
                 ended_at_iso=_fmt_iso(s.ended_at),
                 viewer_count=s.viewer_count,
                 started_at_source=s.started_at_source or "probe",
@@ -647,9 +648,11 @@ async def _get_formal_creator_detail(
                 current_session=(
                     SessionInfo(
                         id=current.id,
-                        title="正在直播",
-                        started_at=_fmt_time(current.opened_at),
-                        started_at_iso=_fmt_iso(current.opened_at),
+                        title=current.title,
+                        cover=current.cover,
+                        started_at=_fmt_time(current.source_started_at or current.opened_at),
+                        started_at_iso=_fmt_iso(current.source_started_at or current.opened_at),
+                        viewer_count=current.viewer_count,
                         started_at_source=current.started_at_source or "probe",
                     )
                     if current is not None
@@ -683,12 +686,14 @@ async def _get_formal_creator_detail(
         recent_sessions=[
             SessionInfo(
                 id=session.id,
-                title="直播",
-                started_at=_fmt_time(session.opened_at),
+                title=session.title,
+                cover=session.cover,
+                started_at=_fmt_time(session.source_started_at or session.opened_at),
                 ended_at=_fmt_time(session.closed_at)
                 or ("进行中" if session.closed_at is None else None),
-                started_at_iso=_fmt_iso(session.opened_at),
+                started_at_iso=_fmt_iso(session.source_started_at or session.opened_at),
                 ended_at_iso=_fmt_iso(session.closed_at),
+                viewer_count=session.viewer_count,
                 started_at_source=session.started_at_source or "probe",
             )
             for session in recent

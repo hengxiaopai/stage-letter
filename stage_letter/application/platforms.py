@@ -69,11 +69,20 @@ class LiveSnapshot:
     room_id: str | None = None
     canonical_url: str | None = None
     title: str | None = None
+    cover: str | None = None
+    viewer_count: int | None = None
 
     def __post_init__(self) -> None:
         _required(self.platform, "platform")
         _required(self.platform_user_id, "platform_user_id")
         _required(self.source, "source")
+        if self.room_id is not None and not self.room_id.strip():
+            raise ValueError("room_id must be non-empty when present")
+        if self.viewer_count is not None:
+            if isinstance(self.viewer_count, bool) or not isinstance(self.viewer_count, int):
+                raise ValueError("viewer_count must be an integer when present")
+            if self.viewer_count < 0:
+                raise ValueError("viewer_count must be non-negative")
 
 
 @runtime_checkable

@@ -182,9 +182,11 @@ async def probe_one(
         latency_ms = int((time.monotonic() - probe_start) * 1000)
         state = result.get("state", "UNKNOWN")
         meta = {
+            "room_id": str(result["room_id"]) if result.get("room_id") else None,
             "title": result.get("title"),
             "cover": result.get("cover"),
-            "viewer_count": result.get("viewer_count"),
+            "viewer_count": result.get("viewer_count") or result.get("user_count"),
+            "source": result.get("source") or f"{pa.platform}.adapter",
             # 2026-08-14: 平台真实开播时间(unix 秒) — engine 建 session 用它而非探测时刻
             "live_started_at": result.get("live_started_at"),
             "raw": {k: v for k, v in result.items() if k not in ("state",)},

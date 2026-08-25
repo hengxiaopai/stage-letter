@@ -100,6 +100,11 @@ class MonitoringProbeApplicationService:
             observed_at=snapshot.observed_at,
             source=snapshot.source,
             source_started_at=snapshot.source_started_at,
+            room_id=snapshot.room_id,
+            canonical_url=snapshot.canonical_url,
+            title=snapshot.title,
+            cover=snapshot.cover,
+            viewer_count=snapshot.viewer_count,
         )
 
         async with self._uow_factory() as uow:

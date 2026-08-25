@@ -51,6 +51,11 @@ def _live_observation() -> LiveObservation:
         observed_at=T0,
         source="provider.live",
         source_started_at=SOURCE_T0,
+        room_id="room-101",
+        canonical_url="https://live.example/room-101",
+        title="直播标题",
+        cover="https://cdn.example/cover.jpg",
+        viewer_count=101,
     )
 
 
@@ -135,6 +140,7 @@ class _Live:
         opened_at: datetime,
         origin: SessionOrigin,
         source_started_at: datetime | None = None,
+        observation: LiveObservation | None = None,
     ) -> LiveSession:
         self.created += 1
         session = LiveSession(
@@ -143,6 +149,12 @@ class _Live:
             opened_at=opened_at,
             origin=origin,
             source_started_at=source_started_at,
+            title=None if observation is None else observation.title,
+            cover=None if observation is None else observation.cover,
+            viewer_count=None if observation is None else observation.viewer_count,
+            provider_room_id=None if observation is None else observation.room_id,
+            metadata_source=None if observation is None else observation.source,
+            metadata_observed_at=None if observation is None else observation.observed_at,
         )
         self.open_session = session
         self.sessions[session.session_id] = session
@@ -212,6 +224,10 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("9001", result.session.session_id)
         self.assertEqual(SessionOrigin.TRANSITION, result.session.origin)
         self.assertEqual(SOURCE_T0, result.session.source_started_at)
+        self.assertEqual("room-101", result.session.provider_room_id)
+        self.assertEqual("直播标题", result.session.title)
+        self.assertEqual(101, result.session.viewer_count)
+        self.assertEqual("provider.live", result.session.metadata_source)
         self.assertEqual(LiveEventType.LIVE_STARTED, result.event.event_type)
         self.assertEqual(result.session.session_id, result.event.session_id)
         self.assertEqual(1, live.created)
@@ -251,6 +267,45 @@ class Gate15TransitionPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(LiveEventType.LIVE_ENDED, result.event.event_type)
         self.assertEqual(1, live.saved)
         self.assertEqual(1, live.lock_count)
+        self.assertEqual(1, uow.commit_count)
+
+    async def test_room_rollover_closes_old_session_and_opens_metadata_complete_new_one(self) -> None:
+        observation = LiveObservation(
+            observation_id="monitor:rollover-101",
+            account_id="101",
+            status=LiveStatus.LIVE,
+            observed_at=T0 + timedelta(minutes=30),
+            source="provider.live",
+            room_id="room-102",
+            title="第二场",
+            viewer_count=202,
+        )
+        live = _Live(observation)
+        old = LiveSession(
+            session_id="7001",
+            account_id="101",
+            opened_at=T0,
+            origin=SessionOrigin.TRANSITION,
+            provider_room_id="room-101",
+        )
+        live.open_session = old
+        live.sessions[old.session_id] = old
+        uow = _Uow(live)
+        service = LiveTransitionPersistenceApplicationService(lambda: uow)  # type: ignore[arg-type]
+        intent = TransitionIntent(
+            intent_type=TransitionIntentType.ROLLOVER_SESSION,
+            occurred_at=observation.observed_at,
+            cause=LiveEventCause.TRANSITION,
+            origin=SessionOrigin.TRANSITION,
+        )
+
+        result = await service.apply(observation, intent)
+
+        self.assertEqual(1, live.saved)
+        self.assertEqual(1, live.created)
+        self.assertEqual("room-102", result.session.provider_room_id)
+        self.assertEqual("第二场", result.session.title)
+        self.assertEqual(LiveEventType.LIVE_STARTED, result.event.event_type)
         self.assertEqual(1, uow.commit_count)
 
     async def test_existing_event_is_reused_without_second_commit(self) -> None:

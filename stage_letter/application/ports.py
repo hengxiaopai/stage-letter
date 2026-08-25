@@ -166,6 +166,7 @@ class LiveRepository(Protocol):
         opened_at: datetime,
         origin: SessionOrigin,
         source_started_at: datetime | None = None,
+        observation: LiveObservation | None = None,
     ) -> LiveSession:
         """Allocate a persistence-owned BIGINT session identity and return it.
 

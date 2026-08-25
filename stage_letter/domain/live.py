@@ -41,11 +41,20 @@ class LiveObservation:
     observed_at: datetime
     source: str
     source_started_at: datetime | None = None
+    room_id: str | None = None
+    canonical_url: str | None = None
+    title: str | None = None
+    cover: str | None = None
+    viewer_count: int | None = None
 
     def __post_init__(self) -> None:
         _required(self.observation_id, "observation_id")
         _required(self.account_id, "account_id")
         _required(self.source, "source")
+        if self.room_id is not None and not self.room_id.strip():
+            raise ValueError("room_id must be non-empty when present")
+        if self.viewer_count is not None and self.viewer_count < 0:
+            raise ValueError("viewer_count must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -56,12 +65,22 @@ class LiveSession:
     origin: SessionOrigin
     closed_at: datetime | None = None
     source_started_at: datetime | None = None
+    title: str | None = None
+    cover: str | None = None
+    viewer_count: int | None = None
+    provider_room_id: str | None = None
+    metadata_source: str | None = None
+    metadata_observed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         _required(self.session_id, "session_id")
         _required(self.account_id, "account_id")
         if self.closed_at is not None and self.closed_at < self.opened_at:
             raise ValueError("closed_at must not be earlier than opened_at")
+        if self.provider_room_id is not None and not self.provider_room_id.strip():
+            raise ValueError("provider_room_id must be non-empty when present")
+        if self.viewer_count is not None and self.viewer_count < 0:
+            raise ValueError("viewer_count must be non-negative")
 
     @property
     def is_open(self) -> bool:

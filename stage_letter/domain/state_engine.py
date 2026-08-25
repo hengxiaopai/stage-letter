@@ -25,6 +25,7 @@ class EngineState(str, Enum):
 
 class TransitionIntentType(str, Enum):
     OPEN_SESSION = "OPEN_SESSION"
+    ROLLOVER_SESSION = "ROLLOVER_SESSION"
     CLOSE_SESSION = "CLOSE_SESSION"
 
 
@@ -49,16 +50,19 @@ class TransitionIntent:
     source_started_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        if self.intent_type is TransitionIntentType.OPEN_SESSION:
+        if self.intent_type in (
+            TransitionIntentType.OPEN_SESSION,
+            TransitionIntentType.ROLLOVER_SESSION,
+        ):
             if self.origin is None:
-                raise ValueError("OPEN_SESSION intent requires origin")
+                raise ValueError("session-open intent requires origin")
             expected = (
                 LiveEventCause.BOOTSTRAP_LIVE
                 if self.origin is SessionOrigin.BOOTSTRAP_LIVE
                 else LiveEventCause.TRANSITION
             )
             if self.cause is not expected:
-                raise ValueError("OPEN_SESSION cause must match session origin")
+                raise ValueError("session-open cause must match session origin")
         else:
             if self.origin is not None:
                 raise ValueError("CLOSE_SESSION intent must not carry origin")
@@ -76,6 +80,7 @@ class EngineSnapshot:
     seen_observation_ids: frozenset[str]
     observation_watermark: datetime | None
     session_open: bool
+    open_room_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +109,7 @@ class LiveStateReducer:
         self.seen_observation_ids: set[str] = set()
         self.observation_watermark: datetime | None = None
         self.session_open = False
+        self.open_room_id: str | None = None
 
     def snapshot(self) -> EngineSnapshot:
         return EngineSnapshot(
@@ -113,6 +119,7 @@ class LiveStateReducer:
             seen_observation_ids=frozenset(self.seen_observation_ids),
             observation_watermark=self.observation_watermark,
             session_open=self.session_open,
+            open_room_id=self.open_room_id,
         )
 
     @classmethod
@@ -130,6 +137,7 @@ class LiveStateReducer:
         reducer.seen_observation_ids = set(snapshot.seen_observation_ids)
         reducer.observation_watermark = snapshot.observation_watermark
         reducer.session_open = snapshot.session_open
+        reducer.open_room_id = snapshot.open_room_id
         reducer._assert_invariants()
         return reducer
 
@@ -229,6 +237,9 @@ class LiveStateReducer:
                     self.state = EngineState.OFFLINE_PENDING
             else:
                 self.offline_streak = 0
+                rollover = self._track_live_room(observation)
+                if rollover is not None:
+                    emitted.append(rollover)
 
         elif self.state is EngineState.OFFLINE_PENDING:
             if observation.status is LiveStatus.OFFLINE:
@@ -238,6 +249,9 @@ class LiveStateReducer:
             else:
                 self.state = EngineState.LIVE_CONFIRMED
                 self.offline_streak = 0
+                rollover = self._track_live_room(observation)
+                if rollover is not None:
+                    emitted.append(rollover)
 
         self._assert_invariants()
         return ProcessResult(
@@ -260,6 +274,7 @@ class LiveStateReducer:
         origin = SessionOrigin.BOOTSTRAP_LIVE if bootstrap else SessionOrigin.TRANSITION
         cause = LiveEventCause.BOOTSTRAP_LIVE if bootstrap else LiveEventCause.TRANSITION
         self.session_open = True
+        self.open_room_id = observation.room_id
         self.state = EngineState.LIVE_CONFIRMED
         self.live_streak = 0
         self.offline_streak = 0
@@ -275,11 +290,36 @@ class LiveStateReducer:
         if not self.session_open:
             raise AssertionError("attempted to close a missing live session")
         self.session_open = False
+        self.open_room_id = None
         self._to_offline_confirmed()
         return TransitionIntent(
             intent_type=TransitionIntentType.CLOSE_SESSION,
             occurred_at=observation.observed_at,
             cause=LiveEventCause.TRANSITION,
+        )
+
+    def _track_live_room(self, observation: LiveObservation) -> TransitionIntent | None:
+        """Enrich an unknown room id or split when the provider room changes.
+
+        room_id is session-boundary evidence only. It is evaluated only after a
+        decisive LIVE observation and never promotes UNKNOWN/OFFLINE to LIVE.
+        """
+
+        room_id = observation.room_id
+        if room_id is None:
+            return None
+        if self.open_room_id is None:
+            self.open_room_id = room_id
+            return None
+        if room_id == self.open_room_id:
+            return None
+        self.open_room_id = room_id
+        return TransitionIntent(
+            intent_type=TransitionIntentType.ROLLOVER_SESSION,
+            occurred_at=observation.observed_at,
+            cause=LiveEventCause.TRANSITION,
+            origin=SessionOrigin.TRANSITION,
+            source_started_at=observation.source_started_at,
         )
 
     def _assert_invariants(self) -> None:

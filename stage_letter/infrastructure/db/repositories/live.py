@@ -21,6 +21,7 @@ from stage_letter.infrastructure.db.models import (
     LiveEventModel,
     LiveObservationModel,
     LiveSessionModel,
+    PlatformAccountModel,
 )
 
 from .common import RepositoryMappingError
@@ -84,6 +85,7 @@ class SQLAlchemyLiveRepository:
                 observed_at=observation.observed_at,
                 source=observation.source,
                 source_started_at=observation.source_started_at,
+                provenance=self._observation_provenance(observation),
             )
             .on_conflict_do_nothing()
             .returning(LiveObservationModel.id)
@@ -171,23 +173,34 @@ class SQLAlchemyLiveRepository:
         opened_at: datetime,
         origin: SessionOrigin,
         source_started_at: datetime | None = None,
+        observation: LiveObservation | None = None,
     ) -> LiveSession:
         """Let PostgreSQL allocate the BIGINT session id; never derive it in app code."""
 
         account_pk = parse_persistence_id(account_id, field="account_id")
+        account = await self.session.get(PlatformAccountModel, account_pk)
+        if account is None:
+            raise RepositoryMappingError(f"platform account {account_id!r} is missing")
         await self.session.flush()
+        metadata = observation if observation is not None else None
         statement = (
             insert(LiveSessionModel.__table__)
             .values(
                 platform_account_id=account_pk,
-                anchor_id=None,
-                platform=None,
+                anchor_id=account.legacy_anchor_id,
+                platform=account.platform,
                 started_at=opened_at,
                 ended_at=None,
                 origin=origin.value,
                 source_started_at=source_started_at,
-                started_at_source=None,
-                state=None,
+                started_at_source=("platform" if source_started_at is not None else "probe"),
+                title=None if metadata is None else metadata.title,
+                cover=None if metadata is None else metadata.cover,
+                viewer_count=None if metadata is None else metadata.viewer_count,
+                provider_room_id=None if metadata is None else metadata.room_id,
+                metadata_source=None if metadata is None else metadata.source,
+                metadata_observed_at=None if metadata is None else metadata.observed_at,
+                state="OPEN",
             )
             .returning(LiveSessionModel.id)
         )
@@ -199,6 +212,12 @@ class SQLAlchemyLiveRepository:
             opened_at,
             origin,
             source_started_at=source_started_at,
+            title=None if metadata is None else metadata.title,
+            cover=None if metadata is None else metadata.cover,
+            viewer_count=None if metadata is None else metadata.viewer_count,
+            provider_room_id=None if metadata is None else metadata.room_id,
+            metadata_source=None if metadata is None else metadata.source,
+            metadata_observed_at=None if metadata is None else metadata.observed_at,
         )
 
     async def save_session(self, session: LiveSession) -> None:
@@ -216,8 +235,16 @@ class SQLAlchemyLiveRepository:
                     closed_at=session.closed_at,
                     origin=session.origin.value,
                     source_started_at=session.source_started_at,
-                    started_at_source=None,
-                    legacy_state=None,
+                    started_at_source=(
+                        "platform" if session.source_started_at is not None else "probe"
+                    ),
+                    title=session.title,
+                    cover=session.cover,
+                    viewer_count=session.viewer_count,
+                    provider_room_id=session.provider_room_id,
+                    metadata_source=session.metadata_source,
+                    metadata_observed_at=session.metadata_observed_at,
+                    legacy_state="CLOSED" if session.closed_at is not None else "OPEN",
                 )
             )
             return
@@ -226,6 +253,13 @@ class SQLAlchemyLiveRepository:
         row.closed_at = session.closed_at
         row.origin = session.origin.value
         row.source_started_at = session.source_started_at
+        row.title = session.title
+        row.cover = session.cover
+        row.viewer_count = session.viewer_count
+        row.provider_room_id = session.provider_room_id
+        row.metadata_source = session.metadata_source
+        row.metadata_observed_at = session.metadata_observed_at
+        row.legacy_state = "CLOSED" if session.closed_at is not None else "OPEN"
 
     async def append_event(self, event: LiveEvent) -> bool:
         account_pk = parse_persistence_id(event.account_id, field="account_id")
@@ -272,6 +306,7 @@ class SQLAlchemyLiveRepository:
 
     @staticmethod
     def _to_observation(row: LiveObservationModel) -> LiveObservation:
+        provenance = row.provenance or {}
         return LiveObservation(
             observation_id=row.observation_id,
             account_id=serialize_persistence_id(row.platform_account_id, field="account_id"),
@@ -279,6 +314,11 @@ class SQLAlchemyLiveRepository:
             observed_at=row.observed_at,
             source=row.source,
             source_started_at=row.source_started_at,
+            room_id=provenance.get("room_id"),
+            canonical_url=provenance.get("canonical_url"),
+            title=provenance.get("title"),
+            cover=provenance.get("cover"),
+            viewer_count=provenance.get("viewer_count"),
         )
 
     @staticmethod
@@ -294,4 +334,24 @@ class SQLAlchemyLiveRepository:
             closed_at=row.closed_at,
             origin=SessionOrigin(row.origin),
             source_started_at=row.source_started_at,
+            title=row.title,
+            cover=row.cover,
+            viewer_count=row.viewer_count,
+            provider_room_id=row.provider_room_id,
+            metadata_source=row.metadata_source,
+            metadata_observed_at=row.metadata_observed_at,
         )
+
+    @staticmethod
+    def _observation_provenance(observation: LiveObservation) -> dict | None:
+        """Persist only normalized, consumer-safe provider facts, never raw payloads."""
+
+        values = {
+            "room_id": observation.room_id,
+            "canonical_url": observation.canonical_url,
+            "title": observation.title,
+            "cover": observation.cover,
+            "viewer_count": observation.viewer_count,
+        }
+        compact = {key: value for key, value in values.items() if value is not None}
+        return compact or None

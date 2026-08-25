@@ -169,6 +169,12 @@ class LiveSessionModel(Base):
             unique=True,
             postgresql_where=text("ended_at IS NULL"),
         ),
+        Index(
+            "idx_live_sessions_account_room_started",
+            "platform_account_id",
+            "provider_room_id",
+            "started_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -180,6 +186,14 @@ class LiveSessionModel(Base):
     origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover: Mapped[str | None] = mapped_column(Text, nullable=True)
+    viewer_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider_room_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metadata_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     legacy_state: Mapped[str | None] = mapped_column("state", String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

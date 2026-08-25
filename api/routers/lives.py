@@ -138,7 +138,7 @@ async def lives_active(
             session=ActiveSession(
                 id=ls.id,
                 title=ls.title,
-                started_at=ls.started_at,
+                started_at=ls.source_started_at or ls.started_at,
                 viewer_count=ls.viewer_count,
                 cover=ls.cover,
                 started_at_source=ls.started_at_source or "probe",
@@ -307,7 +307,7 @@ async def lives_recent(
             anchor_name=a.display_name,
             platform=ls.platform,
             title=ls.title,
-            started_at=ls.started_at,
+            started_at=ls.source_started_at or ls.started_at,
             ended_at=ls.ended_at,
             started_at_source=ls.started_at_source or "probe",
         )

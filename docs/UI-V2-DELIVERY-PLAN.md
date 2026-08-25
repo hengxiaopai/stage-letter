@@ -23,7 +23,7 @@ Do not start the next Gate until the current Gate has code, tests, evidence, and
 
 ### D1 — Viewer Context and Reminder Preference
 
-Status: implementation complete; awaiting review/commit.
+Status: implementation complete; committed as `bf589ec8`.
 
 Acceptance:
 
@@ -37,12 +37,14 @@ Acceptance:
 
 ### D4 — Formal Consumer Parity
 
-Next after D1 approval.
+Status: implementation complete; migration and PostgreSQL acceptance passed.
 
 - Persist live title, cover, viewer count, provider room identity, and trustworthy source metadata in Formal LiveSession.
 - Keep Legacy and Formal response shapes equivalent.
 - A changed room ID for the same UID creates a new session.
 - Provider enrichment must not decide LIVE/OFFLINE truth.
+
+Evidence and frozen field semantics: `docs/gate1/UI_V2_D4_FORMAL_SESSION_PARITY.md`.
 
 ### D2 — Sessions, Calendar, and Stats
 

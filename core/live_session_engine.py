@@ -98,11 +98,18 @@ class LiveSessionEngine:
         # 2026-08-14: 已在播(ONLINE)且本次仍探测 ONLINE → 尝试回填真实开播时间
         # (不触发事件, 但主播可能已开播很久, 旧 session 的 started_at 是探测时刻)
         if event_type is None and probe_status == LiveStatus.ONLINE.value and pa.last_status == LiveStatus.ONLINE.value:
-            await self._backfill_started_at(pa, probe_meta, now)
+            rollover_session_id = await self._refresh_open_session(pa, probe_meta, now)
+            if rollover_session_id is not None:
+                session_id = rollover_session_id
+                event_type = EVT_CONFIRMED_ONLINE
+                rollover_meta = dict(probe_meta or {})
+                rollover_meta["session_boundary"] = "provider_room_changed"
+                probe_meta = rollover_meta
 
         # 2. 根据事件类型创建/关闭 session + 产生事件
         if event_type == EVT_CONFIRMED_ONLINE:
-            session_id = await self._open_session(pa, probe_meta, now)
+            if session_id is None:
+                session_id = await self._open_session(pa, probe_meta, now)
             event_id = await self._record_event(
                 pa, event_type, session_id, probe_meta, now, confidence="normal"
             )
@@ -131,6 +138,81 @@ class LiveSessionEngine:
         }
 
     # ── session 管理 ──
+
+    @staticmethod
+    def _viewer_count(meta: dict | None) -> int | None:
+        value = (meta or {}).get("viewer_count")
+        if isinstance(value, bool):
+            return None
+        multiplier = 1
+        if isinstance(value, str):
+            normalized = value.strip().replace(",", "")
+            if normalized.endswith("万"):
+                normalized = normalized[:-1]
+                multiplier = 10_000
+            elif normalized.endswith("亿"):
+                normalized = normalized[:-1]
+                multiplier = 100_000_000
+            value = normalized
+        try:
+            parsed = int(float(value) * multiplier)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed >= 0 else None
+
+    async def _refresh_open_session(
+        self, pa: PlatformAccount, meta: dict | None, now: datetime
+    ) -> int | None:
+        """Refresh normalized metadata or split a changed provider room.
+
+        A room id is never live-state evidence. This method runs only after an
+        ONLINE result has already been accepted by the state machine.
+        """
+
+        result = await self.db.execute(
+            select(LiveSession)
+            .where(
+                LiveSession.platform_account_id == pa.id,
+                LiveSession.state == "OPEN",
+            )
+            .order_by(LiveSession.started_at.desc())
+            .limit(1)
+        )
+        session = result.scalar_one_or_none()
+        if session is None:
+            return None
+
+        observed_room = (meta or {}).get("room_id")
+        observed_room = str(observed_room).strip() if observed_room else None
+        if (
+            session.provider_room_id is not None
+            and observed_room is not None
+            and session.provider_room_id != observed_room
+        ):
+            session.state = "CLOSED"
+            session.ended_at = now
+            await self.db.flush()
+            logger.info(
+                "pa=%s provider room changed %s -> %s; opening a new session",
+                pa.id,
+                session.provider_room_id,
+                observed_room,
+            )
+            return await self._open_session(pa, meta, now)
+
+        if session.provider_room_id is None and observed_room is not None:
+            session.provider_room_id = observed_room
+        for attribute, key in (("title", "title"), ("cover", "cover")):
+            value = (meta or {}).get(key)
+            if value:
+                setattr(session, attribute, value)
+        viewer_count = self._viewer_count(meta)
+        if viewer_count is not None:
+            session.viewer_count = viewer_count
+        session.metadata_source = (meta or {}).get("source") or f"{pa.platform}.adapter"
+        session.metadata_observed_at = now
+        await self._backfill_started_at(pa, meta, now)
+        return None
 
     async def _backfill_started_at(
         self, pa: PlatformAccount, meta: dict | None, now: datetime
@@ -167,6 +249,7 @@ class LiveSessionEngine:
                 pa.id, real_started.isoformat(), sess.started_at.isoformat(),
             )
             sess.started_at = real_started
+            sess.source_started_at = real_started
             sess.started_at_source = "platform"
             pa.last_live_started_at = real_started
             await self.db.flush()
@@ -210,10 +293,18 @@ class LiveSessionEngine:
             anchor_id=pa.anchor_id,
             platform=pa.platform,
             started_at=started,
+            source_started_at=(started if started_source == "platform" else None),
             started_at_source=started_source,
             title=(meta or {}).get("title"),
             cover=(meta or {}).get("cover"),
-            viewer_count=(meta or {}).get("viewer_count"),
+            viewer_count=self._viewer_count(meta),
+            provider_room_id=(
+                str((meta or {}).get("room_id")).strip()
+                if (meta or {}).get("room_id")
+                else None
+            ),
+            metadata_source=(meta or {}).get("source") or f"{pa.platform}.adapter",
+            metadata_observed_at=now,
             state="OPEN",
         )
         self.db.add(session)

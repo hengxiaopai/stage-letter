@@ -256,6 +256,12 @@ class LiveSession(Base):
     __table_args__ = (
         Index("idx_session_pa_open", "platform_account_id", postgresql_where="state = 'OPEN'"),
         Index("idx_session_anchor_started", "anchor_id", "started_at"),
+        Index(
+            "idx_live_sessions_account_room_started",
+            "platform_account_id",
+            "provider_room_id",
+            "started_at",
+        ),
     )
 
     id = Column(BigInteger, primary_key=True)
@@ -265,12 +271,22 @@ class LiveSession(Base):
     anchor_id = Column(BigInteger, ForeignKey("anchors.id"), nullable=False)
     platform = Column(String(32), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=False)
+    # Formal persistence keeps transition time in started_at and the provider's
+    # trustworthy live start separately. Consumers prefer this value when set.
+    source_started_at = Column(DateTime(timezone=True))
     # 2026-08-14: 开播时间来源 — platform=平台真实开播时间 / probe=探测确认时刻(兜底, 非真实)
     started_at_source = Column(String(16), nullable=False, server_default="probe")
     ended_at = Column(DateTime(timezone=True))
     title = Column(Text)
     cover = Column(Text)
     viewer_count = Column(Integer)
+    # Provider room identity is evidence for session boundaries. It is stored as
+    # text because several providers expose IDs larger than JavaScript's safe
+    # integer range. A changed non-empty room id for the same account starts a
+    # new LiveSession; it never decides LIVE/OFFLINE by itself.
+    provider_room_id = Column(String(128))
+    metadata_source = Column(String(64))
+    metadata_observed_at = Column(DateTime(timezone=True))
     state = Column(String(16), nullable=False, default=SessionState.OPEN.value)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
