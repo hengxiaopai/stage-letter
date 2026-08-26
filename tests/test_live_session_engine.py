@@ -30,7 +30,7 @@ from core.models import (
     UserSubscription,
 )
 
-DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter"
+DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter"
 
 T0 = datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc)
 

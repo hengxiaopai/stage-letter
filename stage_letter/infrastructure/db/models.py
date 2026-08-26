@@ -175,6 +175,7 @@ class LiveSessionModel(Base):
             "provider_room_id",
             "started_at",
         ),
+        Index("idx_d2_session_account_cursor", "platform_account_id", "started_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

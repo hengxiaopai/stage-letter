@@ -7,9 +7,10 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from dataclasses import asdict
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,6 +121,27 @@ class SessionInfo(BaseModel):
     viewer_count: int | None = None
     # 2026-08-14: 开播时间来源 platform=真实 / probe=探测时刻兜底(前端不显示精确时间)
     started_at_source: str = "probe"
+
+
+class SessionHistoryItem(BaseModel):
+    session_id: str
+    account_id: str
+    platform: str
+    title: str | None = None
+    cover: str | None = None
+    viewer_count: int | None = None
+    provider_room_id: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    state: str
+    started_at_source: str
+    duration_seconds: int | None = None
+    duration_basis: str
+
+
+class SessionHistoryResponse(BaseModel):
+    items: list[SessionHistoryItem]
+    next_cursor: str | None = None
 
 
 def _fmt_time(dt: datetime | None) -> str | None:
@@ -491,6 +513,67 @@ async def parse_anchor(
         is_existing=is_existing,
         anchor_id=row[1].id if row else None,
     )
+
+
+@router.get("/anchors/{anchor_id}/sessions", response_model=SessionHistoryResponse)
+async def anchor_session_history(
+    request: Request,
+    anchor_id: int,
+    limit: int = Query(20, ge=1, le=50),
+    cursor: str | None = Query(None),
+) -> SessionHistoryResponse:
+    try:
+        page = await request.app.state.stage_letter_services.session_insights.history(
+            str(anchor_id), limit=limit, cursor=cursor
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return SessionHistoryResponse(
+        items=[
+            SessionHistoryItem(
+                session_id=row.session_id, account_id=row.account_id,
+                platform=row.platform, title=row.title, cover=row.cover,
+                viewer_count=row.viewer_count, provider_room_id=row.provider_room_id,
+                started_at=row.display_started_at, ended_at=row.closed_at,
+                state="LIVE" if row.closed_at is None else "ENDED",
+                started_at_source=row.started_at_source,
+                duration_seconds=row.duration_seconds,
+                duration_basis="IN_PROGRESS" if row.closed_at is None else "PROBE_BOUNDED",
+            ) for row in page.items
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.get("/anchors/{anchor_id}/calendar")
+async def anchor_session_calendar(
+    request: Request,
+    anchor_id: int,
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+) -> dict:
+    try:
+        result = await request.app.state.stage_letter_services.session_insights.calendar(str(anchor_id), month)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    result["coverage"] = asdict(result["coverage"])
+    return result
+
+
+@router.get("/anchors/{anchor_id}/stats")
+async def anchor_session_statistics(
+    request: Request,
+    anchor_id: int,
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> dict:
+    try:
+        result = await request.app.state.stage_letter_services.session_insights.statistics(
+            str(anchor_id), date_from, date_to
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    result["coverage"] = asdict(result["coverage"])
+    return result
 
 
 @router.get("/anchors/{anchor_id}", response_model=AnchorDetail)

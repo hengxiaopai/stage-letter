@@ -22,7 +22,7 @@ from stage_letter.infrastructure.db.models import CreatorModel
 from stage_letter.infrastructure.db.repositories.live import SQLAlchemyLiveRepository
 
 
-DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter"
+DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter"
 T0 = datetime(2026, 8, 26, 9, 0, tzinfo=timezone.utc)
 
 

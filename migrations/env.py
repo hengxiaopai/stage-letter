@@ -3,6 +3,7 @@
 使用异步 engine(asyncpg)+ core.models 的 Base.metadata 做 autogenerate。
 """
 import asyncio
+import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -22,6 +23,12 @@ from core.models import Base  # noqa: E402
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# CI/probes may target an isolated PostgreSQL instance.  Environment truth
+# must override the checked-in local default for both online and offline runs.
+database_url = os.environ.get("STAGE_LETTER_DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

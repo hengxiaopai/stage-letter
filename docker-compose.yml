@@ -1,6 +1,6 @@
 # StageLetter 开发环境基础设施(Gate 1)
 # 用法: docker compose up -d postgres redis
-# 数据库连接: postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter
+# 数据库连接: postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter
 
 services:
   postgres:
@@ -11,8 +11,8 @@ services:
       POSTGRES_PASSWORD: stageletter
       POSTGRES_DB: stageletter
     ports:
-      # 本机已有 postgres 服务占 5432,故映射 5433
-      - "5433:5432"
+      # Windows 当前保留 5433-5532；使用稳定的项目端口 5643。
+      - "5643:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

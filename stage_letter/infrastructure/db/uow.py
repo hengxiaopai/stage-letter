@@ -17,6 +17,7 @@ from .repositories import (
     SQLAlchemyGrantRepository,
     SQLAlchemyLiveRepository,
     SQLAlchemyNotificationRepository,
+    SQLAlchemySessionInsightRepository,
     SQLAlchemyWeChatTemplateRepository,
 )
 
@@ -44,6 +45,7 @@ class SQLAlchemyUnitOfWork:
         self.follows: SQLAlchemyFollowRepository | None = None
         self.live: SQLAlchemyLiveRepository | None = None
         self.notifications: SQLAlchemyNotificationRepository | None = None
+        self.session_insights: SQLAlchemySessionInsightRepository | None = None
         self.grants: SQLAlchemyGrantRepository | None = None
         self.templates: SQLAlchemyWeChatTemplateRepository | None = None
         self._committed = False
@@ -59,6 +61,7 @@ class SQLAlchemyUnitOfWork:
         self.follows = SQLAlchemyFollowRepository(session)
         self.live = SQLAlchemyLiveRepository(session)
         self.notifications = SQLAlchemyNotificationRepository(session)
+        self.session_insights = SQLAlchemySessionInsightRepository(session)
         self.grants = SQLAlchemyGrantRepository(session)
         self.templates = SQLAlchemyWeChatTemplateRepository(session)
         self._committed = False
@@ -85,6 +88,7 @@ class SQLAlchemyUnitOfWork:
             self.follows = None
             self.live = None
             self.notifications = None
+            self.session_insights = None
             self.grants = None
             self.templates = None
             self._committed = False

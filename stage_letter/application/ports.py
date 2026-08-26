@@ -29,6 +29,11 @@ from stage_letter.domain.notifications import (
 from stage_letter.domain.grant_intake import WeChatGrantIntake
 from stage_letter.domain.notification_templates import WeChatTemplateRegistration
 from stage_letter.domain.notification_history import NotificationHistoryEntry
+from stage_letter.domain.session_insights import (
+    MonitoringAccount,
+    ObservationDay,
+    SessionHistoryRecord,
+)
 
 
 @dataclass(frozen=True)
@@ -185,6 +190,29 @@ class LiveRepository(Protocol):
 
 
 @runtime_checkable
+class SessionInsightRepository(Protocol):
+    async def list_sessions(
+        self,
+        creator_id: str,
+        *,
+        before: tuple[datetime, str] | None = None,
+        limit: int = 21,
+    ) -> tuple[SessionHistoryRecord, ...]: ...
+
+    async def list_sessions_in_range(
+        self, creator_id: str, *, start: datetime, end: datetime
+    ) -> tuple[SessionHistoryRecord, ...]: ...
+
+    async def list_monitoring_accounts(
+        self, creator_id: str
+    ) -> tuple[MonitoringAccount, ...]: ...
+
+    async def list_observation_days(
+        self, creator_id: str, *, start: datetime, end: datetime
+    ) -> tuple[ObservationDay, ...]: ...
+
+
+@runtime_checkable
 class NotificationRepository(Protocol):
     async def get_delivery(self, key: DeliveryKey) -> NotificationDelivery | None: ...
 
@@ -317,6 +345,7 @@ class UnitOfWork(Protocol):
     creators: CreatorRepository
     follows: FollowRepository
     live: LiveRepository
+    session_insights: SessionInsightRepository
     notifications: NotificationRepository
     grants: GrantRepository
     templates: WeChatTemplateRepository

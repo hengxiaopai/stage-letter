@@ -32,7 +32,7 @@ from core.models import (
 )
 from workers.notify.wechat import get_or_create_grant, process_job
 
-DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter"
+DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter"
 TEMPLATE = "test_template_001"
 T0 = datetime(2026, 8, 13, 9, 0, tzinfo=timezone.utc)
 

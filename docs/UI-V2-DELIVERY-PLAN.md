@@ -48,6 +48,8 @@ Evidence and frozen field semantics: `docs/gate1/UI_V2_D4_FORMAL_SESSION_PARITY.
 
 ### D2 — Sessions, Calendar, and Stats
 
+Status: implementation complete; contract and acceptance evidence frozen in `docs/gate1/UI_V2_D2_SESSION_INSIGHTS.md`.
+
 - Add cursor-paginated session history.
 - Add monthly calendar aggregation with monitoring coverage.
 - Add factual statistics: days, sessions, total/average/min/max duration, start-time and weekday distributions.

@@ -56,7 +56,7 @@ from core.models import (
     UserSubscription,
 )
 
-DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter"
+DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter"
 
 # 规模: 10 主播 × 100 次探测 = 每主播 100 事件(25 轮 × 4 事件)= 1000 事件
 ANCHOR_COUNT = 10

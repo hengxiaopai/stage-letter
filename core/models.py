@@ -256,6 +256,8 @@ class LiveSession(Base):
     __table_args__ = (
         Index("idx_session_pa_open", "platform_account_id", postgresql_where="state = 'OPEN'"),
         Index("idx_session_anchor_started", "anchor_id", "started_at"),
+        Index("idx_d2_session_anchor_cursor", "anchor_id", "started_at", "id"),
+        Index("idx_d2_session_account_cursor", "platform_account_id", "started_at", "id"),
         Index(
             "idx_live_sessions_account_room_started",
             "platform_account_id",

@@ -38,10 +38,10 @@ class Settings:
     log_level: str = _env("LOG_LEVEL", "INFO")
 
     # ── 数据库(PostgreSQL)──
-    # 本机已有 postgres 占 5432,开发容器映射 5433(见 docker-compose.yml)
+    # 本机已有 postgres 占 5432,开发容器映射 5643(见 docker-compose.yml)
     database_url: str = _env(
         "DATABASE_URL",
-        "postgresql+asyncpg://stageletter:stageletter@localhost:5433/stageletter",
+        "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter",
     )
 
     # ── Redis(队列 / 缓存)──
