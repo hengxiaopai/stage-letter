@@ -6,6 +6,7 @@ const FILTERS = [
   { label: '已发送', value: 'sent' },
   { label: '未送达', value: 'failed' },
   { label: '重试中', value: 'retry' },
+  { label: '待确认', value: 'ambiguous' },
 ]
 
 function deliveryView(item) {
@@ -31,6 +32,8 @@ function deliveryView(item) {
   } else if (state === 'BLOCKED_CONFIG') {
     detail = '提醒配置暂不可用'
   } else if (state === 'AMBIGUOUS') {
+    kind = 'ambiguous'
+    label = '结果待确认'
     detail = '投递结果暂时无法确认'
   }
   return {

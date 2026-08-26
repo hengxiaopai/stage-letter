@@ -31,9 +31,9 @@
           <view class="featured-live-copy">
             <view class="featured-live-title"><text class="featured-live-name">{{featuredLive.anchor_name}}</text><text class="status-pill status-live">直播中</text></view>
             <text class="featured-live-subtitle">{{featuredLive.title || '正在直播中'}}</text>
-            <text class="featured-live-meta">{{featuredLive.platformLabel}} · {{featuredLive.liveMeta}}</text>
+            <text class="featured-live-meta">{{featuredLive.platformLabel}} · {{featuredLive.meta}}</text>
           </view>
-          <view class="live-entry">进入直播间</view>
+          <view class="live-entry">查看详情</view>
         </view>
       </view>
 
