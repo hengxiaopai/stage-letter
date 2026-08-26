@@ -1,20 +1,32 @@
 <view class="page discover-page">
   <home-brand-header />
-  <view class="discover-search"><search-field placeholder="搜索主播昵称、游戏或标签，如：珩小派" value="{{mode === 'search' ? keyword : url}}" bind:input="onUniversalInput" bind:confirm="onUniversalConfirm" bind:clear="onClearKeyword" /></view>
-  <view class="discover-tabs">
-    <view class="discover-tab {{mode === 'search' ? 'discover-tab-on' : ''}}" data-mode="search" bindtap="switchMode">发现主播</view>
-    <view class="discover-tab {{mode === 'link' ? 'discover-tab-on' : ''}}" data-mode="link" bindtap="switchMode">粘贴链接</view>
-  </view>
+  <view class="discover-search"><search-field placeholder="{{mode === 'link' ? '粘贴直播间或主页链接' : '搜索主播、昵称或粘贴直播/主页链接'}}" value="{{mode === 'search' ? keyword : url}}" bind:input="onUniversalInput" bind:confirm="onUniversalConfirm" bind:clear="onClearKeyword" /></view>
+
   <block wx:if="{{mode === 'search'}}">
-    <filter-tabs items="{{filterTabs}}" active="{{platform}}" bind:change="onFilterChange"/>
-    <view class="topic-tabs">
-      <view wx:for="{{topicTabs}}" wx:key="value" class="topic-tab {{activeTopic === item.value ? 'topic-tab-on' : ''}}" data-value="{{item.value}}" bindtap="onTopicTap">{{item.label}}</view>
+    <filter-tabs items="{{filterTabs}}" active="{{platform}}" bind:change="onFilterChange" />
+    <view class="link-recognition" bindtap="onPasteLinkCta">
+      <view class="link-copy-row"><text class="link-chip">链接</text><view><text class="link-title">粘贴直播链接识别主播</text><text class="link-copy">支持抖音主页/直播链接，识别后持续追踪</text></view></view>
+      <view class="link-example"><text>https://live.douyin.com/…</text><text class="link-action">立即识别</text></view>
     </view>
+
     <view wx:if="{{searching}}" class="searching-hint">正在搜索…</view>
     <view wx:if="{{searchError}}" class="discover-notice">{{searchError}}</view>
     <view wx:elif="{{searchMsg && !searching}}" class="discover-notice discover-notice-info"><text>{{searchMsg}}</text><text wx:if="{{showPasteLinkCta}}" class="notice-link" bindtap="onPasteLinkCta">粘贴链接试试</text></view>
-    <view wx:if="{{results.length > 0}}" class="discover-results"><view class="result-heading"><text>全部主播</text><text>{{results.length}} 位主播</text></view><view class="result-list"><view wx:for="{{results}}" wx:key="user_id" class="result-row"><anchor-row avatar="{{item.avatar}}" name="{{item.display_name}}" platform="{{item.platform}}" platformLabel="{{item.platformLabel}}" meta="{{item.meta}}" size="md" showArrow="{{false}}" data-item="{{item}}" bindtap="goAnchorDetail"><view slot="action" class="sub-action {{item.is_subscribed || item.is_existing ? 'action-done' : ''}} {{subscribingId === item.user_id ? 'action-loading' : ''}}" data-item="{{item}}" catchtap="onToggleSubscribe">{{item.is_subscribed || item.is_existing ? '已订阅' : (subscribingId === item.user_id ? '授权中…' : '+ 订阅')}}</view></anchor-row></view></view></view>
-    <view wx:if="{{!searching && results.length === 0 && !searchMsg && !searchError}}" class="discover-empty"><image src="/assets/empty/no-subscriptions-parcel.png" mode="aspectFit"/><text>搜索你想关注的主播</text><text>支持抖音、B站、虎牙和斗鱼；回车或点击搜索</text></view>
+
+    <view wx:if="{{results.length > 0}}" class="discover-results">
+      <view class="result-heading"><text>搜索结果</text><text>{{results.length}} 位主播</text></view>
+      <view class="result-list"><view wx:for="{{results}}" wx:key="user_id" class="result-row"><anchor-row avatar="{{item.avatar}}" name="{{item.display_name}}" platform="{{item.platform}}" platformLabel="{{item.platformLabel}}" meta="{{item.meta}}" size="md" showArrow="{{false}}" data-item="{{item}}" bindtap="goAnchorDetail"><view slot="action" class="sub-action {{item.is_subscribed || item.is_existing ? 'action-done' : ''}} {{subscribingId === item.user_id ? 'action-loading' : ''}}" data-item="{{item}}" catchtap="onToggleSubscribe">{{item.is_subscribed || item.is_existing ? '已订阅' : (subscribingId === item.user_id ? '授权中…' : '添加')}}</view></anchor-row></view></view>
+    </view>
+    <view wx:if="{{!searching && results.length === 0 && !searchMsg && !searchError}}" class="discover-empty"><image src="/assets/empty/no-subscriptions-parcel.png" mode="aspectFit"/><text>搜索想持续关注的主播</text><text>支持昵称搜索，或粘贴直播间、主播主页链接</text></view>
   </block>
-  <block wx:else><view class="link-card"><text class="link-title">粘贴直播间或主页链接</text><text class="link-copy">支持抖音、B站、虎牙和斗鱼主播主页</text><button class="discover-search-btn" loading="{{parsing}}" disabled="{{parsing}}" bindtap="onParse">{{parsing ? '解析中…' : '解析主播'}}</button></view><view wx:if="{{parseError}}" class="discover-notice">{{parseError}}</view><view wx:if="{{parsed}}" class="result-list parsed-result"><anchor-row avatar="{{parsed.avatar}}" name="{{parsed.display_name || '未知主播'}}" platform="{{parsed.platform}}" platformLabel="{{platformLabelMap[parsed.platform]}}" meta="已确认 · 点击订阅" size="md" showArrow="{{false}}"><view slot="action" class="sub-action" catchtap="onConfirm">{{parsing ? '订阅中…' : '+ 订阅'}}</view></anchor-row></view></block>
+
+  <block wx:else>
+    <view class="link-recognition link-mode-card">
+      <view class="link-copy-row"><text class="link-chip">链接</text><view><text class="link-title">粘贴直播链接识别主播</text><text class="link-copy">确认平台公开资料后，才会创建追踪关系</text></view></view>
+      <view class="link-example"><text>{{url || 'https://live.douyin.com/…'}}</text><text class="link-action" bindtap="onParse">{{parsing ? '识别中…' : '立即识别'}}</text></view>
+    </view>
+    <view class="mode-return" bindtap="switchMode" data-mode="search">‹ 返回昵称搜索</view>
+    <view wx:if="{{parseError}}" class="discover-notice">{{parseError}}</view>
+    <view wx:if="{{parsed}}" class="result-list parsed-result"><anchor-row avatar="{{parsed.avatar}}" name="{{parsed.display_name || '未知主播'}}" platform="{{parsed.platform}}" platformLabel="{{platformLabelMap[parsed.platform]}}" meta="已确认 · 点击添加追踪" size="md" showArrow="{{false}}"><view slot="action" class="sub-action" catchtap="onConfirm">{{parsing ? '订阅中…' : '添加'}}</view></anchor-row></view>
+  </block>
 </view>

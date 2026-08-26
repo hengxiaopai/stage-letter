@@ -23,6 +23,10 @@ Page({
     liveCount: 0,
     checkingCount: 0,
     unknownCount: 0,
+    errorCount: 0,
+    offlineCount: 0,
+    featuredLive: null,
+    quietSummary: '',
     loading: true,
     refreshing: false,
     error: null,
@@ -74,7 +78,7 @@ Page({
         getActive(openid),
         listSubscriptions(openid),
       ])
-      // P0-LiveTruth: Live State → UI 唯一映射(四组互斥)
+      // UI V2.3 state mapping keeps uncertain provider outcomes visibly uncertain.
       //   LIVE       → liveList(正在直播)
       //   CHECKING   → checkingList(状态确认中, 短暂过渡态)
       //   UNKNOWN/DEGRADED → unknownList(暂时无法确认 · 检测失败)
@@ -99,6 +103,7 @@ Page({
       const checkingList = []
       const unknownList = []
       const waitList = []
+      let errorCount = 0
 
       for (const s of subs || []) {
         const st = s.live_state || (s.is_live === true ? 'LIVE' : 'UNKNOWN')
@@ -115,7 +120,8 @@ Page({
         if (liveIds.has(s.anchor_id)) continue
         if (st === 'CHECKING' || st === 'CONFIRMING') {
           checkingList.push(row)
-        } else if (st === 'UNKNOWN' || st === 'DEGRADED') {
+        } else if (st === 'UNKNOWN' || st === 'DEGRADED' || st === 'ERROR' || st === 'PROBE_FAILED') {
+          if (st === 'ERROR' || st === 'PROBE_FAILED') errorCount += 1
           unknownList.push(row)
         } else {
           waitList.push(row)
@@ -128,6 +134,8 @@ Page({
         CONFIRMING: { label: '状态确认中', className: 'status-checking' },
         UNKNOWN: { label: '暂时无法确认', className: 'status-unknown' },
         DEGRADED: { label: '暂时无法确认', className: 'status-unknown' },
+        ERROR: { label: '暂时无法获取', className: 'status-error' },
+        PROBE_FAILED: { label: '暂时无法获取', className: 'status-error' },
         OFFLINE: { label: '未开播', className: 'status-offline' },
       }
       const rowOf = (item) => {
@@ -146,6 +154,12 @@ Page({
         ...waitList.map(rowOf),
       ]
 
+      const unknownCount = unknownList.length - errorCount
+      const quietParts = [`${waitList.length} 位已确认未开播`]
+      if (checkingList.length) quietParts.push(`${checkingList.length} 位正在确认`)
+      if (unknownCount) quietParts.push(`${unknownCount} 位状态待确认`)
+      if (errorCount) quietParts.push(`${errorCount} 位暂时无法获取`)
+
       this.setData({
         liveList,
         checkingList,
@@ -155,13 +169,18 @@ Page({
         total: liveList.length + checkingList.length + unknownList.length + waitList.length,
         liveCount: liveList.length,
         checkingCount: checkingList.length,
-        unknownCount: unknownList.length,
+        unknownCount,
+        errorCount,
+        offlineCount: waitList.length,
+        featuredLive: liveList[0] || null,
+        quietSummary: quietParts.join(' · '),
         loading: false,
         error: null,
       })
       this.applySubscriptionFilter(subscriptionRows)
     } catch (err) {
-      this.setData({ loading: false, error: err.message })
+      // Do not expose raw provider or transport errors to normal users.
+      this.setData({ loading: false, error: 'load_failed' })
     }
   },
 
@@ -178,6 +197,10 @@ Page({
     // “发现”是 TabBar 页面；navigateTo 不允许跳转到 tabBar 页面，
     // 会失败且不展示输入页，必须用 switchTab。
     wx.switchTab({ url: '/pages/add/index' })
+  },
+
+  goSubscriptions() {
+    wx.navigateTo({ url: '/pages/subscriptions/index' })
   },
 
   goSearch() {

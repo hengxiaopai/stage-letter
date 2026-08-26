@@ -9,9 +9,9 @@
   ],
   "window": {
     "navigationBarTitleText": "开场信",
-    "navigationBarBackgroundColor": "#F5F8FF",
+    "navigationBarBackgroundColor": "#F6F8FC",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#F5F8FF",
+    "backgroundColor": "#F6F8FC",
     "backgroundTextStyle": "dark",
     "enablePullDownRefresh": false
   },

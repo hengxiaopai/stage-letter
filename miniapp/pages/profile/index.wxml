@@ -1,13 +1,20 @@
 <view class="page profile-page">
-  <home-brand-header />
   <view wx:if="{{loading}}" class="profile-loading">正在加载个人中心…</view>
-  <view wx:elif="{{error}}" class="empty"><view class="empty-title">加载失败</view><view class="empty-sub">{{error}}</view><primary-button bindtap="retryLoad">重新加载</primary-button></view>
+  <view wx:elif="{{error}}" class="empty"><view class="empty-title">暂时无法读取个人信息</view><view class="empty-sub">请检查网络后重试</view><primary-button bindtap="retryLoad">重新加载</primary-button></view>
   <block wx:else>
-    <view class="profile-hero"><image src="/assets/profile/profile-letter-banner.png" mode="aspectFill"/></view>
-    <view class="profile-card"><image class="profile-avatar" src="/assets/profile/profile-mascot.png" mode="aspectFill"/><view class="profile-copy"><view><text class="profile-name">开场信用户</text><text class="profile-level">Lv.10</text></view><text class="profile-id">ID：已登录用户</text><text class="profile-motto">用开场信，连接每一次心动开场</text></view></view>
-    <view class="quota-card"><view class="quota-copy"><text class="quota-label">本月通知剩余次数</text><view><text class="quota-number">{{count}}</text><text class="quota-unit"> / {{granted || count}} 次</text></view><text class="quota-detail">通过微信授权补充开播提醒额度</text></view><button class="quota-button" bindtap="onTopUp">增加次数</button></view>
-    <view class="profile-menu"><view class="menu-row" bindtap="goSubscriptions"><image src="/assets/tabbar/home-mail.png"/><text>我的订阅</text><text>›</text></view><view class="menu-row" bindtap="goMessages"><image src="/assets/tabbar/messages-bubble.png"/><text>通知历史</text><text>›</text></view><view class="menu-row" bindtap="onWhy"><image src="/assets/brand/stage-letter-mark.png"/><text>提醒说明</text><text>›</text></view></view>
-    <view class="profile-menu menu-secondary"><view class="menu-row" bindtap="onSettings"><image src="/assets/tabbar/profile-user.png"/><text>设置</text><text>›</text></view><view class="menu-row" bindtap="onAbout"><image src="/assets/brand/stage-letter-mark.png"/><text>关于开场信</text><text>›</text></view></view>
-    <view wx:if="{{historyPreview.length > 0}}" class="history-preview"><view class="history-head"><text>最近通知</text><text bindtap="goMessages">查看全部</text></view><view wx:for="{{historyPreview}}" wx:key="id" bindtap="onHistoryTap" data-page="{{item.page}}"><notification-row title="{{item.title}}" meta="{{item.meta}}" kind="{{item.kind}}" label="{{item.label}}"/></view></view>
+    <view class="profile-appbar"><text>我的</text><text>管理订阅、提醒授权与个人数据</text></view>
+    <view class="identity-card">
+      <image src="/assets/brand/stage-letter-mark.png" mode="aspectFit" />
+      <view><text class="identity-title">StageLetter 用户</text><text class="identity-copy">微信登录 · 数据仅用于你的订阅与提醒</text></view>
+    </view>
+    <view class="fact-grid">
+      <view><text>{{subscriptionCount}}</text><text>我的订阅</text></view>
+      <view><text>{{count}}</text><text>可用提醒次数</text></view>
+      <view><text>{{notificationCount}}</text><text>最近通知记录</text></view>
+    </view>
+    <view class="quota-card"><view class="quota-copy"><text class="quota-label">开播提醒额度</text><view><text class="quota-number">{{count}}</text><text class="quota-unit"> 次可用</text></view><text class="quota-detail">授权机会可用于后续开播提醒，不承诺送达</text></view><button class="quota-button" bindtap="onTopUp">补充额度</button></view>
+    <view class="profile-menu"><view class="menu-row" bindtap="goSubscriptions"><image src="/assets/tabbar/home-mail.png"/><view><text>我的订阅</text><text>查看已关注主播与提醒设置</text></view><text>›</text></view><view class="menu-row" bindtap="goMessages"><image src="/assets/tabbar/messages-bubble.png"/><view><text>通知记录</text><text>只记录实际投递结果</text></view><text>›</text></view><view class="menu-row" bindtap="onWhy"><image src="/assets/brand/stage-letter-mark.png"/><view><text>微信授权</text><text>了解并补充开播提醒额度</text></view><text>›</text></view></view>
+    <view class="profile-menu menu-secondary"><view class="menu-row" bindtap="onSettings"><image src="/assets/tabbar/profile-user.png"/><view><text>设置</text><text>隐私与账户设置</text></view><text>›</text></view><view class="menu-row" bindtap="onAbout"><image src="/assets/brand/stage-letter-mark.png"/><view><text>关于开场信</text><text>产品说明与版本信息</text></view><text>›</text></view></view>
+    <view class="profile-note"><text>属于你的主播动态档案</text><text>只记录 StageLetter 开始监测后的直播事实、统计与个人备注。</text></view>
   </block>
 </view>

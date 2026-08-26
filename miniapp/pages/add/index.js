@@ -26,14 +26,6 @@ Page({
       { label: '虎牙', value: 'huya' },
       { label: '斗鱼', value: 'douyu' },
     ],
-    topicTabs: [
-      { label: '推荐主播', value: 'recommended' },
-      { label: '热门游戏', value: 'games' },
-      { label: '娱乐', value: 'entertainment' },
-      { label: '颜值', value: 'beauty' },
-      { label: '聊天', value: 'chat' },
-    ],
-    activeTopic: 'recommended',
     platformLabelMap: PLATFORM_LABEL,
     // 链接
     url: '',
@@ -119,12 +111,6 @@ Page({
     this.setData({ results })
   },
 
-  onTopicTap(e) {
-    // 当前后端没有“按内容标签推荐”接口；此处只保持清晰的 UI 选中状态，
-    // 搜索结果仍严格由上方关键词和平台筛选决定。
-    this.setData({ activeTopic: e.currentTarget.dataset.value })
-  },
-
   onKeywordInput(e) {
     this.setData({ keyword: e.detail.value })
   },
@@ -140,7 +126,7 @@ Page({
   },
 
   onClearKeyword() {
-    this.setData({ keyword: '', results: [], allResults: [], platformStatus: {}, searchMsg: null, searchError: null, searchStatus: null, searchHint: '', showPasteLinkCta: false })
+    this.setData({ keyword: '', url: '', parsed: null, results: [], allResults: [], platformStatus: {}, searchMsg: null, searchError: null, searchStatus: null, searchHint: '', showPasteLinkCta: false })
   },
 
   async onSearch() {
@@ -441,7 +427,7 @@ Page({
       const parsed = await parseAnchor(this.data.url.trim())
       this.setData({ parsed, parsing: false })
     } catch (err) {
-      this.setData({ parsing: false, parseError: err.message })
+      this.setData({ parsing: false, parseError: '链接暂时无法识别，请检查链接后重试' })
     }
   },
 

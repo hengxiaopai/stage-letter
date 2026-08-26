@@ -1,9 +1,12 @@
 <view class="page messages-page">
-  <home-brand-header />
-  <view class="messages-heading"><text>消息</text><text>开播提醒与站内通知</text></view>
-  <view class="message-tabs"><view class="message-tab message-tab-on">开播通知<text class="unread-badge">{{items.length}}</text></view><view class="message-tab">互动消息</view><view class="message-tab">系统消息</view></view>
+  <view class="messages-appbar"><text>‹</text><text>通知记录</text><text>筛选</text></view>
   <view wx:if="{{loading}}" class="messages-loading">正在加载消息…</view>
-  <view wx:elif="{{error}}" class="empty"><view class="empty-title">消息加载失败</view><view class="empty-sub">{{error}}</view><primary-button bindtap="retryLoad">重新加载</primary-button></view>
-  <view wx:elif="{{items.length === 0}}" class="messages-empty"><image src="/assets/empty/no-live-letter.png" mode="aspectFit"/><text>暂无开播通知</text><text>订阅的主播开播后，会在这里留下提醒记录</text></view>
-  <view wx:else class="message-list"><view class="message-row" wx:for="{{items}}" wx:key="id" data-id="{{item.anchor_id}}" bindtap="goDetail"><anchor-avatar src="{{item.avatar}}" name="{{item.display_name}}" size="lg"/><view class="message-body"><view class="message-top"><text class="message-name">{{item.display_name || '主播'}}</text><text class="message-time">{{item.meta}}</text></view><text class="message-title">{{item.title}}</text><text class="message-copy">点击查看主播详情与本场直播信息</text><text class="message-tag">开播通知</text></view><view class="message-cta">去观看</view></view></view>
+  <view wx:elif="{{error}}" class="empty"><view class="empty-title">暂时无法读取通知记录</view><view class="empty-sub">请检查网络后重试</view><primary-button bindtap="retryLoad">重新加载</primary-button></view>
+  <block wx:else>
+    <view class="messages-header"><text>最近发送</text><text>只记录实际投递</text></view>
+    <filter-tabs items="{{filters}}" active="{{activeFilter}}" bind:change="onFilterChange" />
+    <view wx:if="{{visibleItems.length === 0}}" class="messages-empty"><image src="/assets/empty/no-live-letter.png" mode="aspectFit"/><text>暂无通知记录</text><text>这里记录开播提醒的实际投递结果</text></view>
+    <view wx:else class="message-list"><view class="message-row" wx:for="{{visibleItems}}" wx:key="id" data-id="{{item.anchor_id}}" bindtap="goDetail"><anchor-avatar src="{{item.avatar}}" name="{{item.display_name}}" size="lg"/><view class="message-body"><view class="message-top"><text class="message-name">{{item.display_name || '主播'}}</text><text class="delivery-pill delivery-{{item.kind}}">{{item.label}}</text></view><text class="message-title">{{item.title}} · {{item.timeLabel}}</text><text class="message-copy">{{item.detail}}</text></view></view></view>
+    <view class="delivery-note"><text>与“动态”不同</text><text>动态记录主播事实事件；这里记录消息投递结果。</text></view>
+  </block>
 </view>

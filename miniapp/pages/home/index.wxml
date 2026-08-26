@@ -1,21 +1,17 @@
 <view class="page home-page">
   <home-brand-header />
   <home-search-bar bind:search="goSearch" />
-  <announcement-bar />
 
-  <view wx:if="{{loading}}">
-    <view class="skeleton" wx:for="{{[1,2]}}" wx:key="*this">
-      <view class="sk-row">
-        <view class="skeleton-row skeleton-circle" style="width:56px;height:56px;"></view>
-      </view>
-    </view>
+  <view wx:if="{{loading}}" class="home-loading" aria-label="正在读取订阅与主播状态">
+    <view class="loading-line loading-brand"></view>
+    <view class="loading-card"></view>
+    <view class="loading-card"></view>
   </view>
 
-  <view wx:elif="{{error}}" class="empty">
-    <view class="empty-icon">!</view>
-    <view class="empty-title">加载失败</view>
-    <view class="empty-sub">{{error}}</view>
-    <primary-button bindtap="retryLoad">重新加载</primary-button>
+  <view wx:elif="{{error}}" class="home-error">
+    <text class="home-error-title">暂时无法读取订阅</text>
+    <text class="home-error-copy">请检查网络后重试，已保存的数据不会受影响。</text>
+    <view class="retry-button" bindtap="retryLoad">重新加载</view>
   </view>
 
   <block wx:else>
@@ -25,54 +21,52 @@
     </block>
 
     <block wx:else>
-      <view wx:if="{{liveList.length > 0 || checkingList.length > 0}}" class="section-heading live-heading">
-        <view class="section-title">正在直播<view class="live-dot"></view></view>
-        <text wx:if="{{liveList.length > 0}}" class="section-more" bindtap="showLiveSubscriptions">查看全部</text>
-        <text wx:else class="refresh-action {{refreshing ? 'refresh-action-disabled' : ''}}" bindtap="manualRefresh">{{refreshing ? '正在检查' : '刷新'}}</text>
-      </view>
-      <block wx:if="{{liveList.length > 0}}">
-        <scroll-view class="live-scroll" scroll-x="true" enable-flex="true" show-scrollbar="false">
-          <view class="live-scroll-inner">
-            <view class="live-mini-card" wx:for="{{liveList}}" wx:key="anchor_id" data-id="{{item.anchor_id}}" bindtap="goDetail">
-              <view class="live-mini-badge">直播中</view>
-              <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="lg"/>
-              <view class="live-mini-name">{{item.anchor_name}}</view>
-              <platform-badge platform="{{item.platform}}" label="{{item.platformLabel}}"/>
-              <view class="live-mini-title">{{item.title || '正在直播中'}}</view>
-            </view>
-          </view>
-        </scroll-view>
-      </block>
-      <live-confirming-card wx:elif="{{checkingList.length > 0}}" count="{{checkingList.length}}" refreshing="{{refreshing}}" bind:refresh="manualRefresh" />
-      <empty-live-card wx:else compact="{{true}}" />
-
-      <view class="section-heading subscription-heading">
-        <view class="section-title">我的订阅 ({{total}})</view>
-      </view>
-
-      <view class="subscription-filters" aria-label="订阅状态筛选">
-        <view wx:for="{{subscriptionFilters}}" wx:key="value" class="subscription-filter {{subscriptionFilter === item.value ? 'subscription-filter-on' : ''}}" data-value="{{item.value}}" bindtap="selectSubscriptionFilter">{{item.label}}</view>
-      </view>
-
-      <view class="subscription-list">
-        <view class="subscription-row" wx:for="{{visibleSubscriptionRows}}" wx:key="anchor_id" data-id="{{item.anchor_id}}" bindtap="goDetail">
-          <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="md"/>
-          <view class="subscription-body">
-            <view class="subscription-topline">
-              <text class="subscription-name">{{item.anchor_name}}</text>
-              <text class="subscription-state {{item.stateClass}}">{{item.stateLabel}}</text>
-            </view>
-            <view class="subscription-meta">
-              <platform-badge platform="{{item.platform}}" label="{{item.platformLabel}}"/>
-              <text class="subscription-summary">{{item.rowMeta}}</text>
-            </view>
-          </view>
-          <view class="row-actions">
-            <view class="row-detail-button" catchtap="goDetail" data-id="{{item.anchor_id}}">进入详情</view>
-            <view class="row-button" catchtap="goDetail" data-id="{{item.anchor_id}}">管理提醒</view>
-          </view>
+      <view wx:if="{{featuredLive}}" class="live-section">
+        <view class="section-heading live-heading">
+          <view class="section-title">正在直播<view class="live-count">{{liveCount}}</view></view>
+          <text class="section-more" bindtap="showLiveSubscriptions">查看全部</text>
         </view>
-        <view wx:if="{{visibleSubscriptionRows.length === 0}}" class="filtered-empty">该状态下暂无订阅主播</view>
+        <view class="featured-live-card" data-id="{{featuredLive.anchor_id}}" bindtap="goDetail">
+          <anchor-avatar src="{{featuredLive.anchor_avatar}}" name="{{featuredLive.anchor_name}}" size="lg" />
+          <view class="featured-live-copy">
+            <view class="featured-live-title"><text class="featured-live-name">{{featuredLive.anchor_name}}</text><text class="status-pill status-live">直播中</text></view>
+            <text class="featured-live-subtitle">{{featuredLive.title || '正在直播中'}}</text>
+            <text class="featured-live-meta">{{featuredLive.platformLabel}} · {{featuredLive.liveMeta}}</text>
+          </view>
+          <view class="live-entry">进入直播间</view>
+        </view>
+      </view>
+
+      <view wx:else class="quiet-section">
+        <view class="quiet-status-card" bindtap="goAdd">
+          <view class="quiet-icon">☾</view>
+          <view class="quiet-copy">
+            <text class="quiet-title">当前没有已确认开播</text>
+            <text class="quiet-meta">{{quietSummary}}</text>
+          </view>
+          <text class="quiet-discover">发现 ›</text>
+        </view>
+      </view>
+
+      <view class="subscription-section">
+        <view class="section-heading subscription-heading">
+          <view class="section-title">我的订阅 · {{total}}</view>
+          <text class="section-more" bindtap="goSubscriptions">管理</text>
+        </view>
+        <view class="subscription-filters" aria-label="订阅状态筛选">
+          <view wx:for="{{subscriptionFilters}}" wx:key="value" class="subscription-filter {{subscriptionFilter === item.value ? 'subscription-filter-on' : ''}}" data-value="{{item.value}}" bindtap="selectSubscriptionFilter">{{item.label}}</view>
+        </view>
+        <view class="subscription-list">
+          <view class="subscription-row" wx:for="{{visibleSubscriptionRows}}" wx:key="anchor_id" data-id="{{item.anchor_id}}" bindtap="goDetail">
+            <anchor-avatar src="{{item.anchor_avatar}}" name="{{item.anchor_name}}" size="md" />
+            <view class="subscription-body">
+              <view class="subscription-topline"><text class="subscription-name">{{item.anchor_name}}</text><text class="status-pill {{item.stateClass}}">{{item.stateLabel}}</text></view>
+              <text class="subscription-summary">{{item.platformLabel}} · {{item.rowMeta}}</text>
+            </view>
+            <text class="row-chevron">›</text>
+          </view>
+          <view wx:if="{{visibleSubscriptionRows.length === 0}}" class="filtered-empty">该状态下暂无订阅主播</view>
+        </view>
       </view>
     </block>
   </block>

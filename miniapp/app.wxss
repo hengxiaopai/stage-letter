@@ -1,40 +1,37 @@
 /**
  * app.wxss — StageLetter 全局设计系统
- * UI-1 Editorial Live Radar · 编辑式直播雷达(FROZEN 2026-08-13)
+ * UI-V2.3 · Figma Master restoration
  *
  * 原则:
- * - 大面积蓝已废除;品牌蓝仅主 CTA / 选中态 / 少量交互
- * - 只有直播相关内容可以大面积使用红色(LIVE #E23B36)
- * - 默认无阴影;靠 Surface + Border + Whitespace 建立层次
- * - 不再默认 Card;优先开放 List / Section / Divider
- * - 圆角仅三档: 8 / 12 / 16
- * - 禁止: Glow / HUD / 扫描线 / 玻璃 / 无意义渐变
+ * - 390×844 基准: 18px 页面边距、18px 卡片、14px CTA
+ * - 品牌蓝仅用于主 CTA、选中态和低频强调;LIVE 独占红色
+ * - 以白色 Surface、细边框与留白建立层次，不使用装饰性发光
  */
 
 page {
   /* ─── Neutral 中性色 ─── */
-  --bg: #F7F8F7;
+  --bg: #F6F8FC;
   --surface: #FFFFFF;
-  --surface-2: #F1F3F2;
-  --text-primary: #171A19;
-  --text-secondary: #6D7370;
-  --text-tertiary: #9CA29F;
-  --border: #E6E9E7;
+  --surface-2: #F1F4F8;
+  --text-primary: #15213A;
+  --text-secondary: #7C8AA5;
+  --text-tertiary: #A3AEC2;
+  --border: #E2E8F3;
 
   /* ─── Brand 品牌(克制) ─── */
-  --brand: #176B8A;
-  --brand-soft: #EAF4F7;
+  --brand: #2F6BFF;
+  --brand-soft: #EAF1FF;
 
   /* ─── Semantic 语义色 ─── */
-  --live: #E23B36;         /* 唯一大面积红: 直播 */
-  --live-soft: #FDEDEC;
-  --online: #16875F;
-  --online-soft: #EAF6F1;
-  --warning: #D99118;
+  --live: #F04452;
+  --live-soft: #FFE9EC;
+  --online: #2B8A66;
+  --online-soft: #EAF7F1;
+  --warning: #A96500;
   --warning-soft: #FFF6E3;
-  --offline: #919793;
-  --destructive: #D7473F;
-  --destructive-soft: #FCEEED;
+  --offline: #7C8AA5;
+  --destructive: #D94754;
+  --destructive-soft: #FFF0F0;
 
   /* ─── 平台色(仅小面积 Badge/标识) ─── */
   --c-bilibili: #00AEEC;
@@ -61,9 +58,9 @@ page {
   --sp-8: 40px;
 
   /* ─── Radius 三档 ─── */
-  --r-sm: 8px;             /* 小控件 */
-  --r-md: 12px;            /* 普通 Surface */
-  --r-lg: 16px;            /* 强调 Card / Bottom Sheet */
+  --r-sm: 10px;            /* 小控件 */
+  --r-md: 14px;            /* CTA / 普通 Surface */
+  --r-lg: 18px;            /* 强调 Card / Bottom Sheet */
 
   /* ─── Shadow(默认无,仅 3 场景) ─── */
   --shadow-none: none;
@@ -73,7 +70,7 @@ page {
   background: var(--bg);
   color: var(--text-primary);
   font-size: var(--t-body);
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
 }

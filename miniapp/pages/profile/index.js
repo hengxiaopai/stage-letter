@@ -1,24 +1,15 @@
-// pages/profile/index.js — 我的:还可提醒 N 次 + 通知记录
+// pages/profile/index.js — 我的：仅展示当前用户可验证的订阅与提醒事实
 const { getGrants, getHistory, requestGrant } = require('../../services/notifications')
-const { parseISO } = require('../../utils/time')
-
-const DETAIL_PAGE_RE = /^pages\/detail\/index\?id=([1-9]\d*)$/
-
-function canonicalDetailPage(anchorId, page) {
-  const id = String(anchorId || '')
-  const expected = `pages/detail/index?id=${id}`
-  if (!DETAIL_PAGE_RE.test(expected) || page !== expected) return null
-  return page
-}
+const { listSubscriptions } = require('../../services/subscriptions')
 
 Page({
   data: {
     count: 0,
     granted: 0,
+    subscriptionCount: 0,
+    notificationCount: 0,
     loading: true,
     error: null,
-    history: [],
-    historyPreview: [],
   },
 
   onShow() {
@@ -32,28 +23,21 @@ Page({
     const app = getApp()
     try {
       const openid = await app.ensureLogin()
-      const [grant, history] = await Promise.all([
+      const [grant, history, subscriptions] = await Promise.all([
         getGrants(openid),
         getHistory(openid, 10),
+        listSubscriptions(openid),
       ])
-      const items = (history.items || []).map((h) => ({
-        id: h.id,
-        title: `${h.display_name || '主播'} 开始直播`,
-        meta: this.formatTime(h.started_at) + ' · ' + (h.platform || ''),
-        kind: h.channel === 'IN_APP' ? 'inapp' : (h.state === 'SENT' ? 'sent' : 'fail'),
-        label: h.channel === 'IN_APP' ? '站内' : (h.state === 'SENT' ? '已发送' : '未送达'),
-        page: canonicalDetailPage(h.anchor_id, h.miniapp_path),
-      }))
       this.setData({
         count: grant ? grant.available : 0,
         granted: grant ? grant.granted_count : 0,
-        history: items,
-        historyPreview: items.slice(0, 2),
+        subscriptionCount: (subscriptions || []).length,
+        notificationCount: (history.items || []).length,
         loading: false,
         error: null,
       })
     } catch (err) {
-      this.setData({ loading: false, error: err.message })
+      this.setData({ loading: false, error: 'load_failed' })
     }
   },
 
@@ -93,7 +77,7 @@ Page({
       }
       // 未 accept → 静默(不弹"未同意授权"误导)
     } catch (err) {
-      wx.showToast({ title: err.message, icon: 'none' })
+      wx.showToast({ title: '暂时无法补充提醒次数', icon: 'none' })
     } finally {
       this._topUpPending = false
     }
@@ -127,24 +111,6 @@ Page({
       content: '开场信为你汇集关注主播的开播状态，并在可用时及时提醒。',
       showCancel: false,
     })
-  },
-
-  onHistoryTap(e) {
-    const page = e.currentTarget.dataset.page
-    if (!page || !DETAIL_PAGE_RE.test(page)) {
-      wx.showToast({ title: '通知链接无效', icon: 'none' })
-      return
-    }
-    wx.navigateTo({ url: `/${page}` })
-  },
-
-  formatTime(iso) {
-    if (!iso) return ''
-    const t = parseISO(iso)
-    if (isNaN(t)) return iso
-    const d = new Date(t)
-    const p = (n) => (n < 10 ? '0' + n : '' + n)
-    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
   },
 
   onPullDownRefresh() {

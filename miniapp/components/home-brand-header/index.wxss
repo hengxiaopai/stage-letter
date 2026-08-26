@@ -1,7 +1,7 @@
 .brand-header {
   display: flex;
   align-items: center;
-  padding: 24rpx 0 20rpx;
+  padding: 0;
 }
 
 .brand-mark {
@@ -18,7 +18,7 @@
 
 .brand-title {
   font-size: 42rpx;
-  line-height: 1.05;
+  line-height: 1.12;
   font-weight: 800;
   letter-spacing: -1rpx;
   color: #2c6ef2;
@@ -29,5 +29,5 @@
   font-size: 21rpx;
   line-height: 1.1;
   letter-spacing: .4rpx;
-  color: #2c6ef2;
+  color: #6c7a96;
 }

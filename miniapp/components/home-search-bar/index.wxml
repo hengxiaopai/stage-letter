@@ -1,4 +1,4 @@
 <view class="search-bar" bindtap="onSearch" hover-class="search-bar-hover" hover-stay-time="60">
   <icon type="search" size="18" color="#7b89a9" />
-  <text class="search-placeholder">搜索主播，如：珩小派</text>
+  <text class="search-placeholder">搜索主播、昵称或粘贴直播/主页链接</text>
 </view>

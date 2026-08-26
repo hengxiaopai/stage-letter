@@ -4,10 +4,9 @@
   padding: 0 28rpx;
   display: flex;
   align-items: center;
-  border: 1rpx solid #d7e2fa;
-  border-radius: 48rpx;
+  border: 1rpx solid #d9e2f2;
+  border-radius: 36rpx;
   background: #fff;
-  box-shadow: 0 10rpx 28rpx rgba(50, 101, 215, .055);
 }
 
 .search-bar-hover { opacity: .7; }
