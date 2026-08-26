@@ -1,254 +1,213 @@
 # ROADMAP.md — 路线图
 
-## 总览（当前执行状态）
+更新：2026-08-25
 
-```
-Gate 0 — Feasibility Evidence      ⚠️ DEGRADED（历史证据，不补写缺口）
-──────────────────────────────────────────
+## 总览
+
+```text
+Gate 0 — Feasibility Evidence      ⚠️ DEGRADED（历史证据保留）
 Gate 1 — Domain Core              ✅ PASS / CLOSED
 Gate 2 — Detection Engine         ✅ PASS / CLOSED
 Gate 3 — Notification Engine      ✅ PASS / CLOSED
 Gate 4 — 微信小程序                 ✅ PASS / CLOSED
-Gate 5 — Admin / Observability      ✅ PASS / CLOSED
-──────────────────────────────────────────
-V1 Alpha 内测准备                  🚧 CURRENT
-V1 公开上线                         2-4 周缓冲
-──────────────────────────────────────────
-V1.1: P1 平台 + V1.2 优化         4-6 周
-V2:  跨平台身份合并 + 静默时间      2-3 月
-V3:  创作者订阅情报中心            6+ 月
+Gate 5 — Admin / Observability    ✅ PASS / CLOSED
+──────────────────────────────────────────────
+UI V2.1 — Streamer Detail Contract ✅ PASS WITH OPEN DELTAS
+UI V2.2 — Backend/API Contract      🚧 CURRENT
+V1 Alpha Hardening                  🚧 CURRENT
+V1 Alpha 内测                        NEXT
+V1 公开上线                           2–4 周缓冲
 ```
 
-> Gate 0 的原始计划和实验记录继续保留用于审计，但当前开发入口是 Gate 5；
-> Gate 1–3 的最终冻结证据分别以 Gate 文档和自动化验收为准。
+Gate 0 的长期平台真实性证据仍保持 `DEGRADED`。Gate 1–5 的完成不覆盖该历史限制。
 
-## Gate 0 — 技术可行性 (v0.2 拆 0A-0E)
+## 当前阶段：UI V2.2 + Alpha Hardening
 
-**目标**: 验证 v0.2 grant 模型 + 单主播 adapter + 平台容量 + 72h 稳定性 + 端到端通知
+当前不是重新开启 Gate 4，而是在既有可运行小程序上完成产品信息架构与正式领域模型的对齐。
 
-**任务**: 详见 [GATE-0.md](./GATE-0.md)
+### UI V2 信息架构
 
-**整体验收**(必须全部通过):
-- [ ] Gate 0A: 微信 grant 模型真机验证,产品定位确定
-- [ ] Gate 0B: 4 个平台 adapter 各自 5 个主播 × 24h
-- [ ] Gate 0C: 每平台 `capacity.md` 完整,V1 主播上限确定
-- [ ] Gate 0D: 72h 集成稳定
-- [ ] Gate 0E: 状态机 + 端到端通知
+目标顶层：
 
-**任意一关不通过** → 不进入 Gate 1。
+```text
+首页 / 发现 / 动态 / 我的
+```
 
-## Gate 1 — Domain Core
+主播详情：
 
-**时长**：1-2 周  
-**目标**：数据模型 + 状态机 + 去重（纯后端，不依赖真实平台）
+```text
+概览
+记录 ─ 列表 / 日历
+数据 ─ 统计 / 分析
+档案
+```
 
-**任务**：
-- PostgreSQL + SQLAlchemy 2.0
-- 10 张核心表 + Alembic migration
-- LiveStateEngine（状态机 + 二次确认）
-- 单元测试覆盖状态机
-- 单元测试覆盖去重
+开播日历和月度总结属于主播详情内部，不单独占一级页面。
 
-**输出**：
-- 完整 data-model（migration 可跑）
-- 状态机 100% 测试覆盖
-- 单一进程内可手动制造 LiveSession
-- 集成测试：注入 1000 个 LiveEvent，验证去重不重不漏
+### UI V2.2 必做 Delta
 
-**验收**：
-- [x] `alembic upgrade head` 从空库成功(2026-08-13,迁移 5354a9ed7741)
-- [x] 状态机所有转换都有测试(`tests/test_live_session_engine.py` 4 组全过)
-- [x] 1000 个 LiveEvent fan-out 后不重复通知(`tests/integration_1000_events.py` 全过)
-- [x] 人工注入抖动(online→offline→online 5s 内)只产生一次 CONFIRMED_ONLINE(`test_jitter_handling` + 引擎测试)
+#### D1 — Viewer Context + Reminder Preference（P0）
 
-## Gate 2 — Detection Engine
+- 详情返回当前用户 Follow/Subscription/NotificationPreference。
+- 删除详情页 `remindOn: true` 假状态。
+- 提醒开关具备真实 GET/PATCH 持久化与失败回滚。
 
-**时长**:2-3 周  
-**目标**:完整检测层,平台隔离、可降级
+#### D2 — Session Query / Calendar / Stats（P0/P1）
 
-**任务**:
-- APScheduler + Redis queue
-- 平台 worker 拆分(worker-douyin / worker-bilibili / ...)
-- **v0.2 新增**: 分级轮询(hot / warm / cold)
-- 适配器健康度监控
-- 限流(aiolimiter)
-- 重试(tenacity)
-- 熔断(DEGRADED 自动降频,**仍通知,标低 confidence**)
-- platform_health 自动更新
-- **v0.2 调整**: `probe_runs` 轻量 probe telemetry 必须纳入 Gate 2(不再是 V1.1 可选)
+- 分页直播记录。
+- 按月 Session 聚合日历。
+- 场次、天数、总时长、平均时长、最长/最短等统计。
+- 精确时间分析只使用 `started_at_source=platform`。
+- `analysis` 可在 sessions/calendar/stats 后单独切片。
 
-**输出**:
-- 按平台实测 `max_anchors` 的去重检测 demo(目标数由 Gate 0C 决定)
-- 平台健康页可看
-- 任一平台 disable 不影响其他
-- 单平台故障可自动 DEGRADED → DISABLE
-- probe_runs 表持续写入
+#### D3 — Personal Streamer Profile（P1）
 
-**验收**：✅ PASS / CLOSED。最终证据见 [GATE-2.md](./GATE-2.md)。
+- 用户备注。
+- 自定义称呼。
+- 分组。
+- Reference Schedule。
 
-## Gate 3 — Notification Engine
+D3 不阻塞最小主播详情 V2。
 
-**时长**:2-3 周  
-**目标**:真正能"主播开播 → 微信通知"
+#### D4 — Formal Consumer Parity（P0）
 
-**任务**:
-- 微信订阅消息模板申请(提前 Gate 0A 完成后立刻申请)
-- **v0.2 重构**: grant 模型(wechat_subscription_grants 表,乐观记账 + reconciliation)
-- Fan-out(LiveEvent → notification_jobs)
-- WeChat 投递 worker(grant 决策树)
-- In-App 投递 worker(兜底)
-- Delivery log
-- 失败重试(指数退避)
-- 微信 4xx → grant 失效 / 5xx → grant 保留
-- **v0.2 新增**: 微信模板独立 disable 能力
+- legacy / formal 详情路径必须拥有等价 UI Contract。
+- Formal Session 补足 UI 必需 metadata（如 title）。
+- Formal 路径必须具备 live state / freshness / last probe / source started time 等消费字段。
+- 不允许 Formal 路径长期依赖写死“正在直播/直播”。
 
-**输出**:
-- 真机收到开播通知
-- grant 正确消耗与记录
-- request-grant 流程跑通
-- 微信 43101 / 45009 / 40037 等错误正确处理
+详细契约：`docs/features/F-UI-V2-01-streamer-detail-contract.md`。
 
-**验收**：✅ PASS / CLOSED。真实 provider `errcode=0` 与手机收件证据复用
-Gate 1.6；grant、40037、fallback、restart、多 worker、history 和详情路径契约
-均已验收，见 [GATE-3.md](./GATE-3.md)。真实点击/页面交互属于 Gate 4，
-不得用静态路径测试冒充。
+## Alpha Hardening
 
-## Gate 4 — 微信小程序
+在 UI V2.2 并行进行的 Alpha 加固：
 
-**时长**:2-3 周  
-**目标**:用户能完整使用 4 个核心页面
+- 直播状态 `LIVE/OFFLINE/CONFIRMING/UNKNOWN/DEGRADED` 的用户语义稳定。
+- 手动刷新继续使用 accepted/cooldown + 延迟回读，不返回伪即时结果。
+- 状态翻转二次确认保持有界窗口；不得长期卡在“确认中”。
+- provider 失败不能变成 OFFLINE。
+- TikHub 作为可选供应方接入 Adapter，不成为前端直接依赖。
+- 首页订阅行向整行点击 + 轻操作收敛，逐步移除两个等权 CTA。
 
-**任务**:
-- 复用当前原生微信小程序（WXML / WXSS / JavaScript），不重新迁移到 Taro
-- 微信登录集成
-- 4 个核心页面:
-  - 首页(正在直播 / 最近开播)
-  - 添加订阅
-  - 我的订阅
-  - 我的(grant 余额 / 通知记录 / 「开启更多提醒」按钮)
-- 「开启更多提醒」UI:触发 wx.requestSubscribeMessage
-- 与后端 API 联调
+## 历史 Gate
 
-**输出**:
-- 4 个页面 demo
-- 完整用户路径:登录 → 添加 → 开播收到通知 → 查看详情
-- 真机预览
+### Gate 0 — Feasibility Evidence
 
-**验收**:
-- [ ] 微信登录可用
-- [ ] 粘贴抖音链接 → 添加成功(同时弹 grant 授权)
-- [ ] 主播开播 → 真机收到微信通知
-- [ ] 点通知 → 跳详情页
-- [ ] 我的页面显示 grant 余额(不是"剩余配额")
+目标：微信 grant、平台 adapter、容量、稳定性和端到端通知的早期证据。
 
-## Gate 5 — Admin / Observability
+状态：⚠️ `DEGRADED`。保留原实验和报告用于审计，不补写缺失的长期生命周期证据。
 
-**时长**：1-2 周  
-**目标**：运营可观测、可干预
+详见 `GATE-0.md` 和 `reports/`。
 
-**任务**：
-- Admin Web（FastAPI + Jinja2 或独立 React）
-- 平台健康 dashboard
-- 适配器 disable/enable
-- 用户列表
-- 通知记录查询
-- 错误日志聚合
-- Prometheus metrics 暴露
-- Grafana dashboard（V1.1）
+### Gate 1 — Domain Core
 
-**输出**：
-- Admin 完整可用
-- 至少 4 个核心页面
+状态：✅ PASS / CLOSED。
 
-**验收**：✅ PASS / CLOSED。受保护的健康页、审计化的平台 disable/restore、
-有界用户/订阅/投递查询、固定维度错误聚合和独立引擎重启读取已验收；最终
-证据见 [GATE-5.md](./GATE-5.md)。Prometheus/Grafana 保持为 V1.1 的独立工作，
-不得将其缺席伪装为已完成。
+核心：Formal Domain、PostgreSQL/Alembic、状态机、LiveSession/LiveEvent、幂等与持久化边界。
+
+### Gate 2 — Detection Engine
+
+状态：✅ PASS / CLOSED。
+
+核心：due selection、lease、多 worker、容量隔离、平台健康、重试/限流/熔断、重启恢复。
+
+### Gate 3 — Notification Engine
+
+状态：✅ PASS / CLOSED。
+
+核心：LIVE_STARTED fan-out、grant ledger、WeChat delivery、fallback、restart、history 和投递状态机。
+
+### Gate 4 — 微信小程序
+
+状态：✅ PASS / CLOSED（工程链路）。
+
+已经完成：登录、首页、发现/搜索、订阅、主播详情、通知历史、我的、真机受控通知与详情跳转。
+
+注意：Gate 4 CLOSED 不意味着 UI V2 已完成；UI V2 是其上的产品迭代。
+
+### Gate 5 — Admin / Observability
+
+状态：✅ PASS / CLOSED。
+
+核心：受保护 Admin 健康、平台 enable/disable、脱敏查询、错误聚合、重启读取。
 
 ## V1 Alpha 内测
 
-**时长**：2 周  
-**目标**：100 用户真实使用 1 周
+进入条件：
 
-**任务**：
-- 招募 100 内测用户
-- 监控关键指标
-- 收集反馈
-- 修复 P0 bug
+- UI V2.2 的 D1 与 D4 完成。
+- D2 至少完成 sessions + calendar + 基础 stats。
+- 主播详情没有硬编码提醒状态或统计数据。
+- README / API-SPEC / DATA-MODEL / feature contract 同步。
+- 微信开发者工具逐屏验收通过。
+- 至少完成一次真机状态刷新 + 提醒开关持久化验收。
 
-**验收**：
-- [ ] 100 用户全部成功完成"添加订阅 → 收到通知"
-- [ ] 没有 P0 故障（数据丢失、通知漏发等）
-- [ ] 关键指标达标（性能、错误率）
+目标：小规模真实用户持续使用，验证“添加主播 → 状态可信 → 收到提醒 → 查看详情”的闭环。
 
 ## V1 公开上线
 
-**时长**：2-4 周缓冲
+前置：
 
-**任务**：
-- 微信小程序提交审核
-- 灰度放量（10% → 50% → 100%）
-- 监控告警就位
-- 客服话术准备
+- 微信审核。
+- 生产域名与证书。
+- secret store / key rotation。
+- 监控和告警。
+- 灰度策略。
+- Gate 0 平台风险在发布说明中显式保留。
 
-**验收**：
-- [ ] 微信审核通过
-- [ ] 灰度放量无重大事故
-- [ ] 告警链路打通
+## V1.1 / V1.2
 
----
+- 快手 / Twitch 等 P1 平台。
+- 性能与缓存优化。
+- 通知记录导出。
+- 通知点击转化分析。
+- 更丰富的平台 capability-driven UI。
 
-## V1.1 / V1.2（V1 之后 1-2 月）
+## V2
 
-- 快手 / Twitch P1 平台接入
-- 性能优化（缓存、批量探测）
-- 通知记录导出
-- 通知点击转化率分析
-- 微信模板 A/B 测试
+- 跨平台主播身份合并。
+- 用户主播档案增强。
+- 静默时间段完整产品化。
+- 主播动态扩展到非直播事件。
+- H5 或其他客户端评估。
 
-## V2（V1 之后 2-3 月）
+## V3+
 
-- 跨平台身份合并（同一主播抖音+B 站合并到一条 anchor）
-- 静默时间段
-- 通知额度购买（`period='manual'` 启用）
-- H5 端
-- 主播动态（新视频、专栏）
+- 创作者订阅情报中心。
+- 直播预约与规律预测。
+- 主播情报雷达。
+- 高级分析与会员能力。
 
-## V3+（V1 之后 6+ 月）
+## 分支策略
 
-- 创作者订阅情报中心
-- 直播预约
-- 主播情报雷达（跨平台热度、节奏）
-- 海外平台
-- 付费会员 / 高级功能
-- 移动端原生 App
+```text
+main
+└─ codex/ui-v2-2-backend-contract   ← CURRENT NEXT WORK BRANCH
+```
 
----
+约定：
 
-## 进度追踪
+- `main` 是唯一合并基线。
+- 已完成的 `codex/gate*` 分支仅保留审计，不继续承载新功能。
+- UI V2 新工作使用 `codex/ui-v2-*`。
+- 每次合并后，下一分支从最新 `main` 重新创建。
+- 一个分支只完成一个主目标，并同步对应 feature contract 与验收证据。
 
-每个 Gate 完成时：
-1. 在 GitHub 提 release
-2. 更新 ROADMAP.md
-3. 在 SOUL.md / 项目 MEMORY 留 working note
-4. 启动下一个 Gate
+## 风险
 
-## 风险与备案
+| 风险 | 触发条件 | 处理 |
+| --- | --- | --- |
+| 抖音/TikHub 上游变化 | 频繁 UNKNOWN/DEGRADED | 降级 UI，保护其他平台，不误判 OFFLINE |
+| legacy/formal 语义分叉 | 同主播不同路径返回不同状态/标题 | D4 Formal Consumer Parity 优先处理 |
+| 统计误导 | probe 时间进入精确规律分析 | 数据质量过滤，仅可信 platform start time 参与 |
+| 微信 grant/模板限制 | 无可用 grant 或 provider 拒绝 | 明确 UI 状态 + durable fallback |
+| UI 文档与实现漂移 | Codex 按旧原型恢复旧结构 | feature contract 先于代码，合并前强制同步 |
 
-| 风险 | 触发条件 | 备案 |
-|------|---------|------|
-| 抖音接口持续升级 | Adapter 错误率 > 30% 持续 7 天 | 减小抖音优先级，优先 P1 平台 |
-| 微信模板审核不过 | Gate 3 阻塞 | 用站内消息作为主渠道，微信做备选 |
-| 1 万用户容量不足 | 上线 1 月内 DAU > 5000 | 提前优化检测层；引入 worker 横向扩容 |
-| 平台法律风险 | 收到平台投诉 | 仅做"订阅通知"，不存内容；联系法务 |
-| 团队人手不足 | 任一 Gate 延期 > 2 周 | 砍 P1 平台、砍 Admin、聚焦核心通知链路 |
+## 进度记录规则
 
-## 决策记录
+每个阶段完成时：
 
-每个 Gate 结束时记录：
-- 实际耗时 vs 计划
-- 重大决策与原因
-- 发现的坑
-- 下个 Gate 调整
-
-格式参考 ADR（Architecture Decision Record）。
+1. 更新对应 `docs/features/`。
+2. 更新 README / ROADMAP（若状态变化）。
+3. 记录自动化、开发者工具、真机/真实 provider 证据。
+4. 合并后从最新 `main` 建立下一工作分支。
