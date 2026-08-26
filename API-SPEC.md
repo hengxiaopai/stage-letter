@@ -219,7 +219,11 @@ D3 的个人主播档案属于当前用户，持久化 identity 固定为
 ```
 
 PATCH body contains `openid` and only the supplied profile fields; `null` clears
-an optional value. Repeating the same PATCH is idempotent. `reference_schedule`
+an optional value. Repeating the same PATCH is idempotent. Concurrent PATCH
+requests update only their explicitly supplied fields, so an omitted field is
+never overwritten from a stale client snapshot. `reference_schedule.days_of_week`
+uses ISO-8601 numbering: `1=Monday` through `7=Sunday` in `Asia/Shanghai`.
+`reference_schedule`
 is user-authored reference data only: it does not change platform LIVE/OFFLINE,
 does not create “early/late” facts, and does not enqueue a notification. D1
 notification preference remains separately keyed by `(user_id, platform_account_id)`.

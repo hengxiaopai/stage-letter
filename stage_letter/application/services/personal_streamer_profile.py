@@ -7,7 +7,6 @@ from collections.abc import Callable, Mapping
 from stage_letter.application.errors import ApplicationNotFoundError
 from stage_letter.application.ports import UnitOfWork
 from stage_letter.domain.personal_streamer_profile import (
-    PersonalStreamerProfile,
     PersonalStreamerProfileView,
 )
 
@@ -61,27 +60,17 @@ class PersonalStreamerProfileApplicationService:
                 raise ApplicationNotFoundError(f"creator {creator_id!r} not found")
             if not await uow.personal_profiles.has_active_follow(user_id, creator_id):
                 raise ApplicationNotFoundError("personal profile requires an active follow")
-            current = await uow.personal_profiles.get_profile(user_id, creator_id)
-            profile = self._apply_changes(user_id, creator_id, current, changes)
-            await uow.personal_profiles.save_profile(profile)
+            normalized_changes = self._normalize_changes(changes)
+            profile = await uow.personal_profiles.upsert_profile(
+                user_id, creator_id, normalized_changes
+            )
             await uow.commit()
         return PersonalStreamerProfileView(platform_facts=facts, user_profile=profile)
 
     @classmethod
-    def _apply_changes(
-        cls,
-        user_id: str,
-        creator_id: str,
-        current: PersonalStreamerProfile | None,
-        changes: Mapping[str, object],
-    ) -> PersonalStreamerProfile:
-        values: dict[str, object] = {
-            "user_alias": None if current is None else current.user_alias,
-            "note": None if current is None else current.note,
-            "group_name": None if current is None else current.group_name,
-            "user_tags": () if current is None else current.user_tags,
-            "reference_schedule": None if current is None else current.reference_schedule,
-        }
+    def _normalize_changes(cls, changes: Mapping[str, object]) -> dict[str, object]:
+        """Normalize only explicit PATCH fields; omitted fields never enter SQL SET."""
+        values: dict[str, object] = {}
         if "user_alias" in changes:
             values["user_alias"] = cls._optional_text(changes["user_alias"], "user_alias", 128)
         if "note" in changes:
@@ -92,14 +81,7 @@ class PersonalStreamerProfileApplicationService:
             values["user_tags"] = cls._tags(changes["user_tags"])
         if "reference_schedule" in changes:
             values["reference_schedule"] = cls._reference_schedule(changes["reference_schedule"])
-        return PersonalStreamerProfile(
-            user_id=user_id, creator_id=creator_id,
-            user_alias=values["user_alias"],  # type: ignore[arg-type]
-            note=values["note"],  # type: ignore[arg-type]
-            group_name=values["group_name"],  # type: ignore[arg-type]
-            user_tags=values["user_tags"],  # type: ignore[arg-type]
-            reference_schedule=values["reference_schedule"],  # type: ignore[arg-type]
-        )
+        return values
 
     @staticmethod
     def _validate_identity(value: str, field: str) -> None:
@@ -152,8 +134,8 @@ class PersonalStreamerProfileApplicationService:
         if timezone != "Asia/Shanghai":
             raise ValueError("reference_schedule.timezone must be Asia/Shanghai")
         days = value.get("days_of_week", [])
-        if not isinstance(days, list) or any(type(day) is not int or day < 0 or day > 6 for day in days):
-            raise ValueError("reference_schedule.days_of_week must contain integers 0 through 6")
+        if not isinstance(days, list) or any(type(day) is not int or day < 1 or day > 7 for day in days):
+            raise ValueError("reference_schedule.days_of_week must contain ISO-8601 integers 1 through 7")
         for key in ("start_time", "end_time"):
             time_value = value.get(key)
             if time_value is not None and (not isinstance(time_value, str) or not _TIME.fullmatch(time_value)):

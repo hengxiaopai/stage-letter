@@ -132,7 +132,12 @@ class PersonalStreamerProfileRepository(Protocol):
         self, user_id: str, creator_id: str
     ) -> PersonalStreamerProfile | None: ...
 
-    async def save_profile(self, profile: PersonalStreamerProfile) -> None: ...
+    async def upsert_profile(
+        self,
+        user_id: str,
+        creator_id: str,
+        changes: dict[str, object],
+    ) -> PersonalStreamerProfile: ...
 
 
 @runtime_checkable

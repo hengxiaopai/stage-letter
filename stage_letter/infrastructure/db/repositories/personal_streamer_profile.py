@@ -1,9 +1,8 @@
 """PostgreSQL persistence for D3 user-owned Creator profiles."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stage_letter.domain.creators import PlatformAccount
@@ -72,29 +71,35 @@ class SQLAlchemyPersonalStreamerProfileRepository:
         )
         return None if row is None else self._to_profile(row)
 
-    async def save_profile(self, profile: PersonalStreamerProfile) -> None:
-        user_pk = parse_persistence_id(profile.user_id, field="user_id")
-        creator_pk = parse_persistence_id(profile.creator_id, field="creator_id")
-        row = await self.session.scalar(
-            select(UserCreatorProfileModel).where(
-                UserCreatorProfileModel.user_id == user_pk,
-                UserCreatorProfileModel.creator_id == creator_pk,
-            )
-        )
-        if row is None:
-            self.session.add(UserCreatorProfileModel(
-                user_id=user_pk, creator_id=creator_pk,
-                user_alias=profile.user_alias, note=profile.note,
-                group_name=profile.group_name, user_tags=list(profile.user_tags),
-                reference_schedule=profile.reference_schedule,
-            ))
-            return
-        row.user_alias = profile.user_alias
-        row.note = profile.note
-        row.group_name = profile.group_name
-        row.user_tags = list(profile.user_tags)
-        row.reference_schedule = profile.reference_schedule
-        row.updated_at = datetime.now(timezone.utc)
+    async def upsert_profile(
+        self,
+        user_id: str,
+        creator_id: str,
+        changes: dict[str, object],
+    ) -> PersonalStreamerProfile:
+        """Atomically write only explicit D3 PATCH fields.
+
+        PostgreSQL resolves a concurrent first write at the unique owner key;
+        conflict updates intentionally never read or re-submit omitted columns.
+        """
+        user_pk = parse_persistence_id(user_id, field="user_id")
+        creator_pk = parse_persistence_id(creator_id, field="creator_id")
+        values: dict[str, object] = {"user_id": user_pk, "creator_id": creator_pk}
+        values.update(changes)
+        statement = insert(UserCreatorProfileModel).values(**values)
+        update_values = {
+            field: statement.excluded[field]
+            for field in changes
+        }
+        update_values["updated_at"] = func.now()
+        statement = statement.on_conflict_do_update(
+            constraint="uq_d3_profile_user_creator",
+            set_=update_values,
+        ).returning(UserCreatorProfileModel)
+        row = await self.session.scalar(statement)
+        if row is None:  # pragma: no cover - PostgreSQL RETURNING is mandatory here.
+            raise RuntimeError("personal profile upsert did not return a row")
+        return self._to_profile(row)
 
     @staticmethod
     def _to_profile(row: UserCreatorProfileModel) -> PersonalStreamerProfile:

@@ -17,8 +17,10 @@ D1 NotificationPreference remain account-level facts and are not rewritten.
 | user-facing display combining the two layers | DERIVED | UI may prefer alias but must retain source layering |
 | early/late, adherence, schedule prediction, community semantics | FUTURE | excluded from D3 and require a separately frozen Analysis Contract |
 
-`reference_schedule` cannot mutate LIVE/OFFLINE, cannot generate a delivery, and
-cannot create an “early” or “late” platform fact. D3 has no UI mock data.
+`reference_schedule.days_of_week` uses ISO-8601 weekday numbers in
+`Asia/Shanghai`: `1=Monday` through `7=Sunday`. It cannot mutate LIVE/OFFLINE,
+cannot generate a delivery, and cannot create an “early” or “late” platform
+fact. D3 has no UI mock data.
 
 ## Ownership and lifecycle
 
@@ -44,11 +46,14 @@ Responses use `platform_facts` and `user_owned_profile` as distinct objects.
 ## Database and acceptance
 
 - Migration: `d31a7f4c9e20` (creates `user_creator_profiles`).
-- PostgreSQL acceptance uses isolated explicit identities in one transaction and
-  rolls it back: User A writes alias/note/tags; User B sees no A profile; a repeat
-  PATCH leaves one `(user_id, creator_id)` profile row.
+- D3.1 PostgreSQL concurrent acceptance uses independent transactions and explicit
+  cleanup: two simultaneous first identical PATCH requests both succeed and leave
+  one `(user_id, creator_id)` row; simultaneous alias-only and note-only PATCHes
+  preserve both values. The lifecycle probe removes the last Follow, confirms
+  GET/PATCH are unavailable while the profile row remains, then re-follows and
+  verifies the original private profile is restored.
 - Local Docker PostgreSQL clean upgrade: `c82e7a4d1f30 -> d31a7f4c9e20` PASS.
-- Focused D3/D2/D1-adjacent Contract regression: `32 passed`; API import: PASS.
+- Focused D3/D2/D1-adjacent Contract regression: `34 passed`; API import: PASS.
 
 ## Explicit non-goals
 
