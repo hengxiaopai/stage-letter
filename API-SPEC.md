@@ -152,6 +152,42 @@ Query：
 错误：
 - `40401`: 主播不存在
 
+### GET /api/v1/anchors/{creator_id}/sessions
+
+读取 Formal Creator 的直播历史。`cursor` 是不透明的稳定 keyset cursor，内部按不可变的
+`opened_at + session_id` 分页；它不依赖展示用开播时间。
+
+每个 item 的新增时长字段：
+
+```json
+{
+  "session_id": "92001",
+  "started_at": "2026-07-31T15:58:00Z",
+  "ended_at": "2026-07-31T17:02:00Z",
+  "started_at_source": "platform",
+  "duration_seconds": 3840,
+  "duration_basis": "PLATFORM_START_PROBE_END",
+  "duration_is_estimated": true
+}
+```
+
+`duration_basis` is `PLATFORM_START_PROBE_END` only when the start is a trusted
+platform timestamp and the end is a probe-confirmed transition;
+`PROBE_START_PROBE_END` when both boundaries are probe-derived; and
+`UNAVAILABLE` when no confirmed end exists. `duration_is_estimated` remains
+`true` for all three cases; the API never claims a provider-authored end time.
+
+### GET /api/v1/anchors/{creator_id}/calendar and /stats
+
+Calendar and statistics evaluate their Beijing (`Asia/Shanghai`) date range by
+the effective statistical start: trusted platform `source_started_at` when
+`started_at_source=platform`, otherwise immutable `opened_at`. The same session
+can therefore display a probe transition after midnight while correctly being
+counted in the preceding calendar month. Aggregate duration objects include
+`duration_is_estimated: true`; their `basis` is the shared completed-session
+basis, `MIXED` for heterogeneous completed samples, or `UNAVAILABLE` if no
+session has a confirmed end.
+
 ## 5. 订阅
 
 ### POST /api/v1/subscriptions

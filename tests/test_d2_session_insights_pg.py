@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -20,8 +21,23 @@ from stage_letter.infrastructure.db.models import (
 from stage_letter.infrastructure.db.repositories.session_insights import (
     SQLAlchemySessionInsightRepository,
 )
+from stage_letter.application.services.session_insights import SessionInsightsApplicationService
 
 DB_URL = "postgresql+asyncpg://stageletter:stageletter@localhost:5643/stageletter"
+BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+class _ProbeUoW:
+    """Use the active transaction; the probe rolls it back before exit."""
+
+    def __init__(self, repository: SQLAlchemySessionInsightRepository) -> None:
+        self.session_insights = repository
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 async def probe() -> None:
@@ -79,6 +95,53 @@ async def probe() -> None:
             )
             assert len(ranged) == 3
             assert len(observations) == 3
+
+            boundary_creator = CreatorModel(id=base_id + 100)
+            db.add(boundary_creator)
+            await db.flush()
+            boundary_account = PlatformAccountModel(
+                id=base_id + 100, creator_id=boundary_creator.id, platform="douyin",
+                platform_user_id=f"d2-boundary-{token}",
+                canonical_url=f"https://www.douyin.com/user/boundary-{token}",
+                is_disabled=False,
+            )
+            db.add(boundary_account)
+            await db.flush()
+            platform_start = datetime(2026, 7, 31, 23, 58, tzinfo=BEIJING).astimezone(timezone.utc)
+            probe_opened = datetime(2026, 8, 1, 0, 2, tzinfo=BEIJING).astimezone(timezone.utc)
+            boundary_session = LiveSessionModel(
+                id=base_id + 101, platform_account_id=boundary_account.id,
+                legacy_anchor_id=None, legacy_platform="douyin", opened_at=probe_opened,
+                closed_at=probe_opened + timedelta(hours=1), origin="TRANSITION",
+                source_started_at=platform_start, started_at_source="platform",
+                title="D2 Beijing month boundary", legacy_state="CLOSED",
+            )
+            db.add(boundary_session)
+            await db.flush()
+
+            july_start = datetime(2026, 7, 1, tzinfo=BEIJING).astimezone(timezone.utc)
+            august_start = datetime(2026, 8, 1, tzinfo=BEIJING).astimezone(timezone.utc)
+            september_start = datetime(2026, 9, 1, tzinfo=BEIJING).astimezone(timezone.utc)
+            assert platform_start == datetime(2026, 7, 31, 15, 58, tzinfo=timezone.utc)
+            assert probe_opened == datetime(2026, 7, 31, 16, 2, tzinfo=timezone.utc)
+            july_rows = await repository.list_sessions_in_range(
+                str(boundary_creator.id), start=july_start, end=august_start
+            )
+            august_rows = await repository.list_sessions_in_range(
+                str(boundary_creator.id), start=august_start, end=september_start
+            )
+            assert [row.session_id for row in july_rows] == [str(boundary_session.id)]
+            assert august_rows == ()
+
+            service = SessionInsightsApplicationService(lambda: _ProbeUoW(repository))  # type: ignore[arg-type]
+            july_calendar = await service.calendar(str(boundary_creator.id), "2026-07")
+            august_calendar = await service.calendar(str(boundary_creator.id), "2026-08")
+            july_stats = await service.statistics(str(boundary_creator.id), date(2026, 7, 1), date(2026, 7, 31))
+            august_stats = await service.statistics(str(boundary_creator.id), date(2026, 8, 1), date(2026, 8, 31))
+            assert [day["date"] for day in july_calendar["days"]] == ["2026-07-31"]
+            assert august_calendar["days"] == []
+            assert july_stats["session_count"] == 1
+            assert august_stats["session_count"] == 0
             await db.rollback()
     finally:
         await engine.dispose()

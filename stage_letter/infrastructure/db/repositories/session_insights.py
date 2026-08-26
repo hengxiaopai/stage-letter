@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stage_letter.domain.session_insights import MonitoringAccount, ObservationDay, SessionHistoryRecord
@@ -37,11 +37,25 @@ class SQLAlchemySessionInsightRepository:
 
     async def list_sessions_in_range(self, creator_id: str, *, start: datetime, end: datetime) -> tuple[SessionHistoryRecord, ...]:
         creator_pk = parse_persistence_id(creator_id, field="creator_id")
+        statistics_started_at = case(
+            (
+                and_(
+                    LiveSessionModel.started_at_source == "platform",
+                    LiveSessionModel.source_started_at.is_not(None),
+                ),
+                LiveSessionModel.source_started_at,
+            ),
+            else_=LiveSessionModel.opened_at,
+        )
         rows = (await self.session.execute(
             select(LiveSessionModel, PlatformAccountModel.platform)
             .join(PlatformAccountModel, LiveSessionModel.platform_account_id == PlatformAccountModel.id)
-            .where(PlatformAccountModel.creator_id == creator_pk, LiveSessionModel.opened_at >= start, LiveSessionModel.opened_at < end)
-            .order_by(LiveSessionModel.opened_at.asc(), LiveSessionModel.id.asc())
+            .where(
+                PlatformAccountModel.creator_id == creator_pk,
+                statistics_started_at >= start,
+                statistics_started_at < end,
+            )
+            .order_by(statistics_started_at.asc(), LiveSessionModel.id.asc())
         )).all()
         return tuple(self._record(row, platform) for row, platform in rows)
 

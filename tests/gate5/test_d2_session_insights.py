@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,6 +13,7 @@ from stage_letter.domain.session_insights import MonitoringAccount, ObservationD
 
 ROOT = Path(__file__).resolve().parents[2]
 T0 = datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)
+BEIJING = ZoneInfo("Asia/Shanghai")
 
 
 def _row(session_id: str, *, hour: int, closed: bool = True, trusted: bool = True) -> SessionHistoryRecord:
@@ -63,10 +65,59 @@ async def test_statistics_separates_probe_duration_from_trusted_start_analysis()
     service = SessionInsightsApplicationService(lambda: _UoW(rows))  # type: ignore[arg-type]
     result = await service.statistics("30", date(2026, 8, 20), date(2026, 8, 20))
     assert result["session_count"] == 3
-    assert result["estimated_duration"]["basis"] == "PROBE_BOUNDED"
+    assert result["estimated_duration"]["basis"] == "MIXED"
+    assert result["estimated_duration"]["duration_is_estimated"] is True
     assert result["estimated_duration"]["sample_count"] == 2
     assert result["trusted_start_analysis"]["sample_count"] == 1
     assert result["coverage"].basis == "OBSERVED_ACCOUNT_DAYS"
+
+
+@pytest.mark.asyncio
+async def test_calendar_and_stats_use_platform_start_across_beijing_midnight() -> None:
+    """A trusted 07-31 23:58 start cannot leak into August from a probe at 00:02."""
+    platform_start = datetime(2026, 7, 31, 23, 58, tzinfo=BEIJING)
+    opened = datetime(2026, 8, 1, 0, 2, tzinfo=BEIJING)
+    boundary = SessionHistoryRecord(
+        session_id="99", account_id="40", platform="douyin",
+        opened_at=opened.astimezone(timezone.utc),
+        closed_at=datetime(2026, 8, 1, 1, 2, tzinfo=BEIJING).astimezone(timezone.utc),
+        source_started_at=platform_start.astimezone(timezone.utc), started_at_source="platform",
+        title="跨月直播", cover=None, viewer_count=None, provider_room_id="9900",
+    )
+    uow = _UoW()
+
+    async def sessions_in_range(_creator_id: str, *, start: datetime, end: datetime):
+        return tuple(row for row in (boundary,) if start <= row.statistics_started_at < end)
+
+    uow.session_insights.list_sessions_in_range = AsyncMock(side_effect=sessions_in_range)
+    service = SessionInsightsApplicationService(lambda: uow)  # type: ignore[arg-type]
+
+    july = await service.calendar("30", "2026-07")
+    august = await service.calendar("30", "2026-08")
+    july_stats = await service.statistics("30", date(2026, 7, 1), date(2026, 7, 31))
+    august_stats = await service.statistics("30", date(2026, 8, 1), date(2026, 8, 31))
+
+    assert july["days"] == [{
+        "date": "2026-07-31", "session_count": 1, "completed_session_count": 1,
+        "estimated_duration_seconds": 3840,
+        "duration_basis": "PLATFORM_START_PROBE_END", "duration_is_estimated": True,
+    }]
+    assert august["days"] == []
+    assert july_stats["session_count"] == 1
+    assert august_stats["session_count"] == 0
+    assert july_stats["estimated_duration"]["basis"] == "PLATFORM_START_PROBE_END"
+    assert july_stats["estimated_duration"]["duration_is_estimated"] is True
+    assert august_stats["estimated_duration"]["basis"] == "UNAVAILABLE"
+
+
+def test_duration_basis_never_claims_a_provider_end() -> None:
+    platform = _row("1", hour=10, trusted=True)
+    probe = _row("2", hour=11, trusted=False)
+    open_session = _row("3", hour=12, closed=False, trusted=True)
+    assert platform.duration_basis == "PLATFORM_START_PROBE_END"
+    assert probe.duration_basis == "PROBE_START_PROBE_END"
+    assert open_session.duration_basis == "UNAVAILABLE"
+    assert platform.duration_is_estimated is probe.duration_is_estimated is open_session.duration_is_estimated is True
 
 
 @pytest.mark.asyncio
@@ -94,6 +145,8 @@ def test_repository_and_migration_are_keyset_and_forward_only() -> None:
     migration = (ROOT / "migrations/versions/b71f6d2a4c90_d2_session_insight_indexes.py").read_text(encoding="utf-8")
     assert "LiveSessionModel.opened_at < opened_at" in repository
     assert "LiveSessionModel.id < session_pk" in repository
+    assert "statistics_started_at = case(" in repository
+    assert "LiveSessionModel.source_started_at.is_not(None)" in repository
     assert ".offset(" not in repository
     assert 'down_revision: Union[str, Sequence[str], None] = "a54e8b3c2d61"' in migration
     assert "idx_d2_session_account_cursor" in migration

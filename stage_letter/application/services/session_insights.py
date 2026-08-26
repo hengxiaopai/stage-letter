@@ -45,17 +45,18 @@ class SessionInsightsApplicationService:
         sessions, coverage = await self._range_data(creator_id, start, end)
         grouped: dict[date, list[SessionHistoryRecord]] = defaultdict(list)
         for row in sessions:
-            grouped[row.display_started_at.astimezone(BEIJING).date()].append(row)
+            grouped[row.statistics_started_at.astimezone(BEIJING).date()].append(row)
         days = []
         for day in sorted(grouped):
             rows = grouped[day]
-            completed = [r.duration_seconds for r in rows if r.duration_seconds is not None]
+            completed = [r for r in rows if r.duration_seconds is not None]
             days.append({
                 "date": day.isoformat(),
                 "session_count": len(rows),
                 "completed_session_count": len(completed),
-                "estimated_duration_seconds": sum(completed),
-                "duration_basis": "PROBE_BOUNDED" if completed else "UNAVAILABLE",
+                "estimated_duration_seconds": sum(r.duration_seconds or 0 for r in completed),
+                "duration_basis": self._aggregate_duration_basis(completed),
+                "duration_is_estimated": True,
             })
         return {"month": month, "timezone": "Asia/Shanghai", "days": days, "coverage": coverage}
 
@@ -65,17 +66,20 @@ class SessionInsightsApplicationService:
         start = datetime.combine(start_day, time.min, BEIJING).astimezone(timezone.utc)
         end = datetime.combine(end_day + timedelta(days=1), time.min, BEIJING).astimezone(timezone.utc)
         sessions, coverage = await self._range_data(creator_id, start, end)
-        durations = [r.duration_seconds for r in sessions if r.duration_seconds is not None]
+        completed = [r for r in sessions if r.duration_seconds is not None]
+        durations = [r.duration_seconds or 0 for r in completed]
         trusted = [r for r in sessions if r.source_started_at is not None and r.started_at_source == "platform"]
         hours = Counter(r.source_started_at.astimezone(BEIJING).hour for r in trusted)  # type: ignore[union-attr]
         weekdays = Counter(r.source_started_at.astimezone(BEIJING).weekday() for r in trusted)  # type: ignore[union-attr]
         return {
             "from": start_day.isoformat(), "to": end_day.isoformat(), "timezone": "Asia/Shanghai",
-            "streamed_days": len({r.display_started_at.astimezone(BEIJING).date() for r in sessions}),
+            "streamed_days": len({r.statistics_started_at.astimezone(BEIJING).date() for r in sessions}),
             "session_count": len(sessions), "completed_session_count": len(durations),
             "open_session_count": len(sessions) - len(durations),
             "estimated_duration": {
-                "basis": "PROBE_BOUNDED", "sample_count": len(durations),
+                "basis": self._aggregate_duration_basis(completed),
+                "duration_is_estimated": True,
+                "sample_count": len(durations),
                 "total_seconds": sum(durations) if durations else None,
                 "average_seconds": round(sum(durations) / len(durations)) if durations else None,
                 "minimum_seconds": min(durations) if durations else None,
@@ -105,6 +109,14 @@ class SessionInsightsApplicationService:
         ratio = None if eligible == 0 else min(1.0, observed_count / eligible)
         state = "NONE" if observed_count == 0 else ("OBSERVED_DAILY" if ratio == 1.0 else "PARTIAL")
         return sessions, MonitoringCoverage("OBSERVED_ACCOUNT_DAYS", len(accounts), observed_count, eligible, ratio, state)
+
+    @staticmethod
+    def _aggregate_duration_basis(rows: list[SessionHistoryRecord]) -> str:
+        """Expose a precise basis for homogeneous samples, otherwise MIXED."""
+        bases = {row.duration_basis for row in rows}
+        if not bases:
+            return "UNAVAILABLE"
+        return next(iter(bases)) if len(bases) == 1 else "MIXED"
 
     @staticmethod
     def _validate_creator(value: str) -> None:

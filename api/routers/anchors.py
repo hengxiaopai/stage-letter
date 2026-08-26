@@ -137,6 +137,7 @@ class SessionHistoryItem(BaseModel):
     started_at_source: str
     duration_seconds: int | None = None
     duration_basis: str
+    duration_is_estimated: bool
 
 
 class SessionHistoryResponse(BaseModel):
@@ -538,7 +539,8 @@ async def anchor_session_history(
                 state="LIVE" if row.closed_at is None else "ENDED",
                 started_at_source=row.started_at_source,
                 duration_seconds=row.duration_seconds,
-                duration_basis="IN_PROGRESS" if row.closed_at is None else "PROBE_BOUNDED",
+                duration_basis=row.duration_basis,
+                duration_is_estimated=row.duration_is_estimated,
             ) for row in page.items
         ],
         next_cursor=page.next_cursor,

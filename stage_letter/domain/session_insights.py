@@ -24,10 +24,35 @@ class SessionHistoryRecord:
         return self.source_started_at or self.opened_at
 
     @property
+    def statistics_started_at(self) -> datetime:
+        """Timestamp used by calendar and statistics boundaries.
+
+        A provider timestamp is allowed to move a session across a calendar
+        boundary only when it is explicitly marked as platform sourced.  A
+        probe timestamp is transition evidence, not a trusted provider start.
+        """
+        if self.started_at_source == "platform" and self.source_started_at is not None:
+            return self.source_started_at
+        return self.opened_at
+
+    @property
+    def duration_basis(self) -> str:
+        if self.closed_at is None:
+            return "UNAVAILABLE"
+        if self.started_at_source == "platform" and self.source_started_at is not None:
+            return "PLATFORM_START_PROBE_END"
+        return "PROBE_START_PROBE_END"
+
+    @property
+    def duration_is_estimated(self) -> bool:
+        """All D2 durations use a probe-confirmed end, never a provider end."""
+        return True
+
+    @property
     def duration_seconds(self) -> int | None:
         if self.closed_at is None:
             return None
-        return max(0, int((self.closed_at - self.display_started_at).total_seconds()))
+        return max(0, int((self.closed_at - self.statistics_started_at).total_seconds()))
 
 
 @dataclass(frozen=True)
