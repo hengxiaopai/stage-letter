@@ -58,9 +58,15 @@ Status: implementation complete; contract and acceptance evidence frozen in `doc
 
 ### D3 — Personal Streamer Profile
 
-- User remark, alias, group, personal tags, and reference schedule.
-- Separate user-authored facts from system-derived labels.
-- Reference schedule and analytics rules require minimum sample and confidence definitions.
+Status: backend Contract implementation complete; no UI/Figma work is included.
+
+- Private profile identity is exactly `user_id + creator_id`, separate from account-level Follow and D1 notification preference.
+- User alias, remark, group, personal tags, and reference schedule are user-authored OPTIONAL fields.
+- Platform Creator facts and user-owned profile fields have separate response objects.
+- Last unfollow retains private profile data, but access requires a current follow; re-follow restores it.
+- Reference schedule is reference-only; analytics such as early/late assessment remain FUTURE and require later sample/confidence definitions.
+
+Evidence: `docs/gate1/UI_V2_D3_PERSONAL_STREAMER_PROFILE.md`, focused Contract tests, and the local Docker PostgreSQL rollback probe.
 
 ## Design freeze
 

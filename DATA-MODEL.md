@@ -156,6 +156,33 @@ CREATE TABLE notification_preferences (
 
 唯一约束同时支持按 `(user_id, platform_account_id)` 的所有权读取。兼容迁移期间，偏好写操作必须同步 `user_subscriptions.notify_enabled`；Formal 记录是新接口的读取真相。
 
+### D3 personal streamer profile
+
+`user_creator_profiles` 是唯一的用户私有主播资料表。其事实边界是
+`(user_id, creator_id)`，不是 room ID，也不是 `platform_account_id`：用户可为
+同一个 Formal Creator 的多平台账号保留一份自己的称呼、备注与计划。
+
+```sql
+CREATE TABLE user_creator_profiles (
+    id                  BIGSERIAL PRIMARY KEY,
+    user_id             BIGINT NOT NULL REFERENCES users(id),
+    creator_id          BIGINT NOT NULL REFERENCES creators(id),
+    user_alias          VARCHAR(128),
+    note                TEXT,
+    group_name          VARCHAR(64),
+    user_tags           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    reference_schedule  JSONB,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, creator_id)
+);
+```
+
+`user_alias` 永远不会被 `creator_profiles.display_name` 或平台昵称更新覆盖。
+`reference_schedule` 仅是用户参考计划，不能驱动平台状态、通知或任何“早播/迟到”结论。
+取消最后一个 Creator follow 时 D3 资料保留；资料访问须有当前 follow，重新关注后恢复。
+D1 的 `notification_preferences` 继续保持 `(user_id, platform_account_id)`，不迁入本表。
+
 ## 5. live_sessions
 
 一次直播会话。

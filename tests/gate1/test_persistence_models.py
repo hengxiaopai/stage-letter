@@ -14,6 +14,7 @@ from stage_letter.infrastructure.db.models import (
     LiveSessionModel,
     NotificationDeliveryModel,
     PlatformAccountModel,
+    UserCreatorProfileModel,
 )
 
 
@@ -26,7 +27,7 @@ def _unique_column_sets(table) -> set[tuple[str, ...]]:
 
 
 class PersistenceModelContractTests(unittest.TestCase):
-    def test_formal_metadata_contains_exact_ten_domain_tables(self) -> None:
+    def test_formal_metadata_contains_d3_personal_profile_table(self) -> None:
         self.assertEqual(
             set(Base.metadata.tables),
             {
@@ -40,6 +41,7 @@ class PersistenceModelContractTests(unittest.TestCase):
                 "live_sessions",
                 "live_events",
                 "notification_deliveries",
+                "user_creator_profiles",
             },
         )
 
@@ -52,6 +54,11 @@ class PersistenceModelContractTests(unittest.TestCase):
     def test_follow_identity_is_user_plus_platform_account(self) -> None:
         uniques = _unique_column_sets(FollowModel.__table__)
         self.assertIn(("user_id", "platform_account_id"), uniques)
+
+    def test_d3_personal_profile_identity_is_user_plus_creator(self) -> None:
+        uniques = _unique_column_sets(UserCreatorProfileModel.__table__)
+        self.assertIn(("user_id", "creator_id"), uniques)
+        self.assertNotIn("platform_account_id", UserCreatorProfileModel.__table__.c)
 
     def test_live_observation_has_stable_source_scoped_identity(self) -> None:
         uniques = _unique_column_sets(LiveObservationModel.__table__)

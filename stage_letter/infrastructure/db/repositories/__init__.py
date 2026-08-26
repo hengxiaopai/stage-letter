@@ -17,6 +17,7 @@ from .identity import (
 )
 from .live import SQLAlchemyLiveRepository
 from .notification import SQLAlchemyNotificationRepository
+from .personal_streamer_profile import SQLAlchemyPersonalStreamerProfileRepository
 from .session_insights import SQLAlchemySessionInsightRepository
 from .wechat_template import SQLAlchemyWeChatTemplateRepository
 
@@ -29,6 +30,7 @@ __all__ = [
     "SQLAlchemyGrantRepository",
     "SQLAlchemyLiveRepository",
     "SQLAlchemyNotificationRepository",
+    "SQLAlchemyPersonalStreamerProfileRepository",
     "SQLAlchemySessionInsightRepository",
     "SQLAlchemyWeChatTemplateRepository",
     "parse_persistence_id",

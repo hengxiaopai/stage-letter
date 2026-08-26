@@ -43,6 +43,7 @@ from .notification_history import (
     NotificationHistoryApplicationService,
     NotificationHistoryPage,
 )
+from .personal_streamer_profile import PersonalStreamerProfileApplicationService
 from .session_insights import SessionHistoryPage, SessionInsightsApplicationService
 from .state_replay import (
     ObservationConsumptionPoint,
@@ -85,6 +86,7 @@ __all__ = [
     "NotificationEnqueueResult",
     "NotificationHistoryApplicationService",
     "NotificationHistoryPage",
+    "PersonalStreamerProfileApplicationService",
     "SessionHistoryPage",
     "SessionInsightsApplicationService",
     "ObservationConsumptionPoint",

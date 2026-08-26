@@ -16,6 +16,7 @@ from stage_letter.application.services import (
     FollowApplicationService,
     LiveObservationApplicationService,
     NotificationHistoryApplicationService,
+    PersonalStreamerProfileApplicationService,
     SessionInsightsApplicationService,
     WeChatGrantApplicationService,
 )
@@ -33,6 +34,7 @@ class ApiServiceBundle:
     grants: WeChatGrantApplicationService
     notification_history: NotificationHistoryApplicationService
     session_insights: SessionInsightsApplicationService
+    personal_streamer_profiles: PersonalStreamerProfileApplicationService
 
 
 def build_api_services(session_factory: SessionFactory) -> ApiServiceBundle:
@@ -48,4 +50,5 @@ def build_api_services(session_factory: SessionFactory) -> ApiServiceBundle:
         grants=WeChatGrantApplicationService(uow_factory),
         notification_history=NotificationHistoryApplicationService(uow_factory),
         session_insights=SessionInsightsApplicationService(uow_factory),
+        personal_streamer_profiles=PersonalStreamerProfileApplicationService(uow_factory),
     )

@@ -188,6 +188,46 @@ counted in the preceding calendar month. Aggregate duration objects include
 basis, `MIXED` for heterogeneous completed samples, or `UNAVAILABLE` if no
 session has a confirmed end.
 
+### GET/PATCH /api/v1/creators/{creator_id}/personal-profile
+
+D3 的个人主播档案属于当前用户，持久化 identity 固定为
+`(user_id, creator_id)`；请求使用登录态对应的 `openid`，响应不暴露
+`user_id`。读取和写入都要求该用户当前至少关注该 Creator 的一个平台账号。
+
+响应明确分层，平台事实与用户私有内容绝不混写：
+
+```json
+{
+  "platform_facts": {
+    "creator_id": "31",
+    "display_name": "平台主播昵称",
+    "platform_accounts": [{"account_id": "41", "platform": "douyin", "platform_user_id": "..."}]
+  },
+  "user_owned_profile": {
+    "user_alias": "我给他的称呼",
+    "note": "只看晚场",
+    "group": "电竞",
+    "user_tags": ["常看"],
+    "reference_schedule": {
+      "timezone": "Asia/Shanghai",
+      "days_of_week": [1, 5],
+      "start_time": "20:00",
+      "end_time": "23:00"
+    }
+  }
+}
+```
+
+PATCH body contains `openid` and only the supplied profile fields; `null` clears
+an optional value. Repeating the same PATCH is idempotent. `reference_schedule`
+is user-authored reference data only: it does not change platform LIVE/OFFLINE,
+does not create “early/late” facts, and does not enqueue a notification. D1
+notification preference remains separately keyed by `(user_id, platform_account_id)`.
+
+When the last follow for a Creator is removed, the D3 row is retained but cannot
+be read or changed until that user follows the Creator again. This preserves
+private notes without making a historical follow appear active.
+
 ## 5. 订阅
 
 ### POST /api/v1/subscriptions

@@ -19,7 +19,7 @@ import logging
 from fastapi import FastAPI
 
 from api.composition import build_api_services
-from api.routers import admin, anchors, auth, health, lives, notifications, subscriptions
+from api.routers import admin, anchors, auth, health, lives, notifications, personal_streamer_profiles, subscriptions
 from core.config import settings
 from core.db import async_session
 
@@ -48,6 +48,7 @@ async def ping() -> dict:
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(anchors.router, prefix="/api/v1", tags=["anchors"])
 app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"])
+app.include_router(personal_streamer_profiles.router, prefix="/api/v1", tags=["personal-streamer-profile"])
 app.include_router(lives.router, prefix="/api/v1", tags=["lives"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["notifications"])
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

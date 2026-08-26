@@ -34,6 +34,10 @@ from stage_letter.domain.session_insights import (
     ObservationDay,
     SessionHistoryRecord,
 )
+from stage_letter.domain.personal_streamer_profile import (
+    CreatorPlatformFacts,
+    PersonalStreamerProfile,
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +116,23 @@ class FollowRepository(Protocol):
         self,
         preference: NotificationPreference,
     ) -> None: ...
+
+
+@runtime_checkable
+class PersonalStreamerProfileRepository(Protocol):
+    """D3 private metadata keyed only by user and formal Creator identity."""
+
+    async def get_user_id_by_openid(self, openid: str) -> str | None: ...
+
+    async def get_creator_facts(self, creator_id: str) -> CreatorPlatformFacts | None: ...
+
+    async def has_active_follow(self, user_id: str, creator_id: str) -> bool: ...
+
+    async def get_profile(
+        self, user_id: str, creator_id: str
+    ) -> PersonalStreamerProfile | None: ...
+
+    async def save_profile(self, profile: PersonalStreamerProfile) -> None: ...
 
 
 @runtime_checkable
@@ -344,6 +365,7 @@ class UnitOfWork(Protocol):
 
     creators: CreatorRepository
     follows: FollowRepository
+    personal_profiles: PersonalStreamerProfileRepository
     live: LiveRepository
     session_insights: SessionInsightRepository
     notifications: NotificationRepository

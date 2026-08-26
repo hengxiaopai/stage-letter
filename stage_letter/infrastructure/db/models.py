@@ -106,6 +106,29 @@ class FollowModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class UserCreatorProfileModel(Base):
+    """User-authored Creator metadata; independent from account-level follows."""
+
+    __tablename__ = "user_creator_profiles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "creator_id", name="uq_d3_profile_user_creator"),
+        Index("idx_d3_profile_creator", "creator_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("creators.id"), nullable=False)
+    user_alias: Mapped[str | None] = mapped_column(String(128))
+    note: Mapped[str | None] = mapped_column(Text)
+    group_name: Mapped[str | None] = mapped_column(String(64))
+    user_tags: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    reference_schedule: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class NotificationPreferenceModel(Base):
     __tablename__ = "notification_preferences"
     __table_args__ = (
